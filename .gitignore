@@ -1,0 +1,46 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+*.pkl
+*.log
+
+# Environnements virtuels
+venv/
+env/
+.venv/
+
+# Fichiers spécifiques à Django
+db.sqlite3
+media/
+staticfiles/
+
+# Variables d'environnement
+.env
+
+# --- Node.js / Frontend ---
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build / production
+frontend/build/
+dist/
+
+# Cache et temporaires
+*.cache
+*.tmp
+*.temp
+
+# IDE / éditeur
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Autres fichiers ignorables
+.DS_Store
+Thumbs.db

@@ -148,4 +148,16 @@ export default {
 
   verifyQRCode: uuid =>
     api.get(`${BASE}/prints/${uuid}/verify/`).then(res => res.data),
+
+  // ─── Webhook endpoints management ────────────────────────────────────
+  getWebhooks: () =>
+    api.get(`${BASE}/webhooks/`).then(res => res.data),
+
+  createWebhook: payload =>
+    api.post(`${BASE}/webhooks/`, payload).then(res => res.data),
+
+  updateWebhook: (id, payload) =>
+    api.patch(`${BASE}/webhooks/${id}/`, payload).then(res => res.data),
+
+  deleteWebhook: id => api.delete(`${BASE}/webhooks/${id}/`),
 };

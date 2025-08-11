@@ -1,6 +1,16 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-from .models import Envelope, EnvelopeRecipient, SigningField, SignatureDocument, PrintQRCode
+from django.contrib.auth.tokens import default_token_generator
+from django.core.mail import send_mail
+from django.conf import settings
+from .models import (
+    Envelope,
+    EnvelopeRecipient,
+    SigningField,
+    SignatureDocument,
+    PrintQRCode,
+    NotificationPreference,
+)
 from PyPDF2 import PdfReader
 from django.db import transaction
 import io
@@ -9,7 +19,52 @@ import logging
 logger = logging.getLogger(__name__)
 
 User = get_user_model()
+class UserRegistrationSerializer(serializers.ModelSerializer):
+    password = serializers.CharField(write_only=True)
 
+    class Meta:
+        model = User
+        fields = ['username', 'email', 'password']
+
+    def create(self, validated_data):
+        user = User.objects.create_user(
+            username=validated_data['username'],
+            email=validated_data['email'],
+            password=validated_data['password'],
+        )
+        NotificationPreference.objects.create(user=user)
+        return user
+
+
+class PasswordResetSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+
+    def validate_email(self, value):
+        if not User.objects.filter(email=value).exists():
+            raise serializers.ValidationError('Utilisateur introuvable')
+        return value
+
+    def save(self):
+        request = self.context.get('request')
+        email = self.validated_data['email']
+        user = User.objects.get(email=email)
+        token = default_token_generator.make_token(user)
+        reset_link = request.build_absolute_uri(
+            f"/reset-password/{user.pk}/{token}/"
+        )
+        send_mail(
+            'Réinitialisation de mot de passe',
+            f'Utilisez ce lien pour réinitialiser votre mot de passe : {reset_link}',
+            settings.DEFAULT_FROM_EMAIL,
+            [email],
+            fail_silently=True,
+        )
+
+
+class NotificationPreferenceSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = NotificationPreference
+        fields = ['id', 'email', 'sms', 'push']
 class SigningFieldSerializer(serializers.ModelSerializer):
     recipient_id = serializers.IntegerField()
 

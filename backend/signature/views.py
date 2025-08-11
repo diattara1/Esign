@@ -16,8 +16,23 @@ from .tasks import send_signature_email
 from .otp import generate_otp, validate_otp, send_otp
 from .hsm import hsm_sign
 from django.conf import settings
-from .models import Envelope, EnvelopeRecipient, SignatureDocument, PrintQRCode
-from .serializers import (EnvelopeSerializer, EnvelopeListSerializer, SigningFieldSerializer, SignatureDocumentSerializer, PrintQRCodeSerializer)
+from .models import (
+    Envelope,
+    EnvelopeRecipient,
+    SignatureDocument,
+    PrintQRCode,
+    NotificationPreference,
+)
+from .serializers import (
+    EnvelopeSerializer,
+    EnvelopeListSerializer,
+    SigningFieldSerializer,
+    SignatureDocumentSerializer,
+    PrintQRCodeSerializer,
+    UserRegistrationSerializer,
+    PasswordResetSerializer,
+    NotificationPreferenceSerializer,
+)
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from django.core.files.base import ContentFile
@@ -53,6 +68,37 @@ tsa_client = HTTPTimeStamper(settings.FREETSA_URL)
 
 # Configure logging
 logger = logging.getLogger(__name__)
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def register(request):
+    serializer = UserRegistrationSerializer(data=request.data)
+    if serializer.is_valid():
+        user = serializer.save()
+        return Response({'id': user.id, 'username': user.username, 'email': user.email}, status=status.HTTP_201_CREATED)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def password_reset_request(request):
+    serializer = PasswordResetSerializer(data=request.data, context={'request': request})
+    if serializer.is_valid():
+        serializer.save()
+        return Response({'detail': 'Email de réinitialisation envoyé'}, status=status.HTTP_200_OK)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class NotificationPreferenceViewSet(viewsets.ModelViewSet):
+    serializer_class = NotificationPreferenceSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return NotificationPreference.objects.filter(user=self.request.user)
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
 
 @api_view(['GET'])
 @permission_classes([AllowAny])

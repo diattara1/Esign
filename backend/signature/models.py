@@ -255,3 +255,17 @@ class PrintQRCode(models.Model):
 
     def __str__(self):
         return f"QR Code {self.uuid} - {self.envelope.title}"
+class NotificationPreference(models.Model):
+    """Paramètres de notification par utilisateur"""
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="notification_preferences",
+    )
+    email = models.BooleanField(default=True)
+    sms = models.BooleanField(default=False)
+    push = models.BooleanField(default=False)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Notifications for {self.user.username}"

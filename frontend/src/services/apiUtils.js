@@ -12,6 +12,7 @@ export const api = axios.create({
     'Content-Type': 'application/json',
     Accept: 'application/json',
   },
+  withCredentials: true,
 });
 
 // Callback que l'on remplira depuis AuthContext.js
@@ -22,25 +23,11 @@ export const setLogoutCallback = (cb) => {
 
 // Logique de refresh à déclencher sur 401
 const refreshAuthLogic = (failedRequest) => {
-  const refreshToken = localStorage.getItem('refreshToken');
-  if (!refreshToken) {
-    // plus rien à faire, on déconnecte
-    if (logoutCallback) logoutCallback();
-    return Promise.reject(new Error('No refresh token'));
-  }
-  // Attention : on utilise axios brut pour ne pas ré-intercepter cette requête
+  // On utilise axios brut pour éviter l'intercepteur
   return axios
-    .post(`${API_BASE_URL}/api/token/refresh/`, { refresh: refreshToken })
-    .then(resp => {
-      const { access, refresh } = resp.data;
-      localStorage.setItem('accessToken', access);
-      if (refresh) localStorage.setItem('refreshToken', refresh);
-      // On met à jour le header de la requête en échec et on la relance
-      failedRequest.response.config.headers['Authorization'] = `Bearer ${access}`;
-      return Promise.resolve();
-    })
+    .post(`${API_BASE_URL}/api/token/refresh/`, {}, { withCredentials: true })
+    .then(() => Promise.resolve())
     .catch(err => {
-      // Si le refresh échoue, on logout
       if (logoutCallback) logoutCallback();
       return Promise.reject(err);
     });
@@ -49,16 +36,12 @@ const refreshAuthLogic = (failedRequest) => {
 // Monte l'intercepteur de refresh AVANT tout autre intercepteur de réponse
 createAuthRefreshInterceptor(api, refreshAuthLogic);
 
-// Intercepteur de requête : ajoute automatiquement le Bearer token
+// Intercepteur de requête : ajuste le Content-Type pour FormData
 api.interceptors.request.use(
   config => {
     if (config.data instanceof FormData) {
       // Laisse le navigateur gérer le Content-Type
       delete config.headers['Content-Type'];
-    }
-    const token = localStorage.getItem('accessToken');
-    if (token) {
-      config.headers['Authorization'] = `Bearer ${token}`;
     }
     return config;
   },

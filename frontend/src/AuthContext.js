@@ -15,27 +15,24 @@ export const AuthProvider = ({ children }) => {
   // login renvoie true si OK, false sinon (pas d'exception non gérée)
   const login = async (username, password) => {
     try {
-      const { data } = await api.post('/api/token/', { username, password });
-      const { access, refresh } = data;
-      localStorage.setItem('accessToken', access);
-      localStorage.setItem('refreshToken', refresh);
-
+      await api.post('/api/token/', { username, password });
       const userData = await verifyToken();
-      setUser({ token: access, ...userData });              // bien étaler userData
+      setUser(userData.user);
       navigate('/dashboard');
       return true;
     } catch (err) {
       const msg = err.response?.data?.detail
                || err.response?.data?.error
                || 'Impossible de se connecter';
-      toast.error(msg);                                     // on affiche l’erreur
+      toast.error(msg);
       return false;
     }
   };
 
-  const logout = () => {
-    localStorage.removeItem('accessToken');
-    localStorage.removeItem('refreshToken');
+  const logout = async () => {
+    try {
+      await api.post('/api/logout/');
+    } catch {}
     setUser(null);
     navigate('/login');
   };
@@ -46,24 +43,10 @@ export const AuthProvider = ({ children }) => {
 
     const init = async () => {
       try {
-        const access = localStorage.getItem('accessToken');
-        if (access) {
-          try {
-            const userData = await verifyToken();
-            setUser({ token: access, ...userData });
-          } catch {
-            const refresh = localStorage.getItem('refreshToken');
-            if (!refresh) throw new Error('No refresh token');
-            const { data } = await api.post('/api/token/refresh/', { refresh });
-            const newAccess = data.access, newRefresh = data.refresh;
-            localStorage.setItem('accessToken', newAccess);
-            if (newRefresh) localStorage.setItem('refreshToken', newRefresh);
-            const userData2 = await verifyToken();
-            setUser({ token: newAccess, ...userData2 });
-          }
-        }
+        const userData = await verifyToken();
+        setUser(userData.user);
       } catch {
-        logout();
+        setUser(null);
       } finally {
         setIsLoading(false);
       }

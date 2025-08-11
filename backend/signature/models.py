@@ -269,3 +269,28 @@ class NotificationPreference(models.Model):
 
     def __str__(self):
         return f"Notifications for {self.user.username}"
+
+
+class AuditLog(models.Model):
+    """Simple audit trail for user actions."""
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+    )
+    envelope = models.ForeignKey(
+        'Envelope',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+    )
+    action = models.CharField(max_length=255)
+    details = models.JSONField(default=dict, blank=True)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.CharField(max_length=500, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.action} by {self.user} on {self.created_at}"

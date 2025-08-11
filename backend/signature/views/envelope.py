@@ -28,6 +28,7 @@ from ..models import (
     EnvelopeRecipient,
     SignatureDocument,
     PrintQRCode,
+    AuditLog,
 )
 from ..serializers import (
     EnvelopeSerializer,
@@ -548,6 +549,15 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
                 signed_fields=signed_fields,
                 ip_address=self.request.META.get('REMOTE_ADDR'),
                 user_agent=self.request.META.get('HTTP_USER_AGENT', '')
+            )
+
+            AuditLog.objects.create(
+                user=self.request.user if self.request.user.is_authenticated else None,
+                envelope=recipient.envelope,
+                action='document_signed',
+                details={'recipient_id': recipient.id, 'signature_id': sig_doc.id},
+                ip_address=self.request.META.get('REMOTE_ADDR'),
+                user_agent=self.request.META.get('HTTP_USER_AGENT', ''),
             )
 
             # 3. Fusionner image+PDF

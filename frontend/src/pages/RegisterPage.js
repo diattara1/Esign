@@ -27,6 +27,15 @@ const RegisterPage = () => {
     setForm((prev) => ({ ...prev, avatar: e.target.files[0] }));
   };
 
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setForm((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleFileChange = (e) => {
+    setForm((prev) => ({ ...prev, avatar: e.target.files[0] }));
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setMessage('');
@@ -37,6 +46,7 @@ const RegisterPage = () => {
         if (value) data.append(key, value);
       });
       await api.post('/api/signature/register/', data);
+
       setSuccess(true);
     } catch (err) {
       if (err.response?.data) {
@@ -44,6 +54,7 @@ const RegisterPage = () => {
       } else {
         setMessage("Erreur lors de l'inscription.");
       }
+
     }
   };
   if (success) {
@@ -67,11 +78,13 @@ const RegisterPage = () => {
       <form onSubmit={handleSubmit} className="bg-white p-8 rounded shadow-md w-full max-w-lg" encType="multipart/form-data">
         <h2 className="text-2xl font-bold mb-6 text-center">Inscription</h2>
         {message && <div className="mb-4 text-center">{message}</div>}
+
         {errorMessages.length > 0 && (
           <div className="mb-4 text-center text-red-500">
             {errorMessages.join(' ')}
           </div>
         )}
+
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>

@@ -117,13 +117,17 @@ def activate_account(request, uidb64, token):
         uid = force_str(urlsafe_base64_decode(uidb64))
         user = User.objects.get(pk=uid)
     except (User.DoesNotExist, ValueError, TypeError, OverflowError):
+
         return redirect(f"{settings.FRONT_BASE_URL}/login?activated=0")
+
 
     if default_token_generator.check_token(user, token):
         user.is_active = True
         user.save()
+
         return redirect(f"{settings.FRONT_BASE_URL}/login?activated=1")
     return redirect(f"{settings.FRONT_BASE_URL}/login?activated=0")
+
 
 
 @api_view(['GET', 'PUT'])

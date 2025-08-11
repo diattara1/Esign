@@ -6,6 +6,7 @@ import DocumentDetail from './pages/DocumentDetail';
 import DocumentSign from './pages/DocumentSign';
 import DocumentUpload from './pages/DocumentUpload';
 import DocumentWorkflow from './pages/DocumentWorkflow';
+import EnvelopeSent from './pages/EnvelopeSent';
 import SignatureConfirmation from './pages/SignatureConfirmation';
 import SignatureLayout from './pages/SignatureLayout';
 import LoginPage from './pages/LoginPage';
@@ -69,6 +70,7 @@ const App = () => {
     <Route path="/signature/upload" element={<DocumentUpload />} />
     <Route path="/signature/detail/:id" element={<DocumentDetail />} />
     <Route path="/signature/workflow/:id" element={<DocumentWorkflow />} />
+    <Route path="/signature/sent/:id" element={<EnvelopeSent />} />
     <Route path="/signature/envelopes/:id/sign" element={<DocumentSign />} />
     <Route path="/signature/sign/:id" element={<DocumentSign />} />
     <Route path="/settings/notifications" element={<NotificationSettings />} />

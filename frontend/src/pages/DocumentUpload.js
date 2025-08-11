@@ -5,41 +5,41 @@ import { toast } from 'react-toastify';
 import { FiUpload, FiFileText } from 'react-icons/fi';
 
 const DocumentUpload = () => {
-  const [file, setFile] = useState(null);
+  const [files, setFiles] = useState([]);
   const [title, setTitle] = useState('');
   const navigate = useNavigate();
 
   const handleFileChange = (e) => {
-    const selectedFile = e.target.files[0];
-    if (selectedFile) {
-      if (selectedFile.size === 0) {
+    const selectedFiles = Array.from(e.target.files);
+    const valid = [];
+    selectedFiles.forEach((f) => {
+      if (f.size === 0) {
         toast.error('Le fichier sélectionné est vide');
         return;
       }
-      if (selectedFile.size > 10 * 1024 * 1024) {
+      if (f.size > 10 * 1024 * 1024) {
         toast.error('Le fichier est trop volumineux (max 10MB)');
         return;
       }
-      if (!selectedFile.name.toLowerCase().endsWith('.pdf')) {
+      if (!f.name.toLowerCase().endsWith('.pdf')) {
         toast.error('Seuls les fichiers PDF sont autorisés');
         return;
       }
-      setFile(selectedFile);
-    } else {
-      setFile(null);
-    }
+      valid.push(f);
+    });
+    setFiles(valid);
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!file || !title) {
-      toast.error('Veuillez fournir un titre et un fichier valide');
+    if (!files.length || !title) {
+      toast.error('Veuillez fournir un titre et au moins un fichier valide');
       return;
     }
 
     const formData = new FormData();
     formData.append('title', title);
-    formData.append('document_file', file);
+    files.forEach((f) => formData.append('files', f));
     formData.append('status', 'draft');
 
     try {
@@ -73,30 +73,31 @@ const DocumentUpload = () => {
             />
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Fichier (PDF uniquement)</label>
-            <input
-              type="file"
-              onChange={handleFileChange}
-              accept=".pdf"
-              className="w-full border border-gray-300 px-4 py-2 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 bg-gray-50"
-              required
-            />
-            {file && (
-              <p className="mt-2 text-sm text-green-600">
-                Fichier sélectionné : <strong>{file.name}</strong>
-              </p>
-            )}
-          </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Fichier (PDF uniquement)</label>
+              <input
+                type="file"
+                onChange={handleFileChange}
+                accept=".pdf"
+                multiple
+                className="w-full border border-gray-300 px-4 py-2 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 bg-gray-50"
+                required
+              />
+              {files.length > 0 && (
+                <p className="mt-2 text-sm text-green-600">
+                  {files.length} fichier(s) sélectionné(s)
+                </p>
+              )}
+            </div>
 
-          <button
-            type="submit"
-            disabled={!file || !title}
-            className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <FiUpload />
-            Téléverser
-          </button>
+            <button
+              type="submit"
+              disabled={!files.length || !title}
+              className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <FiUpload />
+              Téléverser
+            </button>
         </form>
       </div>
     </div>

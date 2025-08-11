@@ -10,6 +10,7 @@ from .storages import EncryptedFileSystemStorage
 import logging
 from PyPDF2 import PdfReader
 import io
+from .webhooks import trigger_webhooks
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +53,9 @@ class Envelope(models.Model):
     description = models.TextField(blank=True)
     document_file = models.FileField(
         upload_to='signature/documents/',
-        storage=encrypted_storage
+        storage=encrypted_storage,
+        null=True,
+        blank=True,
     )
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -86,17 +89,28 @@ class Envelope(models.Model):
 
     def save(self, *args, **kwargs):
         is_new = self._state.adding
-        
+        old_status = None
+
+        if not is_new:
+            try:
+                old_status = Envelope.objects.get(pk=self.pk).status
+            except Envelope.DoesNotExist:
+                pass
+
         if self.document_file and (is_new or self._file_changed()):
             # Call clean before processing file
             self.clean()
-            
+
             # Set file metadata
-            self.file_type = self.document_file.name.split('.')[-1].lower() if '.' in self.document_file.name else ''
+            self.file_type = (
+                self.document_file.name.split(".")[-1].lower()
+                if "." in self.document_file.name
+                else ""
+            )
             self.file_size = self.document_file.size
-            
+
             # Compute hash for PDF files
-            if self.file_type == 'pdf':
+            if self.file_type == "pdf":
                 try:
                     # Read file content for hash computation
                     self.document_file.seek(0)
@@ -105,7 +119,7 @@ class Envelope(models.Model):
                     self.document_file.seek(0)  # Reset file pointer
                 except Exception as e:
                     logger.error(f"Error computing hash for envelope: {str(e)}")
-            
+
             # Increment version for updates
             if not is_new:
                 try:
@@ -113,8 +127,18 @@ class Envelope(models.Model):
                     self.version = orig.version + 1
                 except Envelope.DoesNotExist:
                     pass
-        
+
         super().save(*args, **kwargs)
+
+        if old_status != self.status:
+            event_map = {
+                "sent": "envelope_sent",
+                "completed": "envelope_signed",
+                "cancelled": "envelope_cancelled",
+            }
+            event = event_map.get(self.status)
+            if event:
+                trigger_webhooks(event, self)
 
     def clean(self):
         if self.document_file:
@@ -123,14 +147,14 @@ class Envelope(models.Model):
             ext = self.document_file.name.split('.')[-1].lower() if '.' in self.document_file.name else ''
             if ext not in allowed:
                 raise ValidationError(f'Type de fichier non autorisé: {ext}')
-            
+
             # Check file size
             if self.document_file.size > 10 * 1024 * 1024:
                 raise ValidationError('Fichier trop volumineux (max 10MB)')
-            
+
             if self.document_file.size == 0:
                 raise ValidationError('Le fichier est vide.')
-            
+
             # Validate PDF specifically
             if ext == 'pdf':
                 try:
@@ -138,16 +162,16 @@ class Envelope(models.Model):
                     self.document_file.seek(0)
                     content = self.document_file.read()
                     self.document_file.seek(0)  # Reset file pointer
-                    
+
                     # Check PDF header
                     if not content.startswith(b'%PDF-'):
                         raise ValidationError('Le fichier PDF est corrompu ou invalide.')
-                    
+
                     # Try to parse PDF
                     pdf = PdfReader(io.BytesIO(content))
                     if len(pdf.pages) == 0:
                         raise ValidationError('Le PDF est vide.')
-                        
+
                 except ValidationError:
                     # Re-raise validation errors as-is
                     raise
@@ -167,6 +191,111 @@ class Envelope(models.Model):
 
     def __str__(self):
         return f"{self.title} ({self.get_status_display()})"
+
+
+class EnvelopeDocument(models.Model):
+    envelope = models.ForeignKey(
+        Envelope, on_delete=models.CASCADE, related_name="documents"
+    )
+    file = models.FileField(
+        upload_to="signature/documents/", storage=encrypted_storage
+    )
+    name = models.CharField(max_length=255, blank=True)
+    file_type = models.CharField(max_length=50, blank=True)
+    file_size = models.PositiveIntegerField(null=True, blank=True)
+    hash_original = models.CharField(max_length=64, blank=True)
+    version = models.PositiveIntegerField(default=1)
+
+    def _file_changed(self):
+        if not self.pk:
+            return True
+        try:
+            orig = EnvelopeDocument.objects.get(pk=self.pk)
+        except EnvelopeDocument.DoesNotExist:
+            return True
+        return orig.file.name != self.file.name
+
+    def save(self, *args, **kwargs):
+        is_new = self._state.adding
+        if self.file and (is_new or self._file_changed()):
+            self.name = self.file.name
+            self.file_type = (
+                self.file.name.split(".")[-1].lower()
+                if "." in self.file.name
+                else ""
+            )
+            self.file_size = self.file.size
+            if self.file_type == "pdf":
+                try:
+                    self.file.seek(0)
+                    content = self.file.read()
+                    self.hash_original = hashlib.sha256(content).hexdigest()
+                    self.file.seek(0)
+                except Exception as e:
+                    logger.error(
+                        f"Error computing hash for envelope document: {str(e)}"
+                    )
+            if not is_new:
+                try:
+                    orig = EnvelopeDocument.objects.get(pk=self.pk)
+                    self.version = orig.version + 1
+                except EnvelopeDocument.DoesNotExist:
+                    pass
+        super().save(*args, **kwargs)
+
+    def clean(self):
+        if self.file:
+            allowed = ["pdf", "docx", "doc"]
+            ext = (
+                self.file.name.split(".")[-1].lower()
+                if "." in self.file.name
+                else ""
+            )
+            if ext not in allowed:
+                raise ValidationError(f"Type de fichier non autorisé: {ext}")
+            if self.file.size > 10 * 1024 * 1024:
+                raise ValidationError("Fichier trop volumineux (max 10MB)")
+            if self.file.size == 0:
+                raise ValidationError("Le fichier est vide.")
+            if ext == "pdf":
+                try:
+                    self.file.seek(0)
+                    content = self.file.read()
+                    self.file.seek(0)
+                    if not content.startswith(b"%PDF-"):
+                        raise ValidationError(
+                            "Le fichier PDF est corrompu ou invalide."
+                        )
+                    pdf = PdfReader(io.BytesIO(content))
+                    if len(pdf.pages) == 0:
+                        raise ValidationError("Le PDF est vide.")
+                except ValidationError:
+                    raise
+                except Exception as e:
+                    logger.error(f"PDF validation error: {str(e)}")
+                    raise ValidationError(
+                        "Le fichier PDF est corrompu ou invalide."
+                    )
+
+    def __str__(self):
+        return self.name or f"Document {self.pk}"
+
+
+class WebhookEndpoint(models.Model):
+    EVENT_CHOICES = [
+        ("envelope_sent", "Envelope sent"),
+        ("envelope_signed", "Envelope signed"),
+        ("envelope_cancelled", "Envelope cancelled"),
+    ]
+
+    url = models.URLField()
+    event = models.CharField(max_length=50, choices=EVENT_CHOICES)
+    secret = models.CharField(max_length=255, blank=True)
+    active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.event} -> {self.url}"
 
 class EnvelopeRecipient(models.Model):
     

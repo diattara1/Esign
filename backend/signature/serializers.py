@@ -19,19 +19,46 @@ import logging
 logger = logging.getLogger(__name__)
 
 User = get_user_model()
+
+
+class UserProfileSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = [
+            'username', 'email', 'first_name', 'last_name',
+            'birth_date', 'phone_number', 'gender', 'address', 'avatar'
+        ]
+        read_only_fields = ['username', 'email']
+
+
 class UserRegistrationSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)
+    avatar = serializers.ImageField(required=False, allow_null=True)
 
     class Meta:
         model = User
-        fields = ['username', 'email', 'password']
+        fields = [
+            'username', 'email', 'password', 'first_name', 'last_name',
+            'birth_date', 'phone_number', 'gender', 'address', 'avatar'
+        ]
 
     def create(self, validated_data):
+        avatar = validated_data.pop('avatar', None)
         user = User.objects.create_user(
-            username=validated_data['username'],
-            email=validated_data['email'],
-            password=validated_data['password'],
+            username=validated_data.get('username'),
+            email=validated_data.get('email'),
+            password=validated_data.get('password'),
+            first_name=validated_data.get('first_name', ''),
+            last_name=validated_data.get('last_name', ''),
+            birth_date=validated_data.get('birth_date'),
+            phone_number=validated_data.get('phone_number', ''),
+            gender=validated_data.get('gender', ''),
+            address=validated_data.get('address', ''),
+            is_active=False,
         )
+        if avatar:
+            user.avatar = avatar
+            user.save()
         NotificationPreference.objects.create(user=user)
         return user
 

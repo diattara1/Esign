@@ -12,6 +12,7 @@ import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import PasswordResetPage from './pages/PasswordResetPage';
 import NotificationSettings from './pages/NotificationSettings';
+import ProfilePage from './pages/ProfilePage';
 import SentEnvelopes from './components/SentEnvelopes';
 import CompletedEnvelopes from './components/CompletedEnvelopes';
 import ActionRequiredEnvelopes from './components/ActionRequiredEnvelopes';
@@ -70,7 +71,8 @@ const App = () => {
     <Route path="/signature/workflow/:id" element={<DocumentWorkflow />} />
     <Route path="/signature/envelopes/:id/sign" element={<DocumentSign />} />
     <Route path="/signature/sign/:id" element={<DocumentSign />} />
-       <Route path="/settings/notifications" element={<NotificationSettings />} />
+    <Route path="/settings/notifications" element={<NotificationSettings />} />
+    <Route path="/profile" element={<ProfilePage />} />
     {/* SignatureLayout et ses sous-pages */}
     <Route path="signature" element={<SignatureLayout />}>
       <Route path="envelopes/sent" element={<SentEnvelopes />} />

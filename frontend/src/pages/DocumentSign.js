@@ -31,6 +31,7 @@ const DocumentSign = () => {
   const [otpVerified, setOtpVerified] = useState(false);
   const [sendingOtp, setSendingOtp] = useState(false);
   const [verifyingOtp, setVerifyingOtp] = useState(false);
+  const [otpError, setOtpError] = useState('');
 
   // PDF rendering
   const [numPages, setNumPages] = useState(0);
@@ -119,11 +120,14 @@ const DocumentSign = () => {
     try {
       await signatureService.verifyOtp(id, otp, token);
       setOtpVerified(true);
+      setOtpError('');
       toast.success('OTP vérifié');
       await fetchPdfBlob(envelope.document_url);
     } catch (e) {
       console.error(e);
-      toast.error(e.response?.data?.error || 'OTP invalide');
+      const msg = e.response?.data?.error || 'OTP invalide';
+      setOtpError(msg);
+      toast.error(msg);
     } finally {
       setVerifyingOtp(false);
     }
@@ -228,6 +232,7 @@ const DocumentSign = () => {
               placeholder="Entrez le code OTP"
               className="w-full border p-2 rounded mb-2"
             />
+            {otpError && <p className="text-red-600 text-sm mb-2">{otpError}</p>}
             <button
               onClick={handleVerifyOtp}
               disabled={verifyingOtp}

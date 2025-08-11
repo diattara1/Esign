@@ -448,7 +448,12 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
         if not (is_owner or is_recipient):
             return Response({'error': 'Non autorisé'}, status=status.HTTP_403_FORBIDDEN)
     
-        file_obj = envelope.document_file.open('rb')
+        doc = envelope.document_file or (
+            envelope.documents.first().file if envelope.documents.exists() else None
+        )
+        if not doc:
+            return Response({'error': 'Pas de document original'}, status=status.HTTP_404_NOT_FOUND)
+        file_obj = doc.open('rb')
         file_obj.seek(0)
         if not file_obj.read(10).startswith(b'%PDF-'):
             return Response({'error': 'Document non valide'}, status=status.HTTP_400_BAD_REQUEST)
@@ -523,9 +528,12 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
                 f'/api/signature/envelopes/{pk}/signed-document/'
             )
         else:
-            download_url = request.build_absolute_uri(
-                f'/api/signature/envelopes/{pk}/original-document/'
-            )
+            if envelope.document_file or envelope.documents.exists():
+                download_url = request.build_absolute_uri(
+                    f'/api/signature/envelopes/{pk}/original-document/'
+                )
+            else:
+                return Response({'error': 'Pas de document disponible'}, status=404)
 
         return Response({'download_url': download_url})
 
@@ -727,9 +735,12 @@ def serve_decrypted_pdf(request, pk):
         filename_suffix = 'signed'
     else:
         # document original
-        if not envelope.document_file:
+        doc = envelope.document_file or (
+            envelope.documents.first().file if envelope.documents.exists() else None
+        )
+        if not doc:
             return Response({'error': 'Pas de document original'}, status=404)
-        file_field = envelope.document_file
+        file_field = doc
         filename_suffix = 'original'
 
     # 3. Ouvrir via storage.open() pour déchiffrement et renvoyer la réponse

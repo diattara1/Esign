@@ -5,9 +5,15 @@ from django.core.mail import send_mail
 from django.conf import settings
 
 OTP_TTL = 300  # secondes
+MAX_OTP_ATTEMPTS = 5
+
 
 def _cache_key(recipient):
     return f"otp_recipient_{recipient.id}"
+
+
+def _attempt_key(recipient):
+    return f"otp_attempts_{recipient.id}"
 
 def generate_otp(recipient):
     """
@@ -22,13 +28,31 @@ def generate_otp(recipient):
 
 def validate_otp(recipient, token):
     """
-    Vérifie que le token correspond au TOTP stocké en cache.
+    Vérifie que le token correspond au TOTP stocké en cache et
+    limite le nombre de tentatives pour éviter le bruteforce.
+    Retourne un tuple (is_valid, blocked) :
+      - is_valid : True si le token est correct
+      - blocked  : True si le destinataire a dépassé le nombre de tentatives
     """
     secret = cache.get(_cache_key(recipient))
+    attempts_key = _attempt_key(recipient)
+    attempts = cache.get(attempts_key, 0)
+
+    if attempts >= MAX_OTP_ATTEMPTS:
+        return False, True
     if not secret:
-        return False
+        return False, False
+
     totp = pyotp.TOTP(secret, digits=6, interval=OTP_TTL)
-    return totp.verify(token)
+    is_valid = totp.verify(token)
+
+    if is_valid:
+        cache.delete(_cache_key(recipient))
+        cache.delete(attempts_key)
+        return True, False
+
+    cache.set(attempts_key, attempts + 1, timeout=OTP_TTL)
+    return False, False
 
 def send_otp(recipient, otp):
     """

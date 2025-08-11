@@ -164,7 +164,7 @@ FRONT_BASE_URL = env.str("FRONT_BASE_URL")
 # Internationalization
 # https://docs.djangoproject.com/en/4.2/topics/i18n/
 
-LANGUAGE_CODE = 'en-us'
+LANGUAGE_CODE = 'fr'
 
 TIME_ZONE = 'UTC'
 

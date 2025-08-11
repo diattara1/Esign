@@ -15,6 +15,22 @@ export default {
       .get(`${BASE}/envelopes/`, { params: { status: 'action_required' } })
       .then(res => res.data),
 
+  /**
+   * Récupère les enveloppes dont le statut est 'action_required' (documents à signer).
+   */
+  getReceivedEnvelopes: () =>
+    api
+      .get(`${BASE}/envelopes/`, { params: { status: 'action_required' } })
+      .then(res => res.data),
+
+  /**
+   * Récupère les enveloppes complétées pour l'utilisateur.
+   */
+  getCompletedEnvelopes: () =>
+    api
+      .get(`${BASE}/envelopes/`, { params: { status: 'completed' } })
+      .then(res => res.data),
+
   getEnvelope: (id, config = {}) =>
     api.get(`${BASE}/envelopes/${id}/`, config).then(res => res.data),
 

@@ -237,6 +237,11 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
         status = self.request.query_params.get('status')
+        recipient_filter = (
+            Q(recipients__user=user) |
+            (Q(recipients__user__isnull=True) & Q(recipients__email=user.email))
+        )
+
         # 1) Brouillons, envoyées, supprimées : seuls le créateur
         if status in ['draft', 'sent', 'cancelled']:
             return Envelope.objects.filter(
@@ -247,8 +252,8 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
         if status == 'action_required':
             return Envelope.objects.filter(
                 status='sent',  # on ne propose qu’aux enveloppes envoyées
-                recipients__user=user,
-                recipients__signed=False
+            ).filter(
+                recipient_filter & Q(recipients__signed=False)
             ).distinct().order_by('-created_at')
         # 3) Complétées : créateur + destinataires ayant signé
         if status == 'completed':
@@ -256,12 +261,12 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
                 status='completed'
             ).filter(
                 Q(created_by=user) |
-                (Q(recipients__user=user) & Q(recipients__signed=True))
+                (recipient_filter & Q(recipients__signed=True))
             ).distinct().order_by('-created_at')
-        # 4) Page “Documents” (pas de filtre de statut) → seul le créateur
+        # 4) Page “Documents” (pas de filtre de statut) → créateur et destinataires
         return Envelope.objects.filter(
-            created_by=user
-        ).order_by('-created_at')
+            Q(created_by=user) | recipient_filter
+        ).distinct().order_by('-created_at')
         
     @action(detail=True, methods=['get'], url_path='sign-page', permission_classes=[IsAuthenticated])
     def sign_page(self, request, pk=None):

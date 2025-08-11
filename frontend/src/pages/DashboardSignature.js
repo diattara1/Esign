@@ -42,11 +42,13 @@ const DashboardSignature = () => {
   useEffect(() => {
     const loadData = async () => {
       try {
-        const all = await signatureService.getEnvelopes();
-        const drafts = all.filter(e => e.status === 'draft');
-        const sent = all.filter(e => e.status === 'sent');
-        const completed = all.filter(e => e.status === 'completed');
-        const actionReq = await signatureService.getActionRequiredEnvelopes();
+        const [drafts, sent, completed, actionReq] = await Promise.all([
+          signatureService.getEnvelopes({ status: 'draft' }),
+          signatureService.getEnvelopes({ status: 'sent' }),
+          signatureService.getCompletedEnvelopes(),
+          signatureService.getReceivedEnvelopes()
+        ]);
+        const all = [...drafts, ...sent, ...completed];
 
         const now = new Date();
         const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);

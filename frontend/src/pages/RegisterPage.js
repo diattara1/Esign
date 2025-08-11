@@ -27,14 +27,7 @@ const RegisterPage = () => {
     setForm((prev) => ({ ...prev, avatar: e.target.files[0] }));
   };
 
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setForm((prev) => ({ ...prev, [name]: value }));
-  };
-
-  const handleFileChange = (e) => {
-    setForm((prev) => ({ ...prev, avatar: e.target.files[0] }));
-  };
+  
 
   const handleSubmit = async (e) => {
     e.preventDefault();

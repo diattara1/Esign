@@ -42,6 +42,18 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
             'birth_date', 'phone_number', 'gender', 'address', 'avatar'
         ]
 
+
+    def validate_username(self, value):
+        if User.objects.filter(username=value).exists():
+            raise serializers.ValidationError("Ce nom d'utilisateur est déjà pris.")
+        return value
+
+    def validate_email(self, value):
+        if User.objects.filter(email=value).exists():
+            raise serializers.ValidationError('Cet e-mail est déjà utilisé.')
+        return value
+
+
     def create(self, validated_data):
         avatar = validated_data.pop('avatar', None)
         user = User.objects.create_user(

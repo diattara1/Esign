@@ -1,9 +1,13 @@
 // src/pages/LoginPage.js
 import React, { useState } from 'react';
 import { useAuth } from '../AuthContext';
+import { useLocation } from 'react-router-dom';
 
 const LoginPage = () => {
   const { login, isLoading } = useAuth();
+  const location = useLocation();
+  const params = new URLSearchParams(location.search);
+  const activated = params.get('activated');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -27,6 +31,12 @@ const LoginPage = () => {
       >
         <h2 className="text-2xl font-bold mb-6 text-center">Connexion</h2>
 
+        {activated === '1' && (
+          <div className="mb-4 text-green-600">Compte activé. Veuillez vous connecter.</div>
+        )}
+        {activated === '0' && (
+          <div className="mb-4 text-red-500">Lien d'activation invalide.</div>
+        )}
         {error && <div className="text-red-500 mb-4">{error}</div>}
 
         <div className="mb-4">

@@ -11,7 +11,7 @@ from rest_framework.response import Response
 from django.utils import timezone
 from django.db import transaction
 from django.http import Http404, StreamingHttpResponse, FileResponse
-from django.shortcuts import get_object_or_404
+from django.shortcuts import get_object_or_404, redirect
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.parsers import MultiPartParser, FormParser
 from django.views.decorators.csrf import csrf_exempt
@@ -117,13 +117,17 @@ def activate_account(request, uidb64, token):
         uid = force_str(urlsafe_base64_decode(uidb64))
         user = User.objects.get(pk=uid)
     except (User.DoesNotExist, ValueError, TypeError, OverflowError):
-        return Response({'error': 'Activation invalide'}, status=status.HTTP_400_BAD_REQUEST)
+
+        return redirect(f"{settings.FRONT_BASE_URL}/login?activated=0")
+
 
     if default_token_generator.check_token(user, token):
         user.is_active = True
         user.save()
-        return Response({'detail': 'Compte activé avec succès'}, status=status.HTTP_200_OK)
-    return Response({'error': 'Token invalide'}, status=status.HTTP_400_BAD_REQUEST)
+
+        return redirect(f"{settings.FRONT_BASE_URL}/login?activated=1")
+    return redirect(f"{settings.FRONT_BASE_URL}/login?activated=0")
+
 
 
 @api_view(['GET', 'PUT'])

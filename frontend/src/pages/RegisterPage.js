@@ -15,6 +15,17 @@ const RegisterPage = () => {
     avatar: null,
   });
   const [message, setMessage] = useState('');
+  const [errors, setErrors] = useState({});
+  const [success, setSuccess] = useState(false);
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setForm((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleFileChange = (e) => {
+    setForm((prev) => ({ ...prev, avatar: e.target.files[0] }));
+  };
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -28,35 +39,52 @@ const RegisterPage = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setMessage('');
+    setErrors({});
     try {
       const data = new FormData();
       Object.entries(form).forEach(([key, value]) => {
         if (value) data.append(key, value);
       });
       await api.post('/api/signature/register/', data);
-      setMessage('Inscription réussie. Vérifiez votre e-mail pour activer votre compte.');
-      setForm({
-        username: '',
-        email: '',
-        password: '',
-        first_name: '',
-        last_name: '',
-        birth_date: '',
-        phone_number: '',
-        gender: '',
-        address: '',
-        avatar: null,
-      });
+
+      setSuccess(true);
     } catch (err) {
-      setMessage(err.response?.data?.error || "Erreur lors de l'inscription.");
+      if (err.response?.data) {
+        setErrors(err.response.data);
+      } else {
+        setMessage("Erreur lors de l'inscription.");
+      }
+
     }
   };
+  if (success) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="bg-white p-8 rounded shadow-md w-full max-w-md text-center">
+          <h2 className="text-2xl font-bold mb-4">Inscription réussie</h2>
+          <p className="mb-6">Vérifiez votre e-mail pour activer votre compte.</p>
+          <a href="/login" className="text-blue-600 hover:underline">
+            Aller à la connexion
+          </a>
+        </div>
+      </div>
+    );
+  }
+
+  const errorMessages = Object.values(errors).flat();
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
       <form onSubmit={handleSubmit} className="bg-white p-8 rounded shadow-md w-full max-w-lg" encType="multipart/form-data">
         <h2 className="text-2xl font-bold mb-6 text-center">Inscription</h2>
         {message && <div className="mb-4 text-center">{message}</div>}
+
+        {errorMessages.length > 0 && (
+          <div className="mb-4 text-center text-red-500">
+            {errorMessages.join(' ')}
+          </div>
+        )}
+
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>

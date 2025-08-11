@@ -1,17 +1,19 @@
 # signature/urls.py
 from rest_framework.routers import DefaultRouter
 from django.urls import path, include
-from .views import (
+from .views.envelope import (
     EnvelopeViewSet,
     PrintQRCodeViewSet,
     guest_envelope_view,
     serve_decrypted_pdf,
+)
+from .views.auth import (
     register,
     activate_account,
     user_profile,
     password_reset_request,
-    NotificationPreferenceViewSet,
 )
+from .views.notification import NotificationPreferenceViewSet
 
 router = DefaultRouter()
 router.register(r'envelopes', EnvelopeViewSet, basename='envelopes')

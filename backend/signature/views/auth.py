@@ -11,10 +11,55 @@ from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.utils.encoding import force_bytes, force_str
 from django.contrib.auth.tokens import default_token_generator
 from django.contrib.auth import get_user_model
+from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 from ..serializers import UserRegistrationSerializer, UserProfileSerializer, PasswordResetSerializer
 
 User = get_user_model()
+
+
+class CookieTokenObtainPairView(TokenObtainPairView):
+    """Issue JWTs and store them in HttpOnly cookies."""
+
+    def post(self, request, *args, **kwargs):
+        response = super().post(request, *args, **kwargs)
+        access = response.data.get('access')
+        refresh = response.data.get('refresh')
+        if access:
+            response.set_cookie('access_token', access, httponly=True, secure=True, samesite='Lax')
+        if refresh:
+            response.set_cookie('refresh_token', refresh, httponly=True, secure=True, samesite='Lax')
+        response.data = {'detail': 'Login successful'}
+        return response
+
+
+class CookieTokenRefreshView(TokenRefreshView):
+    """Refresh access token using HttpOnly refresh cookie."""
+
+    def post(self, request, *args, **kwargs):
+        if 'refresh' not in request.data:
+            refresh = request.COOKIES.get('refresh_token')
+            if refresh:
+                request.data['refresh'] = refresh
+        response = super().post(request, *args, **kwargs)
+        access = response.data.get('access')
+        refresh = response.data.get('refresh')
+        if access:
+            response.set_cookie('access_token', access, httponly=True, secure=True, samesite='Lax')
+        if refresh:
+            response.set_cookie('refresh_token', refresh, httponly=True, secure=True, samesite='Lax')
+        response.data = {'detail': 'Token refreshed'}
+        return response
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def logout(request):
+    """Clear authentication cookies."""
+    response = Response({'detail': 'Logout successful'}, status=status.HTTP_200_OK)
+    response.delete_cookie('access_token')
+    response.delete_cookie('refresh_token')
+    return response
 
 @api_view(['POST'])
 @permission_classes([AllowAny])

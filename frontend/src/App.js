@@ -9,6 +9,9 @@ import DocumentWorkflow from './pages/DocumentWorkflow';
 import SignatureConfirmation from './pages/SignatureConfirmation';
 import SignatureLayout from './pages/SignatureLayout';
 import LoginPage from './pages/LoginPage';
+import RegisterPage from './pages/RegisterPage';
+import PasswordResetPage from './pages/PasswordResetPage';
+import NotificationSettings from './pages/NotificationSettings';
 import SentEnvelopes from './components/SentEnvelopes';
 import CompletedEnvelopes from './components/CompletedEnvelopes';
 import ActionRequiredEnvelopes from './components/ActionRequiredEnvelopes';
@@ -50,7 +53,8 @@ const App = () => {
       
       {/* LOGIN */}
       <Route path="/login" element={<LoginPage />} />
-      
+      <Route path="/register" element={<RegisterPage />} />
+      <Route path="/password-reset" element={<PasswordResetPage />} />
       {/* Signature invitée avec token - ROUTE PUBLIQUE */}
       <Route path="/sign/:id" element={<DocumentSign />} />
       
@@ -66,7 +70,7 @@ const App = () => {
     <Route path="/signature/workflow/:id" element={<DocumentWorkflow />} />
     <Route path="/signature/envelopes/:id/sign" element={<DocumentSign />} />
     <Route path="/signature/sign/:id" element={<DocumentSign />} />
-
+       <Route path="/settings/notifications" element={<NotificationSettings />} />
     {/* SignatureLayout et ses sous-pages */}
     <Route path="signature" element={<SignatureLayout />}>
       <Route path="envelopes/sent" element={<SentEnvelopes />} />

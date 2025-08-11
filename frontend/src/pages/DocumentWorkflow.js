@@ -116,7 +116,7 @@ export default function DocumentWorkflow() {
       });
       await signatureService.sendEnvelope(id);
       toast.success('Enveloppe envoyée');
-      navigate('/signature/list');
+      navigate(`/signature/sent/${id}`);
     } catch {
       toast.error("Échec de l'envoi");
     }

@@ -328,7 +328,12 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
                 return Response({'error': "Les destinataires précédents doivent signer d'abord"}, status=status.HTTP_400_BAD_REQUEST)
 
         otp = request.data.get('otp')
-        if not otp or not validate_otp(recipient, otp):
+        if not otp:
+            return Response({'error': 'OTP invalide'}, status=status.HTTP_400_BAD_REQUEST)
+        is_valid, blocked = validate_otp(recipient, otp)
+        if blocked:
+            return Response({'error': 'Trop de tentatives, OTP verrouillé'}, status=status.HTTP_429_TOO_MANY_REQUESTS)
+        if not is_valid:
             return Response({'error': 'OTP invalide'}, status=status.HTTP_400_BAD_REQUEST)
 
         return Response({'status': 'otp_verified'}, status=status.HTTP_200_OK)

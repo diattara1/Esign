@@ -127,6 +127,10 @@ fetchDocumentBlob: async (envelopeId, documentId) => {
   return URL.createObjectURL(resp.data);
 },
 
+// Relance manuelle par le créateur
+remindNow: (id) =>
+  api.post(`${BASE}/envelopes/${id}/remind/`).then(res => res.data),
+
   // URLs directes "brutes"
   getOriginalDocumentUrl: envelopeId =>
     `${BASE}/envelopes/${envelopeId}/original-document/`,
@@ -137,7 +141,7 @@ fetchDocumentBlob: async (envelopeId, documentId) => {
   getDecryptedDocumentUrl: (envelopeId, token) =>
     `${BASE}/envelopes/${envelopeId}/document/?token=${token}`,
 
-  // ─── Signatures / QR codes / Webhooks ───────────────────────────────
+  // ─── Signatures / QR codes  ───────────────────────────────
   getSignatures: envelopeId =>
     api.get(`${BASE}/signatures/`, { params: { envelope: envelopeId } })
        .then(res => res.data),
@@ -150,8 +154,5 @@ fetchDocumentBlob: async (envelopeId, documentId) => {
 
   verifyQRCode: uuid => api.get(`${BASE}/prints/${uuid}/verify/`).then(res => res.data),
 
-  getWebhooks: () => api.get(`${BASE}/webhooks/`).then(res => res.data),
-  createWebhook: payload => api.post(`${BASE}/webhooks/`, payload).then(res => res.data),
-  updateWebhook: (id, payload) => api.patch(`${BASE}/webhooks/${id}/`, payload).then(res => res.data),
-  deleteWebhook: id => api.delete(`${BASE}/webhooks/${id}/`),
+
 };

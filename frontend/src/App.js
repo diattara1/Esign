@@ -13,7 +13,6 @@ import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import PasswordResetPage from './pages/PasswordResetPage';
 import NotificationSettings from './pages/NotificationSettings';
-import WebhookSettings from './pages/WebhookSettings';
 import ProfilePage from './pages/ProfilePage';
 import SentEnvelopes from './components/SentEnvelopes';
 import CompletedEnvelopes from './components/CompletedEnvelopes';
@@ -75,7 +74,6 @@ const App = () => {
     <Route path="/signature/envelopes/:id/sign" element={<DocumentSign />} />
     <Route path="/signature/sign/:id" element={<DocumentSign />} />
     <Route path="/settings/notifications" element={<NotificationSettings />} />
-    <Route path="/settings/webhooks" element={<WebhookSettings />} />
     <Route path="/profile" element={<ProfilePage />} />
     {/* SignatureLayout et ses sous-pages */}
     <Route path="signature" element={<SignatureLayout />}>

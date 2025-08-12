@@ -134,8 +134,21 @@ REST_FRAMEWORK = {
 }
 
 CELERY_BROKER_URL = env.str('CELERY_BROKER_URL', 'redis://localhost:6379/0')
-# Password validation
-# https://docs.djangoproject.com/en/4.2/ref/settings/#auth-password-validators
+# Nombre max de rappels par destinataire
+MAX_REMINDERS_SIGN = 5
+
+from celery.schedules import crontab
+
+CELERY_BEAT_SCHEDULE = {
+    "signature-reminders-every-10min": {
+        "task": "signature.tasks.process_signature_reminders",
+        "schedule": 600.0,   # 10 minutes
+    },
+    "signature-deadlines-every-5min": {
+        "task": "signature.tasks.process_deadlines",
+        "schedule": 300.0,   # 5 minutes
+    },
+}
 
 AUTH_PASSWORD_VALIDATORS = [
     {

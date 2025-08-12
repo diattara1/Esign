@@ -19,7 +19,8 @@ from django.views.decorators.clickjacking import xframe_options_exempt
 import jwt, logging, io, base64
 import hashlib
 from datetime import datetime
-from ..tasks import send_signature_email
+from ..tasks import send_signature_email, send_reminder_email
+from django.conf import settings
 from ..otp import generate_otp, validate_otp, send_otp
 from ..hsm import hsm_sign
 from django.conf import settings
@@ -228,31 +229,39 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
     def send(self, request, pk=None):
         envelope = self.get_object()
         if envelope.status != 'draft':
-            return Response({'error': 'Seuls les brouillons peuvent être envoyés'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': 'Seuls les brouillons peuvent être envoyés'}, status=400)
         if not envelope.recipients.exists():
-            return Response({'error': 'Aucun destinataire configuré'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': 'Aucun destinataire configuré'}, status=400)
 
-        envelope.status = 'sent'
         if not envelope.deadline_at:
             envelope.deadline_at = timezone.now() + timezone.timedelta(days=7)
+        envelope.status = 'sent'
         envelope.save()
+
+        # init planification des rappels
         if envelope.flow_type == 'sequential':
             first = envelope.recipients.order_by('order').first()
-            send_signature_email.delay(envelope.id, first.id)
-            if first.user:  # Notify in-app if user has an account
-                first.in_app_notified = True
-                first.notified_at = timezone.now()
-                first.save()
+            if first:
+                first.next_reminder_at = timezone.now() + timezone.timedelta(days=envelope.reminder_days)
+                first.reminder_count = 0
+                first.save(update_fields=['next_reminder_at', 'reminder_count'])
+                send_signature_email.delay(envelope.id, first.id)
         else:
-            # en parallèle, on prévient tous les destinataires
-            for rec in envelope.recipients.all():
+            for rec in envelope.recipients.filter(signed=False):
+                rec.next_reminder_at = timezone.now() + timezone.timedelta(days=envelope.reminder_days)
+                rec.reminder_count = 0
+                rec.save(update_fields=['next_reminder_at', 'reminder_count'])
                 send_signature_email.delay(envelope.id, rec.id)
-                if rec.user:  # Notify in-app if user has an account
-                    rec.in_app_notified = True
-                    rec.notified_at = timezone.now()
-                    rec.save()
 
         return Response({'status': 'sent', 'message': 'Document envoyé avec succès'})
+
+    def _refuse_if_deadline_passed(self, envelope):
+        if envelope.deadline_at and timezone.now() >= envelope.deadline_at:
+            if envelope.status in ['sent', 'pending']:  # fige le statut
+                envelope.status = 'expired'
+                envelope.save(update_fields=['status'])
+            return True
+        return False
 
     @action(detail=True, methods=['post'])
     def cancel(self, request, pk=None):
@@ -354,7 +363,8 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
             recipient = EnvelopeRecipient.objects.get(envelope=pk, id=payload.get('recipient_id'))
         except (Envelope.DoesNotExist, jwt.InvalidTokenError, EnvelopeRecipient.DoesNotExist):
             return Response({'error': 'Destinataire non valide'}, status=status.HTTP_403_FORBIDDEN)
-
+        if self._refuse_if_deadline_passed(envelope):
+            return Response({'error': 'Échéance dépassée. La signature est fermée.'}, status=400)
         if envelope.flow_type == 'sequential':
             prev = envelope.recipients.filter(order__lt=recipient.order)
             if prev.filter(signed=False).exists():
@@ -407,7 +417,9 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
         except EnvelopeRecipient.DoesNotExist:
             return Response({'error': 'Vous n\'êtes pas destinataire de cette enveloppe'}, 
                           status=status.HTTP_403_FORBIDDEN)
-        
+        if self._refuse_if_deadline_passed(envelope):
+            return Response({'error': 'Échéance dépassée. La signature est fermée.'}, status=400)
+
         # Check sequential flow
         if envelope.flow_type == 'sequential':
             prev = envelope.recipients.filter(order__lt=recipient.order)
@@ -657,19 +669,50 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
             # 7. Mettre à jour le statut de l'enveloppe
             env = recipient.envelope
             env.status = 'pending' if env.recipients.filter(signed=False).exists() else 'completed'
-            env.save()
+            env.save(update_fields=['status'])
 
         # 8. Prévenir le suivant si séquentiel
         if env.flow_type == 'sequential' and env.status == 'pending':
             next_rec = env.recipients.filter(signed=False).order_by('order').first()
-            send_signature_email.delay(env.id, next_rec.id)
-            if next_rec.user:  # Notify in-app if user has an account
-                next_rec.in_app_notified = True
-                next_rec.notified_at = timezone.now()
-                next_rec.save()
+            if next_rec:
+                # (ré)initialise sa fenêtre de rappel
+                next_rec.reminder_count = 0
+                next_rec.last_reminder_at = None
+                next_rec.next_reminder_at = timezone.now() + timezone.timedelta(days=env.reminder_days)
+                next_rec.save(update_fields=['reminder_count', 'last_reminder_at', 'next_reminder_at'])
+                send_signature_email.delay(env.id, next_rec.id)
 
         return Response({'status': 'signed', 'message': 'Document signé avec succès'})
+    @action(detail=True, methods=['post'], url_path='remind')
+    def remind_now(self, request, pk=None):
+        """Relance manuelle par le créateur (respecte séquentiel/parallèle)."""
+        env = self.get_object()
+        if env.created_by != request.user:
+            return Response({'error': 'Non autorisé'}, status=403)
 
+        if env.status not in ['sent', 'pending']:
+            return Response({'error': 'Enveloppe non éligible à une relance'}, status=400)
+
+        if env.deadline_at and env.deadline_at <= timezone.now():
+            env.status = 'expired'
+            env.save(update_fields=['status'])
+            return Response({'error': 'Échéance dépassée'}, status=400)
+
+        max_reminders = getattr(settings, 'MAX_REMINDERS_SIGN', 3)
+        count = 0
+
+        if env.flow_type == 'sequential':
+            rec = env.recipients.filter(signed=False).order_by('order').first()
+            if rec and rec.reminder_count < max_reminders:
+                send_reminder_email.delay(env.id, rec.id)
+                count = 1
+        else:
+            for rec in env.recipients.filter(signed=False):
+                if rec.reminder_count < max_reminders:
+                    send_reminder_email.delay(env.id, rec.id)
+                    count += 1
+
+        return Response({'status': 'ok', 'reminders': count}, status=200)
     def _merge_pdf(self, envelope, signature_data, signed_fields):
         """
         Construit un PDF avec les nouvelles signatures.

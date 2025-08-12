@@ -7,9 +7,48 @@ import { useParams, Link } from 'react-router-dom';
 import { Document, Page } from 'react-pdf';
 import signatureService from '../services/signatureService';
 import { toast } from 'react-toastify';
-
+import Countdown from '../components/Countdown';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
+
+// ⬆️ tout en haut de src/pages/DocumentDetail.js (après les imports)
+function ReminderModal({ open, count, onClose }) {
+  if (!open) return null;
+  const has = (count ?? 0) > 0;
+  return (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center">
+      {/* backdrop */}
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      {/* card */}
+      <div className="relative bg-white rounded-xl shadow-xl w-full max-w-sm mx-4 p-6">
+        <div className="flex items-center gap-3 mb-3">
+          <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center">
+            {/* check icon */}
+            <svg viewBox="0 0 24 24" className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" strokeWidth="2">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+          </div>
+          <h3 className="text-lg font-semibold">
+            {has ? 'Rappel envoyé' : 'Aucune relance envoyée'}
+          </h3>
+        </div>
+        <p className="text-sm text-gray-600 mb-5">
+          {has
+            ? ` ${count} relance${count>1 ? 's' : ''} a été envoyée${count>1 ? 's' : ''} aux destinataires éligibles.`
+            : `Tous les destinataires ne sont pas éligibles (plafond atteint ou déjà signés).`}
+        </p>
+        <div className="flex justify-end">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700"
+          >
+            OK
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 const DocumentDetail = () => {
   const { id } = useParams();
@@ -24,6 +63,11 @@ const DocumentDetail = () => {
   const [pdfUrl, setPdfUrl] = useState(null);   // object URL
   const [numPages, setNumPages] = useState(0);
   const [loadingPdf, setLoadingPdf] = useState(false);
+
+
+const [reminding, setReminding] = useState(false);
+const [reminderModalOpen, setReminderModalOpen] = useState(false);
+const [reminderCount, setReminderCount] = useState(0);
 
   // Viewer width stable (évite zoom/reflow)
   const viewerRef = useRef(null);
@@ -194,6 +238,39 @@ const DocumentDetail = () => {
                 </span>
               </div>
             )}
+            {env.deadline_at && (
+  <Countdown
+    targetIso={env.deadline_at}
+    className="mt-2"
+  />
+)}
+{(env.status === 'sent' || env.status === 'pending') && (
+  <button
+  onClick={async () => {
+    setReminding(true);
+    try {
+      const { reminders } = await signatureService.remindNow(env.id);
+      const n = reminders ?? 0;
+      setReminderCount(n);
+      setReminderModalOpen(true); // 👉 ouvre la popup
+      // (garde éventuellement un toast si tu veux un double feedback)
+      // if (n === 0) toast.info("Aucune relance envoyée (éligibilité ou plafond atteint).");
+      // else toast.success(`${n} relance${n>1?'s':''} envoyée${n>1?'s':''}.`);
+    } catch (e) {
+      const msg = e?.response?.data?.error || 'Échec de la relance';
+      toast.error(msg);
+    } finally {
+      setReminding(false);
+    }
+  }}
+  disabled={reminding}
+  className={`w-full px-4 py-2 rounded transition-colors text-white ${reminding ? 'bg-amber-300 cursor-wait' : 'bg-amber-500 hover:bg-amber-600'}`}
+>
+  {reminding ? 'Envoi…' : 'Relancer maintenant'}
+</button>
+
+)}
+
             <div><strong>Flux :</strong> {env.flow_type === 'sequential' ? 'Séquentiel' : 'Parallèle'}</div>
             {env.deadline_at && (<div><strong>Échéance :</strong> {new Date(env.deadline_at).toLocaleDateString()}</div>)}
           </div>
@@ -271,6 +348,12 @@ const DocumentDetail = () => {
           </Document>
         )}
       </div>
+      <ReminderModal
+  open={reminderModalOpen}
+  count={reminderCount}
+  onClose={() => setReminderModalOpen(false)}
+/>
+
     </div>
   );
 };

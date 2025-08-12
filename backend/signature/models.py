@@ -10,7 +10,6 @@ from .storages import EncryptedFileSystemStorage
 import logging
 from PyPDF2 import PdfReader
 import io
-from .webhooks import trigger_webhooks
 
 logger = logging.getLogger(__name__)
 
@@ -41,9 +40,12 @@ class Envelope(models.Model):
     STATUS_CHOICES = [
         ('draft', 'Brouillon'),
         ('sent', 'Envoyé'),
+        ('pending', 'En cours'),      # <- ajouté (si plusieurs signataires)
         ('completed', 'Signé'),
-        ('cancelled', 'Annulé')
+        ('cancelled', 'Annulé'),
+        ('expired', 'Expiré'),        # <- NOUVEAU statut
     ]
+    
     FLOW_CHOICES = [
         ('sequential', 'Séquentiel'),
         ('parallel', 'Parallèle')
@@ -70,7 +72,8 @@ class Envelope(models.Model):
     deadline_at = models.DateTimeField(null=True, blank=True)
     jwt_token = models.CharField(max_length=512, blank=True)
     expires_at = models.DateTimeField(null=True, blank=True)
-
+    reminder_days = models.PositiveIntegerField(default=1)
+    deadline_at = models.DateTimeField(null=True, blank=True)
     def _file_changed(self):
         if not self.pk:
             return True
@@ -130,15 +133,7 @@ class Envelope(models.Model):
 
         super().save(*args, **kwargs)
 
-        if old_status != self.status:
-            event_map = {
-                "sent": "envelope_sent",
-                "completed": "envelope_signed",
-                "cancelled": "envelope_cancelled",
-            }
-            event = event_map.get(self.status)
-            if event:
-                trigger_webhooks(event, self)
+    
 
     def clean(self):
         if self.document_file:
@@ -281,21 +276,7 @@ class EnvelopeDocument(models.Model):
         return self.name or f"Document {self.pk}"
 
 
-class WebhookEndpoint(models.Model):
-    EVENT_CHOICES = [
-        ("envelope_sent", "Envelope sent"),
-        ("envelope_signed", "Envelope signed"),
-        ("envelope_cancelled", "Envelope cancelled"),
-    ]
 
-    url = models.URLField()
-    event = models.CharField(max_length=50, choices=EVENT_CHOICES)
-    secret = models.CharField(max_length=255, blank=True)
-    active = models.BooleanField(default=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    def __str__(self):
-        return f"{self.event} -> {self.url}"
 
 class EnvelopeRecipient(models.Model):
     
@@ -308,7 +289,9 @@ class EnvelopeRecipient(models.Model):
     signed_at = models.DateTimeField(null=True, blank=True)
     notified_at = models.DateTimeField(null=True, blank=True)
     reminder_count = models.PositiveIntegerField(default=0)
-    in_app_notified = models.BooleanField(default=False)  # New field for in-app notification
+    in_app_notified = models.BooleanField(default=False)
+    last_reminder_at = models.DateTimeField(null=True, blank=True)
+    next_reminder_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         unique_together = ['envelope', 'email']

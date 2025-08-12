@@ -11,11 +11,8 @@ export default function DocumentWorkflow() {
   const navigate = useNavigate();
   const [envelope, setEnvelope] = useState(null);
   const [flowType, setFlowType] = useState('sequential');
-  const [documents, setDocuments] = useState([]);
-  const [selectedDocIdx, setSelectedDocIdx] = useState(0);
   const [pdfUrl, setPdfUrl] = useState(null);
   const [numPages, setNumPages] = useState(0);
-  const [docPageCounts, setDocPageCounts] = useState([]);
   const [recipients, setRecipients] = useState([
     { email: '', full_name: '', order: 1, signature_position: null }
   ]);
@@ -25,34 +22,19 @@ export default function DocumentWorkflow() {
   const pdfWrapper = useRef();
 
   useEffect(() => {
-    async function load() {
-      try {
-        const env = await signatureService.getEnvelope(id);
+    signatureService.getEnvelope(id)
+      .then(env => {
         setEnvelope(env);
         setFlowType(env.flow_type || 'sequential');
-        if (env.documents && env.documents.length > 0) {
-          setDocuments(env.documents);
-          setPdfUrl(env.documents[0].file_url);
-          setSelectedDocIdx(0);
-        } else {
-          const { download_url } = await signatureService.downloadEnvelope(id);
-          setPdfUrl(download_url);
-        }
-      } catch (e) {
-        toast.error('Impossible de charger le PDF');
-      }
-    }
-    load();
+      })
+      .then(() => signatureService.downloadEnvelope(id))
+      .then(res => setPdfUrl(res.download_url))
+      .catch(() => toast.error('Impossible de charger le PDF'));
   }, [id]);
 
   function onDocumentLoad({ numPages }) {
     setNumPages(numPages);
     setPdfError(null);
-    setDocPageCounts(prev => {
-      const arr = [...prev];
-      arr[selectedDocIdx] = numPages;
-      return arr;
-    });
   }
 
   function onDocumentError(error) {
@@ -68,20 +50,6 @@ export default function DocumentWorkflow() {
       [pageNumber]: { width: viewport.width, height: viewport.height }
     }));
   }
-
-  const pageOffset = docPageCounts
-    .slice(0, selectedDocIdx)
-    .reduce((sum, n) => sum + (n || 0), 0);
-
-  const getDocIndexByPage = page => {
-    let acc = 0;
-    for (let i = 0; i < docPageCounts.length; i++) {
-      const cnt = docPageCounts[i] || 0;
-      if (page <= acc + cnt) return i;
-      acc += cnt;
-    }
-    return 0;
-  };
 
   const handlePdfClick = (e, pageNumber) => {
     if (placingIdx === null) return;
@@ -99,7 +67,7 @@ export default function DocumentWorkflow() {
     const normalizedHeight = height / scale;
 
     const pos = {
-      page: pageNumber + pageOffset,
+      page: pageNumber,
       x: normalizedX,
       y: normalizedY,
       width: normalizedWidth,
@@ -176,31 +144,6 @@ export default function DocumentWorkflow() {
   return (
     <div className="flex h-screen">
       <div className="w-1/3 p-6 bg-gray-50 overflow-auto border-r">
-        {documents.length > 0 && (
-          <div className="mb-6">
-            <h3 className="font-semibold mb-2">Documents</h3>
-            <ul className="space-y-1">
-              {documents.map((doc, idx) => (
-                <li key={doc.id}>
-                  <button
-                    onClick={() => {
-                      setSelectedDocIdx(idx);
-                      setPdfUrl(doc.file_url);
-                      setPageDimensions({});
-                      setNumPages(0);
-                    }}
-                    className={`text-left w-full px-2 py-1 rounded ${
-                      selectedDocIdx === idx ? 'bg-blue-100' : 'hover:bg-gray-100'
-                    }`}
-                  >
-                    {doc.name || `Document ${idx + 1}`}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-
         <h2 className="text-2xl font-semibold mb-4">Destinataires</h2>
 
         <div className="mb-6">
@@ -271,18 +214,11 @@ export default function DocumentWorkflow() {
                 Cliquez sur le PDF pour positionner la signature
               </p>
             )}
-            {r.signature_position && (() => {
-              const offset = docPageCounts
-                .slice(0, getDocIndexByPage(r.signature_position.page))
-                .reduce((s, n) => s + (n || 0), 0);
-              const localPage = r.signature_position.page - offset;
-              const docIdx = getDocIndexByPage(r.signature_position.page) + 1;
-              return (
-                <p className="text-sm text-green-700 mt-1">
-                  Doc {docIdx}, page {localPage}, x {Math.round(r.signature_position.x)}, y {Math.round(r.signature_position.y)}
-                </p>
-              );
-            })()}
+            {r.signature_position && (
+              <p className="text-sm text-green-700 mt-1">
+                Page {r.signature_position.page}, x {Math.round(r.signature_position.x)}, y {Math.round(r.signature_position.y)}
+              </p>
+            )}
           </div>
         ))}
         <button
@@ -333,7 +269,7 @@ export default function DocumentWorkflow() {
             
               {/* Affichage des zones de signature */}
               {recipients.map((recipient, recipientIdx) => (
-                recipient.signature_position?.page === i + 1 + pageOffset && (
+                recipient.signature_position?.page === i + 1 && (
                   <div
                     key={recipientIdx}
                     className="absolute border-2 border-blue-500 bg-blue-100 bg-opacity-50 flex items-center justify-center text-xs font-semibold"

@@ -1,8 +1,11 @@
 // src/pages/DocumentSign.js
-import React, { useState, useEffect, useRef } from 'react';
+// Signature multi-docs, PDF stable (pas de zoom), invité/auth OK,
+// modal au-dessus de tout, et deux modes: "dessiner" et "importer".
+
+import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
-import { Document, Page } from 'react-pdf';
+import { Document, Page, pdfjs } from 'react-pdf';
 import signatureService from '../services/signatureService';
 import SignaturePadComponent from '../components/SignaturePadComponent';
 import Modal from 'react-modal';
@@ -10,22 +13,52 @@ import Modal from 'react-modal';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 
+pdfjs.GlobalWorkerOptions.workerSrc =
+  `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
+
 const DocumentSign = () => {
-  // 1) On ne prend plus token dans useParams() mais dans la query string
   const { id } = useParams();
   const [searchParams] = useSearchParams();
   const token = searchParams.get('token');
   const isGuest = Boolean(token);
-  
+
   const navigate = useNavigate();
+
+  // viewer stable (évite le zoom/retrécissement)
+  const pdfWrapper = useRef(null);
+  const [viewerWidth, setViewerWidth] = useState(0);
+  useLayoutEffect(() => {
+    if (!pdfWrapper.current) return;
+    const measure = () => setViewerWidth(pdfWrapper.current.clientWidth || 0);
+    measure();
+    let ro;
+    if (window.ResizeObserver) {
+      ro = new ResizeObserver(measure);
+      ro.observe(pdfWrapper.current);
+    }
+    window.addEventListener('resize', measure);
+    return () => {
+      window.removeEventListener('resize', measure);
+      if (ro) ro.disconnect();
+    };
+  }, []);
+
+  // données
   const [loading, setLoading] = useState(true);
   const [envelope, setEnvelope] = useState(null);
+  const [documents, setDocuments] = useState([]);
+  const [selectedDoc, setSelectedDoc] = useState(null);
   const [pdfUrl, setPdfUrl] = useState(null);
-  const [iframeError, setIframeError] = useState(false);
+
+  // rendu PDF
+  const [numPages, setNumPages] = useState(0);
+  const [pageDimensions, setPageDimensions] = useState({}); // {pageNum:{width,height}}
+
+  // état signature
   const [isAlreadySigned, setIsAlreadySigned] = useState(false);
   const [signing, setSigning] = useState(false);
 
-  // OTP (guest)
+  // OTP (invité)
   const [otp, setOtp] = useState('');
   const [otpSent, setOtpSent] = useState(false);
   const [otpVerified, setOtpVerified] = useState(false);
@@ -33,18 +66,43 @@ const DocumentSign = () => {
   const [verifyingOtp, setVerifyingOtp] = useState(false);
   const [otpError, setOtpError] = useState('');
 
-  // PDF rendering
-  const [numPages, setNumPages] = useState(0);
-  const [pageDimensions, setPageDimensions] = useState({});
-  const pdfWrapper = useRef();
-
-  // Signature modal
+  // modal
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedField, setSelectedField] = useState(null);
-  const [signatureData, setSignatureData] = useState({});
-  const [mode, setMode] = useState('draw');
 
-  // --- Chargement de l'enveloppe ---
+  // modes: "draw" | "upload"
+  const [mode, setMode] = useState('draw');
+  const [signatureData, setSignatureData] = useState({}); // {fieldId: dataURL}
+  const [uploadPreview, setUploadPreview] = useState(null);
+
+  // --- helpers invités (auth par header token) ---
+  const fetchPdfBlobWithToken = async (url) => {
+    const res = await fetch(url, { headers: token ? { 'X-Signature-Token': token } : {} });
+    if (!res.ok) {
+      let msg = `HTTP ${res.status}`;
+      try {
+        const j = await res.json();
+        if (j?.error) msg = j.error;
+      } catch {}
+      throw new Error(msg);
+    }
+    const blob = await res.blob();
+    return URL.createObjectURL(blob);
+  };
+
+  const loadGuestPdfForDoc = async (docId, fallbackUrl) => {
+    const tryUrl = `/api/signature/envelopes/${id}/documents/${docId}/file/`;
+    try {
+      const blobUrl = await fetchPdfBlobWithToken(tryUrl);
+      return blobUrl;
+    } catch {
+      if (!fallbackUrl) throw new Error('Aucune URL de fallback');
+      const blobUrl = await fetchPdfBlobWithToken(fallbackUrl);
+      return blobUrl;
+    }
+  };
+
+  // INIT (charge l’enveloppe et choisit le 1er document)
   useEffect(() => {
     const init = async () => {
       try {
@@ -52,55 +110,106 @@ const DocumentSign = () => {
         if (isGuest) {
           data = await signatureService.getGuestEnvelope(id, token);
           setEnvelope(data);
-          // si déjà signé
-          const me = data.fields.find(f => f.recipient_id === data.recipient_id);
-          if (me?.signed) {
+          setDocuments(data.documents || []);
+          const mine = (data.fields || []).filter(f => f.recipient_id === data.recipient_id);
+          const already = mine.length && mine.every(f => f.signed);
+          if (already) {
             setIsAlreadySigned(true);
             setOtpVerified(true);
-            toast.info('Vous avez déjà signé ce document');
-            await fetchPdfBlob(data.document_url);
+          }
+          if (data.documents?.length) setSelectedDoc(data.documents[0]);
+
+          // si déjà signé, on peut charger directement un PDF lisible
+          if (already) {
+            const url = data.documents?.[0]?.file_url || data.document_url;
+            try {
+              const blobUrl = await fetchPdfBlobWithToken(url);
+              setPdfUrl(blobUrl);
+            } catch (e) {
+              toast.error(`Impossible de charger le PDF : ${e.message}`);
+            }
           }
         } else {
           data = await signatureService.getAuthenticatedEnvelope(id);
           setEnvelope(data);
-          const { download_url } = await signatureService.downloadEnvelope(id);
-          setPdfUrl(download_url);
+          setDocuments(data.documents || []);
+          const mine = (data.fields || []).filter(f => f.recipient_id === data.recipient_id);
+          if (mine.length && mine.every(f => f.signed)) setIsAlreadySigned(true);
+
+          if (data.documents?.length) {
+            const first = data.documents[0];
+            setSelectedDoc(first);
+            try {
+              const blobUrl = await signatureService.fetchDocumentBlob(id, first.id);
+              setPdfUrl(blobUrl);
+            } catch {
+              toast.error('Impossible de charger le PDF');
+            }
+          } else {
+            const { download_url } = await signatureService.downloadEnvelope(id);
+            setPdfUrl(download_url);
+          }
           setOtpVerified(true);
-          // si déjà signé
-          const mine = data.fields
-            .filter(f => f.recipient_id === data.recipient_id)
-            .every(f => f.signed);
-          if (mine) setIsAlreadySigned(true);
         }
       } catch (err) {
-        console.error('Erreur init :', err);
-        toast.error(err.response?.data?.error || 'Impossible de charger la page de signature');
-        navigate('/'); // redirige vers l'accueil public
+        console.error(err);
+        toast.error(err?.response?.data?.error || 'Impossible de charger la page de signature');
+        navigate('/');
         return;
       } finally {
         setLoading(false);
       }
     };
     init();
-  }, [id, token, isGuest, navigate]);
+  }, [id, token, isGuest, navigate]); // logiques initiales conservées :contentReference[oaicite:1]{index=1}
 
-  // --- Chargement du PDF pour invités ---
-  const fetchPdfBlob = async (url) => {
-    try {
-      const res = await fetch(url, {
-        headers: { 'X-Signature-Token': token }
-      });
-      if (!res.ok) throw new Error((await res.json()).error || `HTTP ${res.status}`);
-      const blob = await res.blob();
-      setPdfUrl(URL.createObjectURL(blob));
-    } catch (err) {
-      console.error('Erreur PDF :', err);
-      setIframeError(true);
-      toast.error(`Impossible de charger le PDF : ${err.message}`);
-    }
-  };
+  // ✅ Révocation différée de l'URL blob (comme dans Workflow)
+  const prevUrlRef = useRef(null);
+  useEffect(() => {
+    const prev = prevUrlRef.current;
+    prevUrlRef.current = pdfUrl;
+    return () => {
+      try {
+        if (prev && typeof prev === 'string' && prev.startsWith('blob:')) {
+          URL.revokeObjectURL(prev);
+        }
+      } catch {}
+    };
+  }, [pdfUrl]); // pattern identique à DocumentWorkflow :contentReference[oaicite:2]{index=2}
 
-  // --- Handlers OTP invité ---
+  // ✅ Changement de document → charger le nouveau PDF
+  useEffect(() => {
+    let alive = true;
+
+    const load = async () => {
+      // reset doux : on laisse l'ancien pdfUrl afficher, on mettra à jour d'un coup
+      setNumPages(0);
+      setPageDimensions({});
+
+      if (!selectedDoc) return;
+
+      try {
+        let blobUrl;
+        if (isGuest) {
+          blobUrl = await loadGuestPdfForDoc(selectedDoc.id, envelope?.document_url);
+        } else {
+          blobUrl = await signatureService.fetchDocumentBlob(id, selectedDoc.id);
+        }
+        if (!alive) return;
+        setPdfUrl(blobUrl);
+      } catch (e) {
+        if (!alive) return;
+        console.error(e);
+        toast.error('Impossible de charger ce PDF');
+      }
+    };
+
+    load();
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDoc]); // fix de la course et du remount :contentReference[oaicite:3]{index=3}
+
+  // OTP
   const handleSendOtp = async () => {
     if (isAlreadySigned) return toast.info('Déjà signé');
     setSendingOtp(true);
@@ -110,11 +219,12 @@ const DocumentSign = () => {
       toast.success('Code OTP envoyé');
     } catch (e) {
       console.error(e);
-      toast.error(e.response?.data?.error || 'Erreur envoi OTP');
+      toast.error(e?.response?.data?.error || 'Erreur envoi OTP');
     } finally {
       setSendingOtp(false);
     }
   };
+
   const handleVerifyOtp = async () => {
     setVerifyingOtp(true);
     try {
@@ -122,10 +232,18 @@ const DocumentSign = () => {
       setOtpVerified(true);
       setOtpError('');
       toast.success('OTP vérifié');
-      await fetchPdfBlob(envelope.document_url);
+
+      const fallback = envelope?.document_url;
+      if (selectedDoc?.id) {
+        const blobUrl = await loadGuestPdfForDoc(selectedDoc.id, fallback);
+        setPdfUrl(blobUrl);
+      } else if (fallback) {
+        const blobUrl = await fetchPdfBlobWithToken(fallback);
+        setPdfUrl(blobUrl);
+      }
     } catch (e) {
       console.error(e);
-      const msg = e.response?.data?.error || 'OTP invalide';
+      const msg = e?.response?.data?.error || 'OTP invalide';
       setOtpError(msg);
       toast.error(msg);
     } finally {
@@ -133,47 +251,61 @@ const DocumentSign = () => {
     }
   };
 
-  // --- Callbacks PDF ---
+  // PDF callbacks stables
   const onDocumentLoad = ({ numPages }) => setNumPages(numPages);
   const onDocumentError = (err) => {
     console.error('PDF error:', err);
-    setIframeError(true);
     toast.error('Erreur chargement PDF');
   };
   const onPageLoadSuccess = (num, page) => {
     const vp = page.getViewport({ scale: 1 });
-    setPageDimensions(d => ({ ...d, [num]: { width: vp.width, height: vp.height } }));
+    setPageDimensions(prev => {
+      const old = prev[num];
+      if (old && old.width === vp.width && old.height === vp.height) return prev;
+      return { ...prev, [num]: { width: vp.width, height: vp.height } };
+    });
   };
 
-  // --- Modal signature ---
+  // champs du doc courant
+  const currentFields = (envelope?.fields || []).filter(f => {
+    if (selectedDoc) return f.document_id === selectedDoc.id;
+    return !f.document_id;
+  });
+
+  // modal ouverture
   const openFieldModal = (field) => {
     if (isAlreadySigned) return toast.info('Document déjà signé');
     if (!field.editable) return toast.info('Champ non éditable');
     setSelectedField(field);
-    setMode('draw');
+    setMode('draw'); // par défaut "Dessiner"
+    const existing = signatureData[field.id];
+    setUploadPreview(existing || null);
     setModalOpen(true);
   };
+
+  // validation du modal
   const handleModalConfirm = () => {
     const dataUrl = signatureData[selectedField.id];
-    if (!dataUrl) return toast.error('Veuillez signer le champ');
+    if (!dataUrl) return toast.error('Veuillez fournir une signature');
     setEnvelope(e => ({
       ...e,
-      fields: e.fields.map(f =>
-        f.id === selectedField.id ? { ...f, signed: true, signature_data: dataUrl } : f
-      )
+      fields: e.fields.map(f => (f.id === selectedField.id
+        ? { ...f, signed: true, signature_data: dataUrl }
+        : f))
     }));
     setModalOpen(false);
     toast.success('Signature ajoutée');
   };
 
-  // --- Envoi final de la signature ---
+  // peut-on signer ?
   const canSign = () => {
     if (!envelope || isAlreadySigned) return false;
     return envelope.fields.filter(f => f.editable).every(f => f.signed);
   };
+
   const handleSign = async () => {
     if (signing) return;
-    if (!canSign()) return toast.error('Veuillez compléter toutes les signatures');
+    if (!canSign()) return toast.error('Veuillez compléter toutes vos signatures');
     setSigning(true);
     try {
       const signedFields = envelope.fields.reduce((acc, f) => {
@@ -186,59 +318,78 @@ const DocumentSign = () => {
         isGuest ? token : undefined
       );
       toast.success('Document signé');
-      navigate('/signature/success');
+      navigate('/signature/success', { state: { id } });
     } catch (e) {
-      console.error('Erreur signature :', e);
-      toast.error(e.response?.data?.error || 'Erreur lors de la signature');
+      console.error(e);
+      toast.error(e?.response?.data?.error || 'Erreur lors de la signature');
     } finally {
       setSigning(false);
     }
   };
 
-  // --- Garde-fous pour éviter les crashs en render ---
-  if (loading) {
-    return <div className="p-6 text-center">Chargement…</div>;
-  }
-  if (!envelope) {
-    return <div className="p-6 text-center text-red-600">Document introuvable.</div>;
-  }
+  // gestion upload image → dataURL
+  const handleUploadChange = async (ev) => {
+    const file = ev.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      toast.error('Veuillez importer une image (PNG/JPG/SVG)');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result;
+      setUploadPreview(dataUrl);
+      if (selectedField) {
+        setSignatureData(prev => ({ ...prev, [selectedField.id]: dataUrl }));
+      }
+    };
+    reader.readAsDataURL(file);
+  };
 
-  // largeur du container PDF (peut être 0 au début)
-  const wrapperWidth = pdfWrapper.current?.clientWidth || 0;
+  // UI
+  if (loading) return <div className="p-6 text-center">Chargement…</div>;
+  if (!envelope) return <div className="p-6 text-center text-red-600">Document introuvable.</div>;
 
   return (
     <div className="flex h-screen">
-      <div className="w-1/3 bg-white border-r p-6 overflow-auto">
-        <h1 className="text-2xl font-bold mb-6">
+      {/* sidebar */}
+      <div className="w-80 bg-white border-r p-6 overflow-auto">
+        <h1 className="text-2xl font-bold mb-4">
           {isAlreadySigned ? 'Document déjà signé :' : 'Signer le document :'} {envelope.title}
         </h1>
 
-        {envelope.documents?.length > 0 && (
-          <div className="mb-4">
-            <h2 className="font-semibold mb-2">Documents</h2>
+        {/* docs */}
+        <div className="mb-4">
+          <div className="font-semibold mb-2">Documents</div>
+          {documents.length === 0 ? (
+            <div className="text-sm text-gray-500">Aucun</div>
+          ) : (
             <ul className="space-y-1">
-              {envelope.documents.map(doc => (
+              {documents.map(doc => (
                 <li key={doc.id}>
-                  <a
-                    href={doc.file_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-600 underline"
+                  <button
+                    className={`w-full text-left px-2 py-1 rounded ${
+                      selectedDoc?.id === doc.id ? 'bg-blue-100' : 'hover:bg-gray-100'
+                    }`}
+                    onClick={() => {
+                      if (selectedDoc?.id === doc.id) return;
+                      setSelectedDoc(doc); // le useEffect ci-dessus s’occupe du chargement PDF + reset
+                    }}
                   >
                     {doc.name || `Document ${doc.id}`}
-                  </a>
+                  </button>
                 </li>
               ))}
             </ul>
-          </div>
-        )}
+          )}
+        </div>
 
-        {/* Guest OTP */}
+        {/* OTP invité */}
         {isGuest && !otpSent && !otpVerified && !isAlreadySigned && (
           <button
             onClick={handleSendOtp}
             disabled={sendingOtp}
-            className="w-full bg-blue-500 text-white p-2 rounded mb-4 disabled:opacity-50"
+            className="w-full bg-blue-600 text-white p-2 rounded mb-4 disabled:opacity-50"
           >
             {sendingOtp ? 'Envoi…' : 'Envoyer OTP'}
           </button>
@@ -256,7 +407,7 @@ const DocumentSign = () => {
             <button
               onClick={handleVerifyOtp}
               disabled={verifyingOtp}
-              className="w-full bg-green-500 text-white p-2 rounded disabled:opacity-50"
+              className="w-full bg-green-600 text-white p-2 rounded disabled:opacity-50"
             >
               {verifyingOtp ? 'Vérification…' : 'Vérifier OTP'}
             </button>
@@ -271,150 +422,187 @@ const DocumentSign = () => {
             className={`w-full p-2 rounded mb-4 ${
               canSign() && !signing
                 ? 'bg-green-700 text-white hover:bg-green-800'
-                : 'bg-gray-400 text-gray-600 cursor-not-allowed'
+                : 'bg-gray-300 text-gray-600 cursor-not-allowed'
             }`}
           >
             {signing ? 'Signature en cours…' : 'Signer le document'}
           </button>
         )}
 
-        {isAlreadySigned && (
-          <p className="text-green-600">Vous avez déjà signé ce document.</p>
-        )}
+        {isAlreadySigned && <p className="text-green-600">Vous avez déjà signé ce document.</p>}
       </div>
 
-      <div className="flex-1 p-4 overflow-auto" ref={pdfWrapper}>
-        {((!isGuest) || otpVerified) && pdfUrl && !iframeError ? (
+      {/* viewer PDF */}
+      <div
+        className="flex-1 p-4 overflow-y-scroll"
+        ref={pdfWrapper}
+        style={{ scrollbarGutter: 'stable' }}
+      >
+        {((!isGuest) || otpVerified) && pdfUrl ? (
           <Document
+            // 🔑 clé basée sur l'URL → remount propre à chaque nouveau blob/URL
+            key={String(pdfUrl || 'empty')} 
             file={pdfUrl}
             onLoadSuccess={onDocumentLoad}
             onLoadError={onDocumentError}
             loading={<div>Chargement PDF…</div>}
           >
-            {Array.from({ length: numPages }, (_, i) => (
+            {numPages > 0 && Array.from({ length: numPages }, (_, i) => (
               <div key={i} className="relative mb-4">
                 <Page
                   pageNumber={i + 1}
-                  width={wrapperWidth}
+                  width={viewerWidth || 600}
                   onLoadSuccess={page => onPageLoadSuccess(i + 1, page)}
                   renderTextLayer={false}
                 />
-                {envelope.fields
+                {currentFields
                   .filter(f => f.page === i + 1)
-                  .map(field => (
-                    <div
-                      key={field.id}
-                      onClick={field.editable ? () => openFieldModal(field) : undefined}
-                      title={field.editable ? 'Cliquer pour signer' : 'Champ non éditable'}
-                      className={`absolute flex items-center justify-center text-xs font-semibold border-2 ${
-                        field.signed
-                          ? 'border-green-500 bg-green-100'
-                          : 'border-red-500 bg-red-100'
-                      } ${field.editable ? 'cursor-pointer hover:bg-opacity-80' : ''}`}
-                      style={{
-                        top: field.position.y * (wrapperWidth / (pageDimensions[i + 1]?.width || 1)),
-                        left: field.position.x * (wrapperWidth / (pageDimensions[i + 1]?.width || 1)),
-                        width:
-                          field.position.width * (wrapperWidth / (pageDimensions[i + 1]?.width || 1)),
-                        height:
-                          field.position.height * (wrapperWidth / (pageDimensions[i + 1]?.width || 1)),
-                        zIndex: 10,
-                      }}
-                    >
-                      {field.signed ? (() => {
-  // 1) on récupère la chaîne brute
-  const raw = field.signature_data;
-  // 2) on extrait "data:image/..." jusqu'au prochain ' ou "
-  const match = raw.match(/data:image\/[^'"]+/);
-  // 3) si on a trouvé, c'est notre URL Base64, sinon chaîne vide
-  const imgSrc = match ? match[0] : '';
-  return (
-    <img
-      src={imgSrc}
-      alt="Signature"
-      className="w-full h-full object-contain"
-    />
-  );
-})() : (
-  <span className={field.editable ? 'text-black' : 'text-gray-500'}>
-    {field.name}
-  </span>
-)}
-
-                    </div>
-                  ))}
+                  .map(field => {
+                    const scale = (viewerWidth || 600) / (pageDimensions[i + 1]?.width || 1);
+                    return (
+                      <div
+                        key={field.id}
+                        onClick={field.editable ? () => openFieldModal(field) : undefined}
+                        title={field.editable ? 'Cliquer pour signer' : 'Champ non éditable'}
+                        className={`absolute flex items-center justify-center text-xs font-semibold border-2 ${
+                          field.signed ? 'border-green-500 bg-green-100' : 'border-red-500 bg-red-100'
+                        } ${field.editable ? 'cursor-pointer hover:bg-opacity-80' : ''}`}
+                        style={{
+                          top: field.position.y * scale,
+                          left: field.position.x * scale,
+                          width: field.position.width * scale,
+                          height: field.position.height * scale,
+                          zIndex: 10,
+                        }}
+                      >
+                        {field.signed ? (() => {
+                          const raw = field.signature_data;
+                          const match = raw?.match(/data:image\/[^'"]+/);
+                          const src = match ? match[0] : '';
+                          return src
+                            ? <img src={src} alt="signature" style={{ maxWidth: '100%', maxHeight: '100%' }} />
+                            : 'Signé';
+                        })() : 'Signer'}
+                      </div>
+                    );
+                  })}
               </div>
             ))}
           </Document>
         ) : (
-          <div className="flex items-center justify-center h-full text-gray-600">
-            {!otpVerified && isGuest
-              ? 'Veuillez vérifier votre OTP'
-              : 'PDF non disponible'}
+          <div className="text-center text-gray-600">
+            {isGuest && !otpVerified
+              ? 'PDF indisponible : vérifiez d’abord l’OTP'
+              : 'PDF indisponible'}
+          </div>
+        )}
+      </div>
+
+      {/* MODAL – seulement "Dessiner" et "Importer" */}
+      <Modal
+        isOpen={modalOpen}
+        onRequestClose={() => setModalOpen(false)}
+        contentLabel="Signer le champ"
+        ariaHideApp={false}
+        style={{
+          overlay: {
+            zIndex: 10000,
+            backgroundColor: 'rgba(0,0,0,0.5)'
+          },
+          content: {
+            zIndex: 10001,
+            inset: '10% 20%',
+            borderRadius: '12px',
+            padding: '16px'
+          }
+        }}
+      >
+        <h2 className="text-lg font-semibold mb-3">Ajouter une signature</h2>
+
+        <div className="flex items-center gap-4 mb-3">
+          <label className="flex items-center gap-2">
+            <input
+              type="radio"
+              name="mode"
+              checked={mode === 'draw'}
+              onChange={() => setMode('draw')}
+            />
+            <span>Dessiner</span>
+          </label>
+          <label className="flex items-center gap-2">
+            <input
+              type="radio"
+              name="mode"
+              checked={mode === 'upload'}
+              onChange={() => setMode('upload')}
+            />
+            <span>Importer</span>
+          </label>
+        </div>
+
+        {/* Contenu selon mode */}
+        {mode === 'draw' ? (
+          <SignaturePadComponent
+            mode="draw"
+            onChange={(dataUrl) => {
+              if (!selectedField) return;
+              setSignatureData(prev => ({ ...prev, [selectedField.id]: dataUrl }));
+            }}
+            onEnd={(dataUrl) => {
+              if (!selectedField) return;
+              setSignatureData(prev => ({ ...prev, [selectedField.id]: dataUrl }));
+            }}
+            initialValue={signatureData[selectedField?.id]}
+          />
+        ) : (
+          <div className="space-y-3">
+            <input
+              type="file"
+              accept="image/*"
+              onChange={handleUploadChange}
+              className="block w-full text-sm"
+            />
+            {uploadPreview ? (
+              <div className="border rounded p-2 inline-block">
+                <img
+                  src={uploadPreview}
+                  alt="Aperçu signature"
+                  style={{ maxWidth: 320, maxHeight: 160 }}
+                />
+              </div>
+            ) : (
+              <p className="text-sm text-gray-600">Choisissez une image (PNG/JPG/SVG) de votre signature.</p>
+            )}
+            {uploadPreview && (
+              <button
+                type="button"
+                onClick={() => {
+                  setUploadPreview(null);
+                  if (selectedField) {
+                    setSignatureData(prev => {
+                      const copy = { ...prev };
+                      delete copy[selectedField.id];
+                      return copy;
+                    });
+                  }
+                }}
+                className="px-3 py-1 rounded bg-gray-200 text-gray-800"
+              >
+                Effacer
+              </button>
+            )}
           </div>
         )}
 
-        <Modal
-          isOpen={modalOpen}
-          onRequestClose={() => setModalOpen(false)}
-          className="absolute bg-white p-6 mx-auto mt-20 max-w-lg rounded shadow-lg"
-          overlayClassName="fixed inset-0 bg-black bg-opacity-50"
-        >
-          <h2 className="text-xl mb-4">Signer le champ</h2>
-          <div className="flex mb-4">
-            <button
-              onClick={() => setMode('draw')}
-              className={`flex-1 p-2 ${mode === 'draw' ? 'bg-blue-500 text-white' : 'bg-gray-200'}`}
-            >
-              Dessiner
-            </button>
-            <button
-              onClick={() => setMode('upload')}
-              className={`flex-1 p-2 ${mode === 'upload' ? 'bg-blue-500 text-white' : 'bg-gray-200'}`}
-            >
-              Uploader
-            </button>
-          </div>
-          <div className="mb-4">
-            {mode === 'draw' ? (
-              <SignaturePadComponent
-                canvasProps={{ width: 400, height: 150 }}
-                onEnd={dataUrl =>
-                  setSignatureData(d => ({ ...d, [selectedField.id]: dataUrl }))
-                }
-              />
-            ) : (
-              <input
-                type="file"
-                accept="image/*"
-                onChange={e => {
-                  const file = e.target.files[0];
-                  if (file) {
-                    const reader = new FileReader();
-                    reader.onload = evt =>
-                      setSignatureData(d => ({ ...d, [selectedField.id]: evt.target.result }));
-                    reader.readAsDataURL(file);
-                  }
-                }}
-              />
-            )}
-          </div>
-          <div className="flex justify-end">
-            <button
-              onClick={() => setModalOpen(false)}
-              className="mr-2 px-4 py-2 bg-gray-300 rounded hover:bg-gray-400"
-            >
-              Annuler
-            </button>
-            <button
-              onClick={handleModalConfirm}
-              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-            >
-              Valider
-            </button>
-          </div>
-        </Modal>
-      </div>
+        <div className="mt-4 flex justify-end gap-2">
+          <button onClick={() => setModalOpen(false)} className="px-4 py-2 rounded bg-gray-200">
+            Annuler
+          </button>
+          <button onClick={handleModalConfirm} className="px-4 py-2 rounded bg-green-600 text-white">
+            Valider
+          </button>
+        </div>
+      </Modal>
     </div>
   );
 };

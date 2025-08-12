@@ -12,7 +12,7 @@ const MainLayout = ({ children }) => {
   return (
     <div>
       {!isGuestSignaturePage && <SignatureNavbar />}
-      <div className={isGuestSignaturePage ? '' : 'pt-10'}>
+      <div className={isGuestSignaturePage ? '' : 'pt-16'}>
         {children}
       </div>
     </div>

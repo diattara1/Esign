@@ -1,114 +1,307 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Document, Page } from 'react-pdf';
+import { Document, Page, pdfjs } from 'react-pdf';
 import signatureService from '../services/signatureService';
 import { toast } from 'react-toastify';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 
+
+pdfjs.GlobalWorkerOptions.workerSrc =
+  `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
+
 export default function DocumentWorkflow() {
   const { id } = useParams();
   const navigate = useNavigate();
+
   const [envelope, setEnvelope] = useState(null);
   const [flowType, setFlowType] = useState('sequential');
-  const [pdfUrl, setPdfUrl] = useState(null);
-  const [numPages, setNumPages] = useState(0);
-  const [recipients, setRecipients] = useState([
-    { email: '', full_name: '', order: 1, signature_position: null }
-  ]);
-  const [placingIdx, setPlacingIdx] = useState(null);
-  const [pdfError, setPdfError] = useState(null);
-  const [pageDimensions, setPageDimensions] = useState({});
-  const pdfWrapper = useRef();
 
-  useEffect(() => {
-    signatureService.getEnvelope(id)
-      .then(env => {
-        setEnvelope(env);
-        setFlowType(env.flow_type || 'sequential');
-      })
-      .then(() => signatureService.downloadEnvelope(id))
-      .then(res => setPdfUrl(res.download_url))
-      .catch(() => toast.error('Impossible de charger le PDF'));
+  const [documents, setDocuments] = useState([]);
+  const [selectedDocId, setSelectedDocId] = useState(null);
+  const [pdfUrl, setPdfUrl] = useState(null);
+
+  // largeur stable (on rend par width, pas par scale)
+  const [pdfWidth, setPdfWidth] = useState(800);
+
+  const [numPagesByDoc, setNumPagesByDoc] = useState({});
+  // viewport (scale=1) par doc et par page
+  const [pageDimensions, setPageDimensions] = useState({}); // { [docId]: { [page]: {width,height} } }
+
+  const [recipients, setRecipients] = useState([
+    { id: undefined, email: '', full_name: '', order: 1 }
+  ]);
+  const [fields, setFields] = useState([]); // champs posés
+  const [placing, setPlacing] = useState({ idx: null, type: 'signature' });
+  const [isUploading, setIsUploading] = useState(false);
+
+  const pdfWrapper = useRef(null);
+   const prevUrlRef = useRef(null);
+     useEffect(() => {
+    const prev = prevUrlRef.current;
+    prevUrlRef.current = pdfUrl;
+    return () => {
+      try {
+        if (prev && typeof prev === 'string' && prev.startsWith('blob:')) {
+          URL.revokeObjectURL(prev);
+        }
+      } catch {}
+    };
+  }, [pdfUrl]);
+
+  // ---- Upload ----
+  const uploadFiles = useCallback(async (files) => {
+    try {
+      setIsUploading(true);
+      await signatureService.updateEnvelopeFiles(id, files);
+      toast.success('Fichiers ajoutés');
+      await reloadEnvelope(); // recharge tout
+    } catch (e) {
+      console.error(e);
+      toast.error("Échec de l'upload");
+    } finally {
+      setIsUploading(false);
+    }
   }, [id]);
 
-  function onDocumentLoad({ numPages }) {
-    setNumPages(numPages);
-    setPdfError(null);
-  }
+  // ---- Charger l'enveloppe et initialiser l'affichage ----
+  const reloadEnvelope = useCallback(async () => {
+    const env = await signatureService.getEnvelope(id);
+    setEnvelope(env);
+    setFlowType(env.flow_type || 'sequential');
 
-  function onDocumentError(error) {
-    console.error('PDF Error:', error);
-    setPdfError(error.message);
+    const docs = env.documents || [];
+    setDocuments(docs);
+
+    // hydrate destinataires/champs existants
+    if (env.recipients?.length) setRecipients(env.recipients);
+    if (env.fields?.length) setFields(env.fields);
+
+    if (docs.length > 0) {
+      // auto-sélection du 1er doc
+      const first = docs[0];
+      setSelectedDocId(first.id);
+      const blobUrl = await signatureService.fetchDocumentBlob(id, first.id);
+      setPdfUrl(blobUrl);
+    } else {
+      // enveloppe "simple" (un seul PDF global)
+      const res = await signatureService.downloadEnvelope(id);
+      setSelectedDocId('single');            // IMPORTANT : une clé pour le viewer
+      setPdfUrl(res.download_url);
+    }
+  }, [id]);
+
+  useEffect(() => {
+    (async () => {
+      try { await reloadEnvelope(); }
+      catch { toast.error('Impossible de charger le dossier'); }
+    })();
+  }, [id, reloadEnvelope]);
+
+  // ---- Largeur stable (anti tremblement) ----
+  useEffect(() => {
+    if (!pdfWrapper.current) return;
+
+    let last = -1;
+    let raf = 0;
+
+    const compute = () => {
+      const node = pdfWrapper.current;
+      if (!node) return;
+      const padding = 48; // ≈ p-6
+      const container = node.clientWidth || 0;
+      const next = Math.min(Math.max(container - padding, 320), 900);
+      if (Math.abs(next - last) > 1) {
+        last = next;
+        setPdfWidth(next);
+      }
+    };
+
+    const ro = new ResizeObserver(() => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(compute);
+    });
+
+    ro.observe(pdfWrapper.current);
+    compute();
+
+    return () => {
+      cancelAnimationFrame(raf);
+      ro.disconnect();
+    };
+  }, []);
+
+  // ---- Callbacks PDF ----
+  const onDocumentLoad = useCallback(({ numPages }) => {
+    if (!selectedDocId) return;
+    setNumPagesByDoc(prev =>
+      prev[selectedDocId] === numPages ? prev : { ...prev, [selectedDocId]: numPages }
+    );
+  }, [selectedDocId]);
+
+  const onPageLoadSuccess = useCallback((pageNumber, page) => {
+    if (!selectedDocId) return;
+    const vp = page.getViewport({ scale: 1 });
+    setPageDimensions(prev => {
+      const current = prev[selectedDocId]?.[pageNumber];
+      if (current?.width === vp.width && current?.height === vp.height) return prev;
+      return {
+        ...prev,
+        [selectedDocId]: {
+          ...prev[selectedDocId],
+          [pageNumber]: { width: vp.width, height: vp.height }
+        }
+      };
+    });
+  }, [selectedDocId]);
+
+  const onDocumentError = useCallback((err) => {
+    console.error('PDF Error:', err);
     toast.error('Erreur lors du chargement du PDF');
+  }, []);
+
+  // ---- Sélection d'un document dans la colonne de droite ----
+ // remplace ta fonction selectDocument par ceci
+const selectDocument = useCallback(async (doc) => {
+  if (selectedDocId === doc.id) return;
+
+  let cancelled = false;
+  try {
+    // (optionnel) setLoadingDocId(doc.id);
+
+    // 1) on télécharge d'abord le nouveau PDF
+    const blobUrl = await signatureService.fetchDocumentBlob(id, doc.id);
+    if (cancelled) return;
+
+    // 2) swap atomique : on change l'id et l'URL en même temps
+     setPdfUrl(blobUrl); // 1) d'abord l'URL du nouveau PDF
+ setSelectedDocId(doc.id); // 2) puis l'ID (affichage, badges, etc.)
+ setNumPagesByDoc(prev => ({ ...prev, [doc.id]: undefined }));
+  } catch (e) {
+    console.error(e);
+    toast.error('Impossible de charger ce PDF');
+  } finally {
+    // (optionnel) setLoadingDocId(null);
   }
 
-  function onPageLoadSuccess(pageNumber, page) {
-    const viewport = page.getViewport({ scale: 1 });
-    setPageDimensions(prev => ({
-      ...prev,
-      [pageNumber]: { width: viewport.width, height: viewport.height }
-    }));
-  }
+  // cleanup si le composant est démonté pendant l'async
+  return () => { cancelled = true; };
+}, [selectedDocId, id]);
 
-  const handlePdfClick = (e, pageNumber) => {
-    if (placingIdx === null) return;
+
+  // ---- Vérifier si un destinataire peut placer sa signature ----
+  const canPlaceSignature = useCallback((recipientIdx) => {
+    const recipient = recipients[recipientIdx];
+    return recipient && recipient.email.trim() && recipient.full_name.trim();
+  }, [recipients]);
+
+  // ---- Placement : clic → coordonnées PDF (scale=1) ----
+  const handlePdfClick = useCallback((e, pageNumber) => {
+    if (placing.idx === null || !selectedDocId) return;
+
+    const recipient = recipients[placing.idx];
+    if (!canPlaceSignature(placing.idx)) {
+      toast.error('Veuillez renseigner l\'email et le nom du destinataire avant de placer sa signature');
+      return;
+    }
+
     const rect = e.currentTarget.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
-    const width = 150;
-    const height = 50;
-    const containerWidth = pdfWrapper.current?.clientWidth || 600;
-    const viewport = pageDimensions[pageNumber] || { width: 600, height: 800 };
-    const scale = containerWidth / viewport.width;
-    const normalizedX = x / scale;
-    const normalizedY = y / scale;
-    const normalizedWidth = width / scale;
-    const normalizedHeight = height / scale;
 
-    const pos = {
-      page: pageNumber,
-      x: normalizedX,
-      y: normalizedY,
-      width: normalizedWidth,
-      height: normalizedHeight
+    const vp = pageDimensions[selectedDocId]?.[pageNumber] || { width: 600, height: 800 };
+    const factor = pdfWidth / vp.width;
+
+    const normalized = {
+      x: x / factor,
+      y: y / factor,
+      width: 150 / factor,
+      height: 50 / factor
     };
 
-    const copy = [...recipients];
-    copy[placingIdx].signature_position = pos;
-    setRecipients(copy);
-    toast.success(`Position définie pour destinataire #${placingIdx + 1}`);
-    setPlacingIdx(null);
-  };
+    // Supprimer l'ancienne signature de ce destinataire sur ce document s'il y en a une
+    setFields(prev => prev.filter(field => 
+      !(field.recipient_id === recipient.order && field.document_id === selectedDocId && field.field_type === 'signature')
+    ));
 
-  const addRecipient = () => {
+    const newField = {
+      recipient_id: recipient.order,
+      document_id: selectedDocId,
+      field_type: placing.type,
+      page: pageNumber,
+      position: normalized,
+      name: `Signature ${recipient.full_name}`,
+      required: true,
+      recipient_name: recipient.full_name // Stocker le nom pour l'affichage
+    };
+
+    setFields(prev => [...prev, newField]);
+    setPlacing({ idx: null, type: 'signature' });
+
+    const docName = (documents.find(d => d.id === selectedDocId) || {}).name || `Document ${selectedDocId}`;
+    toast.success(`Signature de ${recipient.full_name} placée sur ${docName} (page ${pageNumber})`);
+  }, [placing.idx, placing.type, selectedDocId, pageDimensions, pdfWidth, recipients, documents, canPlaceSignature]);
+
+  // ---- Fichiers ----
+  const onFilesSelected = useCallback((e) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    uploadFiles(files);
+    e.target.value = '';
+  }, [uploadFiles]);
+
+  // ---- Destinataires ----
+  const updateRecipient = useCallback((idx, field, value) => {
+    setRecipients(prev => {
+      const updated = [...prev];
+      updated[idx] = { ...updated[idx], [field]: value };
+      
+      // Si on modifie le nom, mettre à jour les champs existants
+      if (field === 'full_name') {
+        setFields(prevFields => prevFields.map(fieldItem => {
+          if (fieldItem.recipient_id === updated[idx].order) {
+            return {
+              ...fieldItem,
+              name: `Signature ${value}`,
+              recipient_name: value
+            };
+          }
+          return fieldItem;
+        }));
+      }
+      
+      return updated;
+    });
+  }, []);
+
+  const addRecipient = useCallback(() => {
     setRecipients(prev => [
       ...prev,
-      { email: '', full_name: '', order: prev.length + 1, signature_position: null }
+      { id: undefined, email: '', full_name: '', order: prev.length + 1 }
     ]);
-  };
+  }, []);
 
-  const handleSubmit = async e => {
-    e.preventDefault();
-    if (recipients.some(r => !r.signature_position)) {
-      toast.error('Tous les destinataires doivent avoir une position de signature définie');
-      return;
+  const removeRecipient = useCallback((idx) => {
+    if (recipients.length <= 1) return;
+    
+    const recipientToRemove = recipients[idx];
+    
+    // Supprimer tous les champs associés à ce destinataire
+    setFields(prev => prev.filter(field => field.recipient_id !== recipientToRemove.order));
+    
+    // Supprimer le destinataire
+    setRecipients(prev => prev.filter((_, i) => i !== idx));
+    
+    // Annuler le placement si c'était ce destinataire qui était en cours de placement
+    if (placing.idx === idx) {
+      setPlacing({ idx: null, type: 'signature' });
     }
-    try {
-      const fields = recipients.map((r, idx) => ({
-        recipient_id: idx + 1,
-        field_type: 'signature',
-        page: r.signature_position.page,
-        position: {
-          x: r.signature_position.x,
-          y: r.signature_position.y,
-          width: r.signature_position.width,
-          height: r.signature_position.height
-        },
-        name: `Signature ${r.full_name || `Destinataire ${idx + 1}`}`,
-        required: true
-      }));
+  }, [recipients, placing.idx]);
 
+  // ---- Envoi ----
+  const handleSubmit = useCallback(async (e) => {
+    e.preventDefault();
+    try {
       await signatureService.updateEnvelope(id, {
         recipients,
         fields,
@@ -117,185 +310,383 @@ export default function DocumentWorkflow() {
       await signatureService.sendEnvelope(id);
       toast.success('Enveloppe envoyée');
       navigate(`/signature/sent/${id}`);
-    } catch {
+    } catch (err) {
+      console.error(err);
       toast.error("Échec de l'envoi");
     }
-  };
+  }, [id, recipients, fields, flowType, navigate]);
 
-  if (!envelope || !pdfUrl) return <div>Chargement…</div>;
+  // ---- Rendu visuel d'un champ posé ----
+  const renderFieldBox = (field, pageNumber) => {
+    if (field.page !== pageNumber || field.document_id !== selectedDocId) return null;
 
-  if (pdfError) {
+    const vp = pageDimensions[selectedDocId]?.[pageNumber] || { width: 600, height: 800 };
+    const factor = pdfWidth / vp.width;
+
+    const style = {
+      position: 'absolute',
+      left: field.position.x * factor,
+      top: field.position.y * factor,
+      width: field.position.width * factor,
+      height: field.position.height * factor,
+      borderRadius: 8,
+      boxShadow: '0 0 0 1px rgba(0,0,0,.20), 0 2px 6px rgba(0,0,0,.08)',
+      background: '#fff',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 15
+    };
+
     return (
-      <div className="flex h-screen items-center justify-center">
-        <div className="text-center">
-          <h2 className="text-xl font-semibold text-red-600 mb-4">Erreur PDF</h2>
-          <p className="text-gray-600 mb-4">{pdfError}</p>
-          <button
-            onClick={() => window.location.reload()}
-            className="bg-blue-500 text-white px-4 py-2 rounded"
-          >
-            Recharger la page
-          </button>
+      <div key={`${pageNumber}-${field.name}-${field.position.x}-${field.position.y}`} style={style}>
+        <div style={{ textAlign: 'center', fontSize: 12, lineHeight: 1.1, color: '#374151' }}>
+          <div style={{ fontWeight: 700, marginBottom: 2 }}>Signature</div>
+          <div>{field.recipient_name || field.name.replace('Signature ', '')}</div>
         </div>
       </div>
     );
-  }
+  };
 
+  // ---- Vérifier si un destinataire a déjà une signature sur le document sélectionné ----
+  const hasSignatureOnCurrentDoc = useCallback((recipientOrder) => {
+    return fields.some(field => 
+      field.recipient_id === recipientOrder && 
+      field.document_id === selectedDocId && 
+      field.field_type === 'signature'
+    );
+  }, [fields, selectedDocId]);
+
+  // ---- Rendu ----
   return (
-    <div className="flex h-screen">
-      <div className="w-1/3 p-6 bg-gray-50 overflow-auto border-r">
-        <h2 className="text-2xl font-semibold mb-4">Destinataires</h2>
-
-        <div className="mb-6">
-          <span className="font-semibold">Type de signature :</span>
-          <label className="ml-4">
-            <input
-              type="radio"
-              name="flowType"
-              value="sequential"
-              checked={flowType === 'sequential'}
-              onChange={() => setFlowType('sequential')}
-              className="mr-1"
-            />
-            Séquentielle
-          </label>
-          <label className="ml-4">
-            <input
-              type="radio"
-              name="flowType"
-              value="parallel"
-              checked={flowType === 'parallel'}
-              onChange={() => setFlowType('parallel')}
-              className="mr-1"
-            />
-            Parallèle
-          </label>
-        </div>
-
-        {recipients.map((r, idx) => (
-          <div key={idx} className="bg-white p-4 rounded shadow mb-4">
-            <label className="block mb-2">
-              Email
-              <input
-                type="email"
-                value={r.email}
-                onChange={e => {
-                  const c = [...recipients];
-                  c[idx].email = e.target.value;
-                  setRecipients(c);
-                }}
-                className="w-full border px-2 py-1 mt-1"
-              />
-            </label>
-            <label className="block mb-2">
-              Nom
-              <input
-                type="text"
-                value={r.full_name}
-                onChange={e => {
-                  const c = [...recipients];
-                  c[idx].full_name = e.target.value;
-                  setRecipients(c);
-                }}
-                className="w-full border px-2 py-1 mt-1"
-              />
-            </label>
-            <button
-              type="button"
-              onClick={() => setPlacingIdx(idx)}
-              className={`mt-2 px-3 py-1 rounded ${
-                placingIdx === idx ? 'bg-yellow-600' : 'bg-yellow-500'
-              } text-white`}
-            >
-              {r.signature_position ? 'Redéfinir position' : 'Définir position'}
-            </button>
-            {placingIdx === idx && (
-              <p className="text-sm text-blue-600 mt-1">
-                Cliquez sur le PDF pour positionner la signature
-              </p>
-            )}
-            {r.signature_position && (
-              <p className="text-sm text-green-700 mt-1">
-                Page {r.signature_position.page}, x {Math.round(r.signature_position.x)}, y {Math.round(r.signature_position.y)}
-              </p>
-            )}
+    <div className="h-screen bg-gray-50 flex overflow-hidden">
+      {/* Sidebar Gauche - Destinataires */}
+      <div className="w-80 bg-white shadow-lg overflow-y-auto border-r border-gray-200">
+        <div className="p-6">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-xl font-bold text-gray-900">Destinataires</h2>
+            <div className="text-sm text-gray-500">
+              {recipients.length} signataire{recipients.length > 1 ? 's' : ''}
+            </div>
           </div>
-        ))}
-        <button
-          onClick={addRecipient}
-          className="w-full bg-gray-500 text-white py-2 rounded mb-4"
-        >
-          + Ajouter un destinataire
-        </button>
-        <button
-          onClick={handleSubmit}
-          className="w-full bg-blue-600 text-white py-2 rounded"
-        >
-          Envoyer l'enveloppe
-        </button>
-      </div>
 
-      <div className="flex-1 p-4 overflow-auto pdf-container" ref={pdfWrapper}>
-        <Document
-          file={pdfUrl}
-          onLoadSuccess={onDocumentLoad}
-          onLoadError={onDocumentError}
-          loading={<div>Chargement du PDF...</div>}
-        >
-          {Array.from({ length: numPages }, (_, i) => (
-            <div key={i} className="relative mb-6">
-              <Page
-                pageNumber={i + 1}
-                width={pdfWrapper.current?.clientWidth || 600}
-                loading={<div>Chargement de la page {i + 1}...</div>}
-                onLoadSuccess={(page) => onPageLoadSuccess(i + 1, page)}
-                renderTextLayer={false}
-              />
-
-              {pageDimensions[i + 1] && (
-                <div
-                  onClick={e => handlePdfClick(e, i + 1)}
-                  className="absolute top-0 left-0 w-full"
-                  style={{
-                    height: pageDimensions[i + 1].height * (pdfWrapper.current?.clientWidth / pageDimensions[i + 1].width),
-                    cursor: placingIdx !== null ? 'crosshair' : 'default',
-                    zIndex: 10,
-                    backgroundColor: placingIdx !== null ? 'rgba(255, 255, 0, 0.1)' : 'transparent'
-                  }}
-                  title={placingIdx !== null ? 'Cliquez pour positionner la signature' : ''}
+          <div className="mb-6 p-4 bg-gray-50 rounded-lg">
+            <h3 className="font-medium mb-3 text-gray-900">Type de signature</h3>
+            <div className="space-y-2">
+              <label className="flex items-center">
+                <input
+                  type="radio"
+                  name="flowType"
+                  value="sequential"
+                  checked={flowType === 'sequential'}
+                  onChange={() => setFlowType('sequential')}
+                  className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
                 />
-              )}
+                <span className="ml-3 text-sm font-medium text-gray-700">
+                  Séquentielle <span className="text-gray-500 text-xs">(un par un)</span>
+                </span>
+              </label>
+              <label className="flex items-center">
+                <input
+                  type="radio"
+                  name="flowType"
+                  value="parallel"
+                  checked={flowType === 'parallel'}
+                  onChange={() => setFlowType('parallel')}
+                  className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+                />
+                <span className="ml-3 text-sm font-medium text-gray-700">
+                  Parallèle <span className="text-gray-500 text-xs">(tous en même temps)</span>
+                </span>
+              </label>
+            </div>
+          </div>
 
-            
-              {/* Affichage des zones de signature */}
-              {recipients.map((recipient, recipientIdx) => (
-                recipient.signature_position?.page === i + 1 && (
-                  <div
-                    key={recipientIdx}
-                    className="absolute border-2 border-blue-500 bg-blue-100 bg-opacity-50 flex items-center justify-center text-xs font-semibold"
-                    style={{
-                      top: recipient.signature_position.y * (pdfWrapper.current?.clientWidth / pageDimensions[i + 1]?.width || 1),
-                      left: recipient.signature_position.x * (pdfWrapper.current?.clientWidth / pageDimensions[i + 1]?.width || 1),
-                      width: recipient.signature_position.width * (pdfWrapper.current?.clientWidth / pageDimensions[i + 1]?.width || 1),
-                      height: recipient.signature_position.height * (pdfWrapper.current?.clientWidth / pageDimensions[i + 1]?.width || 1),
-                      zIndex: 5
-                    }}
-                  >
-                    {recipient.full_name || `Destinataire ${recipientIdx + 1}`}
-                  </div>
-                )
-              ))}
-
-              {placingIdx !== null && (
-                <div className="absolute inset-0 pointer-events-none">
-                  <div className="text-center mt-2 text-sm text-blue-600 font-semibold">
-                    Mode placement activé - Cliquez sur le PDF
-                  </div>
+          <div className="mb-6">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Ajouter des documents
+            </label>
+            <div className="relative">
+              <input
+                type="file"
+                multiple
+                accept=".pdf,.doc,.docx"
+                onChange={onFilesSelected}
+                disabled={isUploading}
+                className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 disabled:opacity-50"
+              />
+              {isUploading && (
+                <div className="absolute inset-0 bg-white/70 flex items-center justify-center rounded">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
                 </div>
               )}
             </div>
-          ))}
-        </Document>
+            {documents.length > 0 && (
+              <p className="text-xs text-gray-500 mt-2">
+                {documents.length} document{documents.length > 1 ? 's' : ''} dans l'enveloppe
+              </p>
+            )}
+          </div>
+
+          <div className="space-y-4">
+            {recipients.map((recipient, idx) => {
+              const canPlace = canPlaceSignature(idx);
+              const hasSignature = hasSignatureOnCurrentDoc(recipient.order);
+              
+              return (
+                <div key={idx} className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center space-x-2">
+                      <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                        <span className="text-sm font-medium text-blue-700">{idx + 1}</span>
+                      </div>
+                      <span className="font-medium text-gray-900">Destinataire #{idx + 1}</span>
+                    </div>
+                    {recipients.length > 1 && (
+                      <button
+                        onClick={() => removeRecipient(idx)}
+                        className="text-red-400 hover:text-red-600 p-1"
+                        title="Supprimer"
+                      >
+                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Email</label>
+                      <input
+                        type="email"
+                        value={recipient.email}
+                        onChange={e => updateRecipient(idx, 'email', e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="exemple@email.com"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Nom complet</label>
+                      <input
+                        type="text"
+                        value={recipient.full_name}
+                        onChange={e => updateRecipient(idx, 'full_name', e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="Jean Dupont"
+                      />
+                    </div>
+
+                    <div className="pt-2">
+                      <button
+                        type="button"
+                        onClick={() => setPlacing({ idx, type: 'signature' })}
+                        disabled={!selectedDocId || !canPlace}
+                        className={`w-full px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                          placing.idx === idx
+                            ? 'bg-yellow-100 text-yellow-800 border border-yellow-300'
+                            : canPlace && selectedDocId
+                            ? 'bg-blue-600 text-white hover:bg-blue-700'
+                            : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                        }`}
+                      >
+                        {placing.idx === idx 
+                          ? 'Cliquez sur le PDF pour placer' 
+                          : hasSignature
+                          ? 'Redéfinir position signature'
+                          : 'Définir position signature'
+                        }
+                      </button>
+                      
+                      {!selectedDocId && (
+                        <p className="text-xs text-red-500 mt-1">
+                          Sélectionnez d'abord un document à droite
+                        </p>
+                      )}
+                      
+                      {selectedDocId && !canPlace && (
+                        <p className="text-xs text-red-500 mt-1">
+                          Renseignez l'email et le nom complet
+                        </p>
+                      )}
+                      
+                      {hasSignature && canPlace && selectedDocId && (
+                        <p className="text-xs text-green-600 mt-1">
+                          ✓ Signature placée sur ce document
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+
+            <button
+              onClick={addRecipient}
+              className="w-full py-3 px-4 border-2 border-dashed border-gray-300 rounded-lg text-gray-600 hover:border-gray-400 hover:bg-gray-50 transition-colors flex items-center justify-center space-x-2"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v12m6-6H6" />
+              </svg>
+              <span className="font-medium">Ajouter un destinataire</span>
+            </button>
+          </div>
+
+          {fields.length > 0 && (
+            <div className="mt-6 p-4 bg-green-50 border border-green-200 rounded-lg">
+              <h3 className="font-medium text-green-900 mb-2">Champs configurés</h3>
+              <div className="space-y-1">
+                {fields.map((field, i) => (
+                  <div key={i} className="text-sm text-green-700 flex items-center">
+                    <svg className="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                    </svg>
+                    Page {field.page} — {field.recipient_name || field.name.replace('Signature ', '')}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <button
+            onClick={handleSubmit}
+            disabled={recipients.some(r => !r.email || !r.full_name) || fields.length === 0}
+            className="w-full mt-6 bg-green-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+          >
+            Envoyer l'enveloppe
+          </button>
+        </div>
+      </div>
+
+      {/* Zone centrale - PDF Viewer */}
+      <div className="flex-1 flex flex-col bg-gray-100">
+        <div className="flex-1 flex overflow-hidden">
+          <div className="flex-1 overflow-auto" ref={pdfWrapper}>
+            {pdfUrl ? (
+              <div className="p-6">
+                <div className="max-w-[900px] mx-auto">
+                  <Document
+                    key={String(pdfUrl || 'empty')}
+                    file={pdfUrl}
+                    onLoadSuccess={onDocumentLoad}
+                    onLoadError={onDocumentError}
+                    loading={
+                      <div className="flex items-center justify-center py-20">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                        <span className="ml-3 text-gray-600">Chargement du PDF...</span>
+                      </div>
+                    }
+                  >
+                    {Array.from({ length: numPagesByDoc[selectedDocId] || 0 }, (_, i) => {
+                      const pageNumber = i + 1;
+                      return (
+                        <div key={pageNumber} className="relative mb-8 bg-white shadow-lg rounded-lg overflow-hidden">
+                          <div className="absolute top-2 right-2 bg-black/50 text-white px-2 py-1 rounded text-sm z-20">
+                            Page {pageNumber}
+                          </div>
+
+                          <Page
+                            pageNumber={pageNumber}
+                            width={pdfWidth}
+                            onLoadSuccess={(page) => onPageLoadSuccess(pageNumber, page)}
+                            renderTextLayer={false}
+                            renderAnnotationLayer={false}
+                          />
+
+                          {/* Champs déjà posés (visibles) */}
+                          {fields
+                            .filter(f => f.document_id === selectedDocId && f.page === pageNumber)
+                            .map(f => renderFieldBox(f, pageNumber))
+                          }
+
+                          {/* Overlay de clic (pour placer) */}
+                          <div
+                            onClick={e => handlePdfClick(e, pageNumber)}
+                            className={`absolute inset-0 z-10 ${placing.idx !== null ? 'cursor-crosshair bg-yellow-200/10' : 'cursor-default'}`}
+                            style={{ pointerEvents: placing.idx !== null ? 'auto' : 'none' }}
+                          />
+                        </div>
+                      );
+                    })}
+                  </Document>
+                </div>
+              </div>
+            ) : (
+              <div className="h-full flex items-center justify-center">
+                <div className="text-center">
+                  <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  <h3 className="mt-2 text-sm font-medium text-gray-900">Aucun document sélectionné</h3>
+                  <p className="mt-1 text-sm text-gray-500">Sélectionnez un document dans la liste</p>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Sidebar Droite - Documents */}
+      <div className="w-72 bg-white shadow-lg overflow-y-auto border-l border-gray-200">
+        <div className="p-4">
+          <h3 className="font-semibold text-gray-900 mb-4 flex items-center">
+            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            Documents
+          </h3>
+
+          {documents.length === 0 ? (
+            <div className="text-center py-8 text-gray-500">
+              <svg className="mx-auto h-8 w-8 text-gray-400 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              <p className="text-sm">Aucun document</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {documents.map(doc => (
+                <button
+                  key={doc.id}
+                  onClick={() => selectDocument(doc)}
+                  className={`w-full text-left p-3 rounded-lg border transition-all ${
+                    selectedDocId === doc.id
+                      ? 'bg-blue-50 border-blue-200 shadow-sm'
+                      : 'bg-white border-gray-200 hover:bg-gray-50 hover:border-gray-300'
+                  }`}
+                >
+                  <div className="flex items-start space-x-3">
+                    <div className={`mt-0.5 w-8 h-10 rounded border-2 flex items-center justify-center ${
+                      selectedDocId === doc.id ? 'border-blue-300 bg-blue-100' : 'border-gray-300 bg-gray-50'
+                    }`}>
+                      <svg className={`w-4 h-4 ${selectedDocId === doc.id ? 'text-blue-600' : 'text-gray-400'}`} fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className={`text-sm font-medium truncate ${
+                        selectedDocId === doc.id ? 'text-blue-900' : 'text-gray-900'
+                      }`}>
+                        {doc.name || `Document ${doc.id}`}
+                      </p>
+                      <div className="mt-1 flex items-center space-x-2">
+                        <span className="text-xs text-gray-500">PDF</span>
+                        {numPagesByDoc[doc.id] && (
+                          <>
+                            <span className="text-xs text-gray-400">•</span>
+                            <span className="text-xs text-gray-500">
+                              {numPagesByDoc[doc.id]} page{numPagesByDoc[doc.id] > 1 ? 's' : ''}
+                            </span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

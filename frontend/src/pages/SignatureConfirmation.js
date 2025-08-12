@@ -12,7 +12,8 @@ import {
   Home,
   RefreshCw,
   Sparkles,
-  Shield
+  Shield,
+  ExternalLink
 } from 'lucide-react';
 
 const SignatureConfirmation = () => {
@@ -21,24 +22,36 @@ const SignatureConfirmation = () => {
   const [searchParams] = useSearchParams();
   const [downloading, setDownloading] = useState(false);
   const [countdown, setCountdown] = useState(10);
+  const [envelope, setEnvelope] = useState(null);
+  const [loadingEnv, setLoadingEnv] = useState(true);
 
   const envelopeId = location.state?.id || searchParams.get('id');
+
+  useEffect(() => {
+    const load = async () => {
+      if (!envelopeId) { setLoadingEnv(false); return; }
+      try {
+        const data = await signatureService.getEnvelope(envelopeId);
+        setEnvelope(data);
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setLoadingEnv(false);
+      }
+    };
+    load();
+  }, [envelopeId]);
 
   const handleDownload = async () => {
     if (!envelopeId) {
       toast.error('Identifiant du document manquant');
       return;
     }
-    
     try {
       setDownloading(true);
       const { download_url } = await signatureService.downloadEnvelope(envelopeId);
       const response = await fetch(download_url);
-      
-      if (!response.ok) {
-        throw new Error('Erreur lors du téléchargement');
-      }
-      
+      if (!response.ok) throw new Error('Erreur lors du téléchargement');
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
@@ -48,7 +61,6 @@ const SignatureConfirmation = () => {
       link.click();
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
-      
       toast.success('Document téléchargé avec succès');
     } catch (err) {
       console.error('Erreur téléchargement document signé:', err);
@@ -68,22 +80,11 @@ const SignatureConfirmation = () => {
         return prev - 1;
       });
     }, 1000);
-
-    // Nettoie le timer si le composant est démonté ou si countdown devient -1
-    if (countdown === -1) {
-      clearInterval(timer);
-    }
-
     return () => clearInterval(timer);
-  }, [navigate, countdown]);
+  }, [navigate]);
 
-  const handleStayOnPage = () => {
-    setCountdown(-1); // Arrête le décompte définitivement
-  };
-
-  const handleRedirectNow = () => {
-    navigate('/signature/envelopes/completed');
-  };
+  const handleStayOnPage = () => setCountdown(-1);
+  const handleRedirectNow = () => navigate('/signature/envelopes/completed');
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -110,7 +111,6 @@ const SignatureConfirmation = () => {
 
           {/* Carte principale */}
           <div className="bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden mb-6">
-            {/* En-tête avec animation */}
             <div className="bg-gradient-to-r from-green-500 to-blue-600 p-6 text-white relative overflow-hidden">
               <div className="absolute top-0 right-0 opacity-20">
                 <Sparkles className="w-32 h-32" />
@@ -127,9 +127,7 @@ const SignatureConfirmation = () => {
               </div>
             </div>
 
-            {/* Contenu */}
             <div className="p-6 space-y-6">
-              {/* Informations de confirmation */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="flex items-center gap-3 p-4 bg-green-50 rounded-lg">
                   <CheckCircle className="w-5 h-5 text-green-600" />
@@ -138,33 +136,18 @@ const SignatureConfirmation = () => {
                     <p className="text-sm text-green-700">Signature complétée</p>
                   </div>
                 </div>
-                
+
                 <div className="flex items-center gap-3 p-4 bg-blue-50 rounded-lg">
                   <Clock className="w-5 h-5 text-blue-600" />
                   <div>
                     <p className="text-sm font-medium text-blue-800">Horodatage</p>
                     <p className="text-sm text-blue-700">
                       {new Date().toLocaleDateString('fr-FR', {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                        second: '2-digit'
+                        hour: '2-digit', minute: '2-digit', second: '2-digit'
                       })}
                     </p>
                   </div>
                 </div>
-              </div>
-
-              {/* Message de confirmation */}
-              <div className="text-center p-6 bg-gray-50 rounded-lg">
-                <FileText className="w-8 h-8 text-gray-400 mx-auto mb-3" />
-                <h3 className="text-lg font-medium text-gray-900 mb-2">
-                  Que faire maintenant ?
-                </h3>
-                <p className="text-gray-600 text-sm leading-relaxed">
-                  Votre document signé est prêt à être téléchargé. Vous recevrez également 
-                  une copie par email. Vous pouvez maintenant fermer cette page ou consulter 
-                  vos documents signés.
-                </p>
               </div>
 
               {/* Actions principales */}
@@ -189,6 +172,40 @@ const SignatureConfirmation = () => {
                   </button>
                 )}
 
+                {/* Si multi-docs, proposer aussi l'accès à chaque PDF original */}
+                {!loadingEnv && envelope?.documents?.length > 0 && (
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <div className="font-medium text-gray-900 mb-2">Documents de l’enveloppe</div>
+                    <ul className="space-y-2">
+                      {envelope.documents.map(doc => (
+                        <li key={doc.id} className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <FileText className="w-4 h-4 text-gray-500" />
+                            <span className="text-sm">{doc.name || `Document ${doc.id}`}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <a
+                              href={doc.file_url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-sm text-blue-600 hover:underline inline-flex items-center gap-1"
+                            >
+                              Ouvrir <ExternalLink className="w-3 h-3" />
+                            </a>
+                            <a
+                              href={doc.file_url}
+                              download
+                              className="text-sm text-gray-700 hover:underline"
+                            >
+                              Télécharger
+                            </a>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <Link 
                     to="/signature/envelopes/completed"
@@ -197,7 +214,6 @@ const SignatureConfirmation = () => {
                     <FileText className="w-4 h-4" />
                     Mes documents
                   </Link>
-                  
                   <Link 
                     to="/dashboard"
                     className="flex items-center justify-center gap-2 px-4 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium"
@@ -210,15 +226,13 @@ const SignatureConfirmation = () => {
             </div>
           </div>
 
-          {/* Redirection automatique */}
+          {/* Redirection auto */}
           {countdown > 0 && (
             <div className="bg-white rounded-lg border border-amber-200 p-4 shadow-sm">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="flex-shrink-0">
-                    <div className="w-8 h-8 bg-amber-100 rounded-full flex items-center justify-center">
-                      <Clock className="w-4 h-4 text-amber-600" />
-                    </div>
+                  <div className="w-8 h-8 bg-amber-100 rounded-full flex items-center justify-center">
+                    <Clock className="w-4 h-4 text-amber-600" />
                   </div>
                   <div>
                     <p className="text-sm font-medium text-amber-800">
@@ -229,7 +243,6 @@ const SignatureConfirmation = () => {
                     </p>
                   </div>
                 </div>
-                
                 <div className="flex gap-2">
                   <button
                     onClick={handleStayOnPage}
@@ -246,8 +259,6 @@ const SignatureConfirmation = () => {
                   </button>
                 </div>
               </div>
-              
-              {/* Barre de progression */}
               <div className="mt-3">
                 <div className="w-full bg-amber-100 rounded-full h-1">
                   <div 
@@ -259,11 +270,9 @@ const SignatureConfirmation = () => {
             </div>
           )}
 
-          {/* Informations complémentaires */}
           <div className="mt-8 text-center text-xs text-gray-500">
             <p>
-              Cette signature électronique est juridiquement valable selon les réglementations 
-              en vigueur. Un certificat de signature a été généré automatiquement.
+              Cette signature électronique est juridiquement valable selon les réglementations en vigueur.
             </p>
           </div>
         </div>

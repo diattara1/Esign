@@ -13,7 +13,7 @@ from django.db import transaction
 from django.http import Http404, StreamingHttpResponse, FileResponse
 from django.shortcuts import get_object_or_404
 from rest_framework.permissions import AllowAny, IsAuthenticated
-from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.clickjacking import xframe_options_exempt
 import jwt, logging, io, base64
@@ -23,13 +23,7 @@ from ..tasks import send_signature_email
 from ..otp import generate_otp, validate_otp, send_otp
 from ..hsm import hsm_sign
 from django.conf import settings
-from ..models import (
-    Envelope,
-    EnvelopeRecipient,
-    SignatureDocument,
-    PrintQRCode,
-    AuditLog,
-)
+from ..models import (Envelope,EnvelopeRecipient,SignatureDocument,PrintQRCode,AuditLog,EnvelopeDocument)
 from ..serializers import (
     EnvelopeSerializer,
     EnvelopeListSerializer,
@@ -143,6 +137,7 @@ def guest_envelope_view(request, pk):
 class EnvelopeViewSet(viewsets.ModelViewSet):
     serializer_class = EnvelopeSerializer
     permission_classes = [IsAuthenticated]
+    parser_classes = [JSONParser, MultiPartParser, FormParser]
 
     def get_queryset(self):
         user = self.request.user
@@ -433,6 +428,39 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
                           status=status.HTTP_400_BAD_REQUEST)
         
         return self._do_sign(recipient, signature_data, signed_fields)
+    
+    @action(detail=True, methods=['get'], url_path=r'documents/(?P<doc_id>\d+)/file')
+    @method_decorator(xframe_options_exempt, name='dispatch')
+    def document_file(self, request, pk=None, doc_id=None):
+        try:
+            envelope = Envelope.objects.get(pk=pk)
+        except Envelope.DoesNotExist:
+            return Response({'error': 'Enveloppe non trouvée'}, status=404)
+    
+        # autorisations : créateur ou destinataire de l'enveloppe
+        is_owner = (envelope.created_by == request.user)
+        is_recipient = envelope.recipients.filter(user=request.user).exists()
+        if not (is_owner or is_recipient):
+            return Response({'error': 'Non autorisé'}, status=403)
+    
+        try:
+            doc = envelope.documents.get(pk=doc_id)
+        except EnvelopeDocument.DoesNotExist:
+            return Response({'error': 'Document introuvable'}, status=404)
+    
+        f = doc.file.open('rb')
+        f.seek(0)
+        head = f.read(10)
+        f.seek(0)
+        if not head.startswith(b'%PDF-'):
+            return Response({'error': 'Document non valide'}, status=400)
+    
+        resp = FileResponse(f, content_type='application/pdf')
+        resp['Content-Disposition'] = f'inline; filename="{doc.name or f"document_{doc.id}.pdf"}"'
+        resp['X-Frame-Options'] = 'SAMEORIGIN'
+        resp['Content-Security-Policy'] = "frame-ancestors 'self'"
+        resp['Access-Control-Allow-Origin'] = request.META.get('HTTP_ORIGIN', '*')
+        return resp
     @action(detail=True, methods=['get'], url_path='original-document')
     @method_decorator(xframe_options_exempt, name='dispatch')
     def original_document(self, request, pk=None):
@@ -643,62 +671,158 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
         return Response({'status': 'signed', 'message': 'Document signé avec succès'})
 
     def _merge_pdf(self, envelope, signature_data, signed_fields):
-        # 1) trouver le dernier SignatureDocument qui a un fichier
+        """
+        Construit un PDF avec les nouvelles signatures.
+        - S'il existe un signed_file précédent, on repart de ce PDF (pour conserver l'historique)
+        - Sinon on reconstruit à partir du document unique ou de la liste EnvelopeDocument
+        - Les champs sont positionnés par (document_id, page, position)
+        """
+        # 0) Normaliser signature_data et signed_fields
+        #    signed_fields: dict[field_id] -> {page, position, document_id?}
+        #    signature_data: dict[field_id] -> dataURL
+        if not signature_data or not signed_fields:
+            raise ValueError("signature_data et signed_fields requis")
+    
+        # 1) Construire la liste des 'sources' (docs) et calculer les offsets de pages.
+        sources = []  # liste de tuples (key, file_field, reader, num_pages)
+        if envelope.document_file:
+            # Cas "mono-doc historique" (key 'main')
+            f = envelope.document_file
+            fh = f.open('rb')
+            reader = PdfReader(fh)
+            sources.append(('main', f, reader, len(reader.pages)))
+        else:
+            docs = envelope.documents.all().order_by('id')
+            if not docs.exists():
+                raise ValueError("Aucun document original dans l'enveloppe")
+            for d in docs:
+                fh = d.file.open('rb')
+                reader = PdfReader(fh)
+                sources.append((str(d.id), d.file, reader, len(reader.pages)))
+    
+        # Offsets globaux (pour retrouver l'index de page dans un PDF fusionné)
+        offsets = {}
+        total_pages = 0
+        for key, _file, reader, n in sources:
+            offsets[key] = total_pages
+            total_pages += n
+    
+        # 2) Construire la base PDF à surimprimer
+        #    - Si un précédent signed_file existe => on repart de ce PDF
+        #    - Sinon on concatène toutes les sources dans l'ordre
         prev = (
             SignatureDocument.objects
-            .filter(envelope=envelope)
-            .exclude(signed_file__exact='')    # on exclut les entrées sans fichier
+            .filter(envelope=envelope, signed_file__isnull=False)
             .order_by('-signed_at')
             .first()
         )
     
-        # 2) ouvrir la bonne source
+        base_reader = None
+        base_stream_handles = []  # pour garder les handles ouverts vivants jusqu'à la fin
         if prev and prev.signed_file:
-            base_stream = prev.signed_file.open('rb')
+            # Point de départ = dernier PDF signé (déjà fusionné/concaténé)
+            fh = prev.signed_file.open('rb')
+            base_stream_handles.append(fh)
+            base_reader = PdfReader(fh)
         else:
-            base_stream = envelope.document_file.open('rb')
+            # Concaténer les sources pour obtenir un PDF de base
+            tmp_writer = PdfWriter()
+            for key, _file, reader, _n in sources:
+                for p in reader.pages:
+                    tmp_writer.add_page(p)
+            tmp_buf = io.BytesIO()
+            tmp_writer.write(tmp_buf)
+            tmp_buf.seek(0)
+            base_stream_handles.append(tmp_buf)
+            base_reader = PdfReader(tmp_buf)
     
-        reader = PdfReader(base_stream)
+        # 3) Préparer la liste des overlays par page globale
+        #    Pour chaque champ, on détermine sa page globale : offset[doc_key] + (page-1)
+        overlays_by_global_page = {}  # index_page -> [ (pos, data_url) ... ]
+        for field_id, data_url in signature_data.items():
+            fmeta = signed_fields.get(str(field_id)) or signed_fields.get(field_id)
+            if not fmeta:
+                continue
+            # clé document
+            doc_key = None
+            # champs venant du serializer : 'document_id' ou 'document'
+            if 'document_id' in fmeta and fmeta['document_id'] is not None:
+                doc_key = str(fmeta['document_id'])
+            elif 'document' in fmeta and fmeta['document'] is not None:
+                doc_key = str(fmeta['document'])
+            else:
+                # legacy mono-doc
+                doc_key = 'main'
+    
+            if doc_key not in offsets:
+                # Si on ne trouve pas la clé, ignorer proprement
+                continue
+    
+            page = int(fmeta.get('page') or 1)
+            pos = fmeta.get('position') or {}
+            try:
+                gx = int(pos.get('x', 0))
+                gy_t = int(pos.get('y', 0))
+                gw = int(pos.get('width', 0))
+                gh = int(pos.get('height', 0))
+            except Exception:
+                # position invalide
+                continue
+    
+            global_index = offsets[doc_key] + (page - 1)
+            overlays_by_global_page.setdefault(global_index, []).append(
+                {'x': gx, 'y_top': gy_t, 'w': gw, 'h': gh, 'data_url': data_url}
+            )
+    
+        # 4) Appliquer les overlays page par page sur la base
         writer = PdfWriter()
-    
-        # 3) pour chaque page, on dessine uniquement la nouvelle signature
-        for idx, page in enumerate(reader.pages):
-            packet = io.BytesIO()
+        for idx, page in enumerate(base_reader.pages):
+            # Dimensions de la page courante
             media = page.mediabox
             pw, ph = float(media.width), float(media.height)
-            c = canvas.Canvas(packet, pagesize=(pw, ph))
     
-            for field_id, data_url in signature_data.items():
-                field = signed_fields.get(str(field_id)) or signed_fields.get(field_id)
-                if not field or field.get('page') != idx + 1:
-                    continue
+            if idx in overlays_by_global_page:
+                packet = io.BytesIO()
+                c = canvas.Canvas(packet, pagesize=(pw, ph))
     
-                pos   = field['position']
-                x, y_t = pos['x'], pos['y']
-                w, h   = pos['width'], pos['height']
-                y      = ph - y_t - h
+                for item in overlays_by_global_page[idx]:
+                    x = item['x']
+                    w = item['w']
+                    h = item['h']
+                    # convertir y depuis le haut : PDF a l'origine en bas-gauche
+                    y = ph - item['y_top'] - h
     
-                try:
-                    img = ImageReader(io.BytesIO(base64.b64decode(data_url.split(',')[1])))
-                    c.drawImage(img, x, y, width=w, height=h, mask='auto')
-                except Exception:
-                    pass
+                    try:
+                        b64 = item['data_url'].split(',')[1]
+                        img = ImageReader(io.BytesIO(base64.b64decode(b64)))
+                        c.drawImage(img, x, y, width=w, height=h, mask='auto')
+                    except Exception:
+                        # on ignore un overlay foireux, mais on continue
+                        pass
     
-            c.showPage()
-            c.save()
-            packet.seek(0)
+                c.showPage()
+                c.save()
+                packet.seek(0)
+                overlay_reader = PdfReader(packet)
+                page.merge_page(overlay_reader.pages[0])
     
-            overlay = PdfReader(packet)
-            page.merge_page(overlay.pages[0])
             writer.add_page(page)
     
-        # 4) écrire et renvoyer
+        # 5) Retourner un ContentFile prêt pour signature numérique
         out = io.BytesIO()
         writer.write(out)
         out.seek(0)
+    
+        # fermer les handles ouverts
+        for h in base_stream_handles:
+            try:
+                h.close()
+            except Exception:
+                pass
+    
         return ContentFile(out.read(), name=f"merged_{envelope.id}.pdf")
-      
-    def _verify_token(self, envelope, token):
+    
+def _verify_token(self, envelope, token):
         try:
             payload = jwt.decode(token, settings.SECRET_KEY, algorithms=['HS256'])
             return payload.get('env_id') == envelope.id and 'recipient_id' in payload

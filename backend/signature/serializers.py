@@ -3,6 +3,8 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.tokens import default_token_generator
 from django.core.mail import send_mail
 from django.conf import settings
+from django.db import transaction
+
 from .models import (
     Envelope,
     EnvelopeRecipient,
@@ -12,15 +14,16 @@ from .models import (
     NotificationPreference,
     EnvelopeDocument,
 )
+
 from PyPDF2 import PdfReader
-from django.db import transaction
 import io
 import logging
 
 logger = logging.getLogger(__name__)
-
 User = get_user_model()
 
+
+# -------- Users / Prefs --------
 
 class UserProfileSerializer(serializers.ModelSerializer):
     class Meta:
@@ -43,7 +46,6 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
             'birth_date', 'phone_number', 'gender', 'address', 'avatar'
         ]
 
-
     def validate_username(self, value):
         if User.objects.filter(username=value).exists():
             raise serializers.ValidationError("Ce nom d'utilisateur est déjà pris.")
@@ -53,7 +55,6 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         if User.objects.filter(email=value).exists():
             raise serializers.ValidationError('Cet e-mail est déjà utilisé.')
         return value
-
 
     def create(self, validated_data):
         avatar = validated_data.pop('avatar', None)
@@ -89,9 +90,7 @@ class PasswordResetSerializer(serializers.Serializer):
         email = self.validated_data['email']
         user = User.objects.get(email=email)
         token = default_token_generator.make_token(user)
-        reset_link = request.build_absolute_uri(
-            f"/reset-password/{user.pk}/{token}/"
-        )
+        reset_link = request.build_absolute_uri(f"/reset-password/{user.pk}/{token}/")
         send_mail(
             'Réinitialisation de mot de passe',
             f'Utilisez ce lien pour réinitialiser votre mot de passe : {reset_link}',
@@ -105,17 +104,48 @@ class NotificationPreferenceSerializer(serializers.ModelSerializer):
     class Meta:
         model = NotificationPreference
         fields = ['id', 'email', 'sms', 'push']
+
+
+# -------- Signature fields / documents --------
+
 class SigningFieldSerializer(serializers.ModelSerializer):
+    """
+    Ajout de document_id pour lier un champ à un PDF précis de l’enveloppe.
+    recipient_id continue d’indiquer l’ordre/ID logique côté front.
+    """
     recipient_id = serializers.IntegerField()
+    document_id = serializers.IntegerField(required=False, allow_null=True)
 
     class Meta:
         model = SigningField
-        fields = ['id', 'recipient_id', 'field_type', 'page', 'position', 'name', 'required', 'default_value']
+        fields = [
+            'id',
+            'recipient_id',
+            'document_id',
+            'field_type',
+            'page',
+            'position',
+            'name',
+            'required',
+            'default_value',
+        ]
 
     def validate_position(self, value):
         required_keys = {'x', 'y', 'width', 'height'}
-        if not isinstance(value, dict) or not all(key in value for key in required_keys):
-            raise serializers.ValidationError('Position must include x, y, width, and height')
+        if not isinstance(value, dict) or not required_keys.issubset(value.keys()):
+            raise serializers.ValidationError('position doit contenir x, y, width, height')
+        # bornes simples (>=0)
+        for k in ['x', 'y', 'width', 'height']:
+            try:
+                if float(value[k]) < 0:
+                    raise serializers.ValidationError(f'position.{k} doit être >= 0')
+            except Exception:
+                raise serializers.ValidationError(f'position.{k} invalide')
+        return value
+
+    def validate_page(self, value):
+        if value <= 0:
+            raise serializers.ValidationError('page doit être >= 1')
         return value
 
 
@@ -132,30 +162,127 @@ class EnvelopeDocumentSerializer(serializers.ModelSerializer):
 class EnvelopeRecipientSerializer(serializers.ModelSerializer):
     class Meta:
         model = EnvelopeRecipient
-        fields = ['id', 'email', 'full_name', 'order', 'signed', 'signed_at', 'notified_at', 'reminder_count', 'in_app_notified']
+        fields = [
+            'id',
+            'email',
+            'full_name',
+            'order',
+            'signed',
+            'signed_at',
+            'notified_at',
+            'reminder_count',
+            'in_app_notified',
+        ]
         read_only_fields = ['signed', 'signed_at', 'notified_at', 'reminder_count', 'in_app_notified']
 
+
+# -------- Envelope --------
 
 class EnvelopeSerializer(serializers.ModelSerializer):
     recipients = EnvelopeRecipientSerializer(many=True, required=False)
     fields = SigningFieldSerializer(many=True, required=False)
+    # upload multi-fichiers
     files = serializers.ListField(child=serializers.FileField(), write_only=True, required=False)
+    # liste des documents déjà stockés
     documents = EnvelopeDocumentSerializer(many=True, read_only=True)
     created_by_name = serializers.SerializerMethodField()
     completion_rate = serializers.ReadOnlyField()
 
     class Meta:
         model = Envelope
-        fields = ['id', 'title', 'description', 'files', 'documents', 'created_by', 'created_by_name',
-                  'created_at', 'updated_at', 'status', 'flow_type', 'recipients', 'fields',
-                  'reminder_days', 'deadline_at', 'hash_original', 'version', 'file_size',
-                  'file_type', 'completion_rate', 'jwt_token', 'expires_at']
-        read_only_fields = ['hash_original', 'version', 'created_by', 'created_at', 'updated_at',
-                            'file_size', 'file_type', 'completion_rate']
+        fields = [
+            'id',
+            'title',
+            'description',
+            'files',
+            'documents',
+            'created_by',
+            'created_by_name',
+            'created_at',
+            'updated_at',
+            'status',
+            'flow_type',
+            'recipients',
+            'fields',
+            'reminder_days',
+            'deadline_at',
+            'hash_original',
+            'version',
+            'file_size',
+            'file_type',
+            'completion_rate',
+            'jwt_token',
+            'expires_at',
+        ]
+        read_only_fields = [
+            'hash_original',
+            'version',
+            'created_by',
+            'created_at',
+            'updated_at',
+            'file_size',
+            'file_type',
+            'completion_rate',
+        ]
 
     def get_created_by_name(self, obj):
         name = obj.created_by.get_full_name().strip()
         return name or obj.created_by.username
+
+    # -------- utilitaires internes --------
+
+    def _resolve_recipient_for_field(self, envelope, field_payload, recipients_by_order):
+        """
+        Le front envoie recipient_id comme 'ordre' (ou parfois l'id réel).
+        On résout prudemment.
+        """
+        # priorité à un id réel s’il existe
+        real_id = field_payload.get('recipient_real_id')
+        if real_id:
+            try:
+                return envelope.recipients.get(id=real_id)
+            except EnvelopeRecipient.DoesNotExist:
+                pass
+
+        order = field_payload.pop('recipient_id', None)
+        if order is None:
+            return None
+        # map rempli à la création/màj
+        return recipients_by_order.get(order)
+
+    def _resolve_document_for_field(self, envelope, field_payload):
+        """
+        document_id optionnel : si fourni, vérifier qu’il appartient à l’enveloppe.
+        """
+        doc_id = field_payload.pop('document_id', None)
+        if not doc_id:
+            return None
+        try:
+            return envelope.documents.get(id=doc_id)
+        except EnvelopeDocument.DoesNotExist:
+            raise serializers.ValidationError(f'document_id {doc_id} n’appartient pas à cette enveloppe')
+
+    def _validate_page_against_pdf(self, document, page_number):
+        """
+        (optionnel mais utile) : si PDF, vérifier que la page demandée existe.
+        On ne bloque pas si ce n’est pas un PDF ou si la lecture échoue.
+        """
+        if not document or not document.file or not document.file.name.lower().endswith('.pdf'):
+            return
+        try:
+            document.file.seek(0)
+            content = document.file.read()
+            document.file.seek(0)
+            if not content.startswith(b'%PDF-'):
+                return
+            pdf = PdfReader(io.BytesIO(content))
+            if page_number < 1 or page_number > len(pdf.pages):
+                raise serializers.ValidationError(f'page {page_number} hors limites (1..{len(pdf.pages)}) pour le document {document.id}')
+        except Exception:
+            # logging seulement ; on évite de bloquer agressivement si l’IO échoue
+            logger.warning('Impossible de valider la page PDF pour document %s', getattr(document, 'id', '?'))
+
+    # -------- create / update --------
 
     def create(self, validated_data):
         recipients_data = validated_data.pop('recipients', [])
@@ -166,32 +293,47 @@ class EnvelopeSerializer(serializers.ModelSerializer):
 
         with transaction.atomic():
             envelope = Envelope.objects.create(**validated_data)
-            recipient_map = {}
 
+            # --- destinataires ---
+            recipients_by_order = {}
             for rec in recipients_data:
-                email = rec.get('email', '').strip().lower()
+                email = (rec.get('email') or '').strip().lower()
                 try:
                     usr = User.objects.get(email=email)
                     rec['user'] = usr
                     rec.setdefault('full_name', usr.get_full_name())
                 except (User.DoesNotExist, ValueError):
                     pass
+                obj = EnvelopeRecipient.objects.create(envelope=envelope, **rec)
+                recipients_by_order[obj.order] = obj
 
-                recipient = EnvelopeRecipient.objects.create(envelope=envelope, **rec)
-                recipient_map[recipient.order] = recipient
-
-            for field in fields_data:
-                order = field.pop('recipient_id', None)
-                recipient = recipient_map.get(order)
-                if recipient:
-                    SigningField.objects.create(
-                        envelope=envelope,
-                        recipient=recipient,
-                        **field
-                    )
-
+            # --- documents (multiple) ---
             for f in files_data:
                 EnvelopeDocument.objects.create(envelope=envelope, file=f)
+
+            # mapping doc id accessible après création
+            # (si le front renvoie des document_id déjà existants, ils seront résolus ci-dessous)
+            # --- champs ---
+            for fld in fields_data:
+                # résout destinataire
+                recipient = self._resolve_recipient_for_field(envelope, fld, recipients_by_order)
+                if not recipient:
+                    # on ignore les champs orphelins
+                    logger.warning('Champ ignoré (destinataire introuvable): %s', fld)
+                    continue
+
+                # résout document
+                document = self._resolve_document_for_field(envelope, fld)
+
+                # validation page/document
+                self._validate_page_against_pdf(document, fld.get('page', 1))
+
+                SigningField.objects.create(
+                    envelope=envelope,
+                    recipient=recipient,
+                    document=document,  # <-- nouveau lien
+                    **fld
+                )
 
             return envelope
 
@@ -200,22 +342,27 @@ class EnvelopeSerializer(serializers.ModelSerializer):
         fields_data = validated_data.pop('fields', None)
         files_data = validated_data.pop('files', [])
 
+        # champs simples de l’enveloppe
         for attr, val in validated_data.items():
             setattr(instance, attr, val)
         instance.save()
 
+        # --- nouveaux documents (append only ici) ---
         if files_data:
             for f in files_data:
                 EnvelopeDocument.objects.create(envelope=instance, file=f)
 
+        # --- upsert destinataires ---
         if recipients_data is not None:
-            existing = {r.id: r for r in instance.recipients.all()}
+            existing_recipients = {r.id: r for r in instance.recipients.all()}
             provided_ids = []
+            recipients_by_order = {}
 
             with transaction.atomic():
                 for rec in recipients_data:
+                    # enrichissement auto si email correspond à un user
                     if not rec.get('id'):
-                        email = rec.get('email', '').strip().lower()
+                        email = (rec.get('email') or '').strip().lower()
                         try:
                             usr = User.objects.get(email=email)
                             rec['user'] = usr
@@ -224,65 +371,93 @@ class EnvelopeSerializer(serializers.ModelSerializer):
                             pass
 
                     rec_id = rec.get('id')
-                    if rec_id and rec_id in existing:
-                        obj = existing[rec_id]
+                    if rec_id and rec_id in existing_recipients:
+                        obj = existing_recipients[rec_id]
                         for k, v in rec.items():
                             setattr(obj, k, v)
                         obj.save()
                         provided_ids.append(rec_id)
+                        recipients_by_order[obj.order] = obj
                     else:
-                        obj = EnvelopeRecipient.objects.create(
-                            envelope=instance, **rec
-                        )
+                        obj = EnvelopeRecipient.objects.create(envelope=instance, **rec)
                         provided_ids.append(obj.id)
+                        recipients_by_order[obj.order] = obj
 
-                for rid, obj in existing.items():
+                # suppression des destinataires non fournis
+                for rid, obj in existing_recipients.items():
                     if rid not in provided_ids:
                         obj.delete()
 
+        # --- upsert champs ---
         if fields_data is not None:
-            existing = {f.id: f for f in instance.fields.all()}
-            provided = []
-            rec_map = {r.order: r for r in instance.recipients.all()}
+            existing_fields = {f.id: f for f in instance.fields.all()}
+            provided_field_ids = []
+            # carte d'ordre -> recipient (si la section recipients n’a pas été renvoyée)
+            if recipients_data is None:
+                recipients_by_order = {r.order: r for r in instance.recipients.all()}
 
             with transaction.atomic():
                 for fld in fields_data:
                     field_id = fld.get('id')
-                    order = fld.pop('recipient_id', None)
-                    recipient = rec_map.get(order)
+
+                    # résout destinataire
+                    recipient = self._resolve_recipient_for_field(instance, fld, recipients_by_order)
                     if not recipient:
+                        logger.warning('Champ ignoré (destinataire introuvable) en update: %s', fld)
                         continue
 
-                    if field_id and field_id in existing:
-                        obj = existing[field_id]
-                        for k, v in fld.items():
+                    # résout document (peut être None)
+                    document = self._resolve_document_for_field(instance, fld)
+
+                    # validation page/document
+                    self._validate_page_against_pdf(document, fld.get('page', 1))
+
+                    if field_id and field_id in existing_fields:
+                        obj = existing_fields[field_id]
+                        # appliquer payload restant
+                        updatable = {k: v for k, v in fld.items() if k not in ('recipient_id', 'recipient_real_id')}
+                        for k, v in updatable.items():
                             setattr(obj, k, v)
                         obj.recipient = recipient
+                        obj.document = document
                         obj.save()
-                        provided.append(field_id)
+                        provided_field_ids.append(field_id)
                     else:
                         obj = SigningField.objects.create(
                             envelope=instance,
                             recipient=recipient,
+                            document=document,
                             **fld
                         )
-                        provided.append(obj.id)
+                        provided_field_ids.append(obj.id)
 
-                for fid, obj in existing.items():
-                    if fid not in provided:
+                # suppression des champs non fournis
+                for fid, obj in existing_fields.items():
+                    if fid not in provided_field_ids:
                         obj.delete()
 
         return instance
+
+
+# -------- List & others --------
+
 class EnvelopeListSerializer(serializers.ModelSerializer):
     recipients_count = serializers.IntegerField(source='recipients.count', read_only=True)
     completion_rate = serializers.ReadOnlyField()
 
     class Meta:
         model = Envelope
-        fields = ['id', 'title', 'status', 'initiateur', 'created_at', 'deadline_at',
-                  'recipients_count', 'completion_rate', 'flow_type']
-
- 
+        fields = [
+            'id',
+            'title',
+            'status',
+            'initiateur',
+            'created_at',
+            'deadline_at',
+            'recipients_count',
+            'completion_rate',
+            'flow_type',
+        ]
 
 
 class SignatureDocumentSerializer(serializers.ModelSerializer):
@@ -290,10 +465,23 @@ class SignatureDocumentSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = SignatureDocument
-        fields = ['id', 'envelope', 'recipient', 'recipient_name', 'signer', 'is_guest',
-                  'signature_data', 'signed_fields', 'signed_file', 'signed_at',
-                  'ip_address', 'user_agent', 'certificate_data']
+        fields = [
+            'id',
+            'envelope',
+            'recipient',
+            'recipient_name',
+            'signer',
+            'is_guest',
+            'signature_data',
+            'signed_fields',
+            'signed_file',
+            'signed_at',
+            'ip_address',
+            'user_agent',
+            'certificate_data',
+        ]
         read_only_fields = ['signed_at', 'ip_address', 'user_agent', 'certificate_data']
+
 
 class PrintQRCodeSerializer(serializers.ModelSerializer):
     envelope_title = serializers.CharField(source='envelope.title', read_only=True)
@@ -301,6 +489,15 @@ class PrintQRCodeSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = PrintQRCode
-        fields = ['uuid', 'envelope', 'envelope_title', 'qr_type', 'state', 'created_at',
-                  'scanned_at', 'expires_at', 'is_valid']
+        fields = [
+            'uuid',
+            'envelope',
+            'envelope_title',
+            'qr_type',
+            'state',
+            'created_at',
+            'scanned_at',
+            'expires_at',
+            'is_valid',
+        ]
         read_only_fields = ['uuid', 'hmac', 'state', 'created_at', 'scanned_at']

@@ -325,7 +325,12 @@ class SigningField(models.Model):
         ('text', 'Texte libre'),
         ('initial', 'Initiales')
     ]
-    
+    document = models.ForeignKey(
+        EnvelopeDocument,
+        on_delete=models.CASCADE,
+        null=True, blank=True,
+        related_name='fields'
+    )
     envelope = models.ForeignKey(Envelope, on_delete=models.CASCADE, related_name='fields')
     recipient = models.ForeignKey(EnvelopeRecipient, on_delete=models.CASCADE, related_name='fields')
     field_type = models.CharField(max_length=20, choices=FIELD_TYPES)

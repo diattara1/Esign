@@ -33,7 +33,6 @@ class CustomUser(AbstractUser):
     def __str__(self):
         return self.get_full_name() or self.username
 
- 
 
 
 class Envelope(models.Model):
@@ -276,7 +275,91 @@ class EnvelopeDocument(models.Model):
         return self.name or f"Document {self.pk}"
 
 
+class SavedSignature(models.Model):
+    TYPE_CHOICES = [
+        ("upload", "Uploaded image"),
+        ("draw", "Drawn pad"),
+        ("text", "Typed name"),
+    ]
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="saved_signatures")
+    kind = models.CharField(max_length=10, choices=TYPE_CHOICES, default="upload")
+    image = models.ImageField(upload_to="signature/saved/", storage=encrypted_storage, null=True, blank=True)
+    data_url = models.TextField(blank=True, default="")  # si tu veux stocker le base64
+    created_at = models.DateTimeField(auto_now_add=True)
 
+    def __str__(self):
+        return f"{self.user_id} - {self.kind} - {self.created_at:%Y-%m-%d}"
+
+
+# --- TEMPLATE DE PLACEMENT (optionnel, pour réutiliser des zones) ----------
+class FieldTemplate(models.Model):
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="field_templates")
+    name = models.CharField(max_length=120)
+    # un seul placement (même endroit) :
+    page = models.PositiveIntegerField(default=1)
+    x = models.FloatField()
+    y = models.FloatField()
+    width = models.FloatField()
+    height = models.FloatField()
+    # optionnel : ancre textuelle
+    anchor = models.CharField(max_length=200, blank=True, default="")
+    offset_x = models.FloatField(default=0)
+    offset_y = models.FloatField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.name} ({self.owner_id})"
+
+
+# --- BATCH SIGNING ----------------------------------------------------------
+class BatchSignJob(models.Model):
+    MODE_CHOICES = [
+        ("self_single", "Self sign single"),
+        ("bulk_same_spot", "Bulk same spot"),
+        ("bulk_var_spots", "Bulk different spots"),
+    ]
+    STATUS_CHOICES = [
+        ("queued", "Queued"),
+        ("running", "Running"),
+        ("completed", "Completed"),
+        ("partial", "Partial"),
+        ("failed", "Failed"),
+    ]
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="batch_sign_jobs")
+    mode = models.CharField(max_length=20, choices=MODE_CHOICES)
+    status = models.CharField(max_length=12, choices=STATUS_CHOICES, default="queued")
+    total = models.PositiveIntegerField(default=0)
+    done = models.PositiveIntegerField(default=0)
+    failed = models.PositiveIntegerField(default=0)
+    started_at = models.DateTimeField(null=True, blank=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+    # ZIP final contenant les PDF signés
+    result_zip = models.FileField(upload_to="signature/batch_zip/", storage=encrypted_storage, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Job {self.id} - {self.mode} - {self.status}"
+
+
+class BatchSignItem(models.Model):
+    STATUS_CHOICES = [
+        ("queued", "Queued"),
+        ("running", "Running"),
+        ("completed", "Completed"),
+        ("failed", "Failed"),
+    ]
+    job = models.ForeignKey(BatchSignJob, on_delete=models.CASCADE, related_name="items")
+    # référence vers un document : soit EnvelopeDocument existant, soit un fichier uploadé
+    envelope_document = models.ForeignKey("EnvelopeDocument", on_delete=models.SET_NULL, null=True, blank=True)
+    source_file = models.FileField(upload_to="signature/batch_src/", storage=encrypted_storage, null=True, blank=True)
+
+    # placements (pour var_spots) : [{page,x,y,width,height}, ...]
+    placements = models.JSONField(default=list, blank=True)
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default="queued")
+    error = models.TextField(blank=True, default="")
+    # pdf signé
+    signed_file = models.FileField(upload_to="signature/batch_signed/", storage=encrypted_storage, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
 
 class EnvelopeRecipient(models.Model):
     

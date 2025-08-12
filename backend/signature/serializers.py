@@ -5,14 +5,9 @@ from django.core.mail import send_mail
 from django.conf import settings
 from django.db import transaction
 
-from .models import (
-    Envelope,
-    EnvelopeRecipient,
-    SigningField,
-    SignatureDocument,
-    PrintQRCode,
-    NotificationPreference,
-    EnvelopeDocument,
+from .models import (SavedSignature, FieldTemplate, BatchSignJob, BatchSignItem,
+    Envelope,EnvelopeRecipient,SigningField,SignatureDocument,PrintQRCode,
+    NotificationPreference,EnvelopeDocument,
 )
 
 from PyPDF2 import PdfReader
@@ -439,8 +434,28 @@ class EnvelopeSerializer(serializers.ModelSerializer):
         return instance
 
 
-# -------- List & others --------
 
+
+class SavedSignatureSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SavedSignature
+        fields = ["id", "kind", "image", "data_url", "created_at"]
+
+class FieldTemplateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FieldTemplate
+        fields = ["id", "name", "page", "x", "y", "width", "height", "anchor", "offset_x", "offset_y", "created_at"]
+
+class BatchSignItemSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = BatchSignItem
+        fields = ["id", "status", "error", "signed_file", "placements", "envelope_document"]
+
+class BatchSignJobSerializer(serializers.ModelSerializer):
+    items = BatchSignItemSerializer(many=True, read_only=True)
+    class Meta:
+        model = BatchSignJob
+        fields = ["id", "mode", "status", "total", "done", "failed", "started_at", "finished_at", "result_zip", "created_at", "items"]
 class EnvelopeListSerializer(serializers.ModelSerializer):
     recipients_count = serializers.IntegerField(source='recipients.count', read_only=True)
     completion_rate = serializers.ReadOnlyField()

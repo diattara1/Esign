@@ -14,6 +14,7 @@ import RegisterPage from './pages/RegisterPage';
 import PasswordResetPage from './pages/PasswordResetPage';
 import NotificationSettings from './pages/NotificationSettings';
 import ProfilePage from './pages/ProfilePage';
+import SelfSignWizard from './pages/SelfSignWizard';
 import SentEnvelopes from './components/SentEnvelopes';
 import CompletedEnvelopes from './components/CompletedEnvelopes';
 import ActionRequiredEnvelopes from './components/ActionRequiredEnvelopes';
@@ -67,6 +68,7 @@ const App = () => {
      <Route element={<ProtectedRoute />}>
   <Route element={<MainLayout><Outlet /></MainLayout>}>
     <Route path="/dashboard" element={<DashboardSignature />} />
+    <Route path="/signature/self-sign" element={<SelfSignWizard />} />
     <Route path="/signature/upload" element={<DocumentUpload />} />
     <Route path="/signature/detail/:id" element={<DocumentDetail />} />
     <Route path="/signature/workflow/:id" element={<DocumentWorkflow />} />

@@ -14,14 +14,18 @@ from .views.auth import (
     password_reset_request,
 )
 from .views.notification import NotificationPreferenceViewSet
+from .views.batch import SelfSignView, BatchSignCreateView, BatchSignJobViewSet
 
 router = DefaultRouter()
+router.register(r"batch-jobs", BatchSignJobViewSet, basename="batch-jobs")
 router.register(r'envelopes', EnvelopeViewSet, basename='envelopes')
 router.register(r'prints', PrintQRCodeViewSet, basename='prints')
 router.register(r'notifications', NotificationPreferenceViewSet, basename='notifications')
 
 urlpatterns = [
     path('', include(router.urls)),
+    path("self-sign/", SelfSignView.as_view()),
+    path("batch-sign/", BatchSignCreateView.as_view()),
     path('register/', register, name='register'),
     path('activate/<uidb64>/<token>/', activate_account, name='activate-account'),
     path('profile/', user_profile, name='user-profile'),

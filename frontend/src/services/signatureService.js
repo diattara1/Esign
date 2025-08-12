@@ -153,6 +153,29 @@ remindNow: (id) =>
   getQRCodes: () => api.get(`${BASE}/prints/`).then(res => res.data),
 
   verifyQRCode: uuid => api.get(`${BASE}/prints/${uuid}/verify/`).then(res => res.data),
+// Self-sign (un ou plusieurs docs, même endroit)
+selfSign: (formData, { sync = false } = {}) => {
+  const config = {};
+  if (sync) config.responseType = 'blob';
+  
+  return api.post('api/signature/self-sign/', formData, config)
+    .then(res => sync ? res.data : res.data);
+},
+
+// Batch sign (same spot ou var spots)
+createBatchSign: (formData) =>
+  api.post('api/signature/batch-sign/', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
+    .then(res => res.data),
+
+getBatchJob: (id) =>
+  api.get(`api/signature/batch-jobs/${id}/`).then(res => res.data),
+
+downloadBatchZip: (id) =>
+  api.get(`api/signature/batch-jobs/${id}/download/`, { responseType: 'blob' })
+    .then(res => {
+      const url = URL.createObjectURL(res.data);
+      return { url };
+    }),
 
 
 };

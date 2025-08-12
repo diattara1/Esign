@@ -84,9 +84,11 @@ const DocumentUpload = () => {
                 required
               />
               {files.length > 0 && (
-                <p className="mt-2 text-sm text-green-600">
-                  {files.length} fichier(s) sélectionné(s)
-                </p>
+                <ul className="mt-2 text-sm text-green-600 list-disc list-inside">
+                  {files.map((f) => (
+                    <li key={f.name}>{f.name}</li>
+                  ))}
+                </ul>
               )}
             </div>
 

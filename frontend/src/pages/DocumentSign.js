@@ -213,6 +213,26 @@ const DocumentSign = () => {
           {isAlreadySigned ? 'Document déjà signé :' : 'Signer le document :'} {envelope.title}
         </h1>
 
+        {envelope.documents?.length > 0 && (
+          <div className="mb-4">
+            <h2 className="font-semibold mb-2">Documents</h2>
+            <ul className="space-y-1">
+              {envelope.documents.map(doc => (
+                <li key={doc.id}>
+                  <a
+                    href={doc.file_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-600 underline"
+                  >
+                    {doc.name || `Document ${doc.id}`}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         {/* Guest OTP */}
         {isGuest && !otpSent && !otpVerified && !isAlreadySigned && (
           <button

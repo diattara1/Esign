@@ -12,13 +12,19 @@ const DocumentDetail = ({ envelope }) => {
   const [pdfUrl, setPdfUrl] = useState(null);
   const [loadingPdf, setLoadingPdf] = useState(false);
   const [iframeError, setIframeError] = useState(false);
+  const [selectedDoc, setSelectedDoc] = useState(null);
 
   useEffect(() => {
     async function loadEnvelope() {
       try {
         const data = await signatureService.getEnvelope(id);
         setEnv(data);
-        await loadPdfPreview(data);
+        if (data.documents && data.documents.length > 0) {
+          setSelectedDoc(data.documents[0]);
+          await loadPdfPreview(data.documents[0].file_url);
+        } else {
+          await loadPdfPreview(null, data.id);
+        }
       } catch (err) {
         toast.error('Échec du chargement de l\'enveloppe');
         console.error('Failed to fetch envelope:', err);
@@ -29,15 +35,17 @@ const DocumentDetail = ({ envelope }) => {
     loadEnvelope();
   }, [id]);
 
-  const loadPdfPreview = async (envelopeData = env) => {
-    if (!envelopeData) return;
-
+  const loadPdfPreview = async (fileUrl, envelopeId) => {
     setLoadingPdf(true);
     setIframeError(false);
     try {
-      const { download_url } = await signatureService.downloadEnvelope(envelopeData.id);
-      // Ajouter #toolbar=0 pour masquer les contrôles du lecteur PDF
-      const embedUrl = `${download_url}#toolbar=0&navpanes=0&scrollbar=0`;
+      let url = fileUrl;
+      if (!url && envelopeId) {
+        const { download_url } = await signatureService.downloadEnvelope(envelopeId);
+        url = download_url;
+      }
+      if (!url) return;
+      const embedUrl = `${url}#toolbar=0&navpanes=0&scrollbar=0`;
       setPdfUrl(embedUrl);
     } catch (error) {
       console.error('Erreur lors du chargement du PDF:', error);
@@ -56,33 +64,26 @@ const DocumentDetail = ({ envelope }) => {
 
   const handlePreview = async () => {
     if (pdfUrl) {
-      // Ouvrir sans les paramètres d'intégration
       const originalUrl = pdfUrl.split('#')[0];
       window.open(originalUrl, '_blank');
-    } else {
-      try {
-        const { download_url } = await signatureService.downloadEnvelope(env.id);
-        window.open(download_url, '_blank');
-      } catch (error) {
-        toast.error('PDF non disponible');
-      }
     }
   };
 
   const handleDownload = async () => {
     try {
-      if (env.status !== 'completed') {
-        toast.error('Le document n\'est pas encore finalisé');
-        return;
+      let downloadUrl;
+      if (selectedDoc) {
+        downloadUrl = selectedDoc.file_url;
+      } else {
+        const { download_url } = await signatureService.downloadEnvelope(env.id);
+        downloadUrl = download_url;
       }
-
-      const { download_url } = await signatureService.downloadEnvelope(env.id);
-      const response = await fetch(download_url);
+      const response = await fetch(downloadUrl);
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `${env.title}_signed.pdf`;
+      link.download = selectedDoc ? selectedDoc.name || `${env.title}.pdf` : `${env.title}_signed.pdf`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -104,6 +105,29 @@ const DocumentDetail = ({ envelope }) => {
       <div className="w-1/3 bg-white border-r border-gray-200 overflow-y-auto">
         <div className="p-6">
           <h1 className="text-2xl font-bold mb-6">Détails : {env.title}</h1>
+
+          {env.documents?.length > 0 && (
+            <div className="mb-6">
+              <h2 className="text-lg font-semibold mb-2">Documents</h2>
+              <ul className="space-y-1">
+                {env.documents.map(doc => (
+                  <li key={doc.id}>
+                    <button
+                      onClick={() => {
+                        setSelectedDoc(doc);
+                        loadPdfPreview(doc.file_url);
+                      }}
+                      className={`text-left w-full px-2 py-1 rounded ${
+                        selectedDoc?.id === doc.id ? 'bg-blue-100' : 'hover:bg-gray-100'
+                      }`}
+                    >
+                      {doc.name || `Document ${doc.id}`}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           
           <div className="space-y-4 mb-6">
             <div>

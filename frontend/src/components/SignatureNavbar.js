@@ -41,17 +41,10 @@ const SignatureNavbar = () => {
     },
     {
       path: '/signature/bulk-same',
-      label: 'Signature masse - même endroit',
+      label: 'Signature masse',
       icon: <FiLayers className="w-4 h-4" />,
       description: 'Plusieurs docs, même position',
       color: 'blue'
-    },
-    {
-      path: '/signature/bulk-different',
-      label: 'Signature masse - endroits différents',
-      icon: <FiZap className="w-4 h-4" />,
-      description: 'Plusieurs docs, positions variables',
-      color: 'purple'
     }
   ];
 
@@ -261,13 +254,15 @@ const SignatureNavbar = () => {
                   <Link
                     key={option.path}
                     to={option.path}
-                    className={`flex items-center space-x-3 px-3 py-3 rounded-lg text-base font-medium transition-colors duration-200 ${getColorClasses(option.color)}`}
+                    className={`flex items-start space-x-3 px-3 py-3 rounded-lg text-base font-medium transition-colors duration-200 ${getColorClasses(option.color)}`}
                     onClick={() => setMobileMenuOpen(false)}
                   >
-                    {option.icon}
+                    <div className="flex-shrink-0 mt-0.5">
+                      {option.icon}
+                    </div>
                     <div>
-                      <div>{option.label}</div>
-                      <div className="text-xs text-gray-500">{option.description}</div>
+                      <div className="text-sm font-medium">{option.label}</div>
+                      <div className="text-xs text-gray-500 mt-0.5">{option.description}</div>
                     </div>
                   </Link>
                 ))}

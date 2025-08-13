@@ -178,8 +178,8 @@ class BatchSignCreateView(APIView):
         mode = request.data.get("mode", "bulk_same_spot")
         if mode not in ("bulk_same_spot", "bulk_var_spots"):
             return Response({"error": "mode invalide"}, status=400)
-
-        # parse placements
+    
+        # ---- parse placements / placements_by_doc
         def parse_json(val, default):
             if val is None:
                 return default
@@ -189,33 +189,56 @@ class BatchSignCreateView(APIView):
                 return json.loads(val)
             except Exception:
                 return default
-
+    
         placements = parse_json(request.data.get("placements"), [])
         placements_by_doc = parse_json(request.data.get("placements_by_doc"), {})
-
+    
+        # ---- fichiers et ids
         doc_ids = request.data.getlist("document_ids") if hasattr(request.data, "getlist") else (request.data.get("document_ids") or [])
-        files = request.FILES.getlist("files")
-
+        files = request.FILES.getlist("files")  # la page envoie 'files', c’est bon
+    
         if not doc_ids and not files:
             return Response({"error": "Aucun document fourni"}, status=400)
         if mode == "bulk_same_spot" and not placements:
             return Response({"error": "placements requis pour bulk_same_spot"}, status=400)
-
+    
+        # ---- source de signature (obligatoire en batch)
+        sig_file = request.FILES.get("signature_image")
+        use_saved_signature_id = request.data.get("use_saved_signature_id")
+        if not sig_file and not use_saved_signature_id:
+            return Response({"error": "signature_image requis (ou use_saved_signature_id)"}, status=400)
+    
+        # si un fichier est fourni, on le met en temp pour le worker
+        sig_upload_path = None
+        if sig_file:
+            import tempfile
+            tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
+            tmp.write(sig_file.read())
+            tmp.flush()
+            sig_upload_path = tmp.name
+    
+        # ---- création du job et de ses items
         with transaction.atomic():
             job = BatchSignJob.objects.create(created_by=user, mode=mode, total=(len(doc_ids)+len(files)))
-
+    
             for did in doc_ids or []:
                 ed = EnvelopeDocument.objects.filter(pk=int(did)).first()
                 if not ed:
                     continue
                 pls = placements if mode == "bulk_same_spot" else (placements_by_doc.get(str(did)) or placements_by_doc.get(int(did)) or [])
                 BatchSignItem.objects.create(job=job, envelope_document=ed, placements=pls)
-
+    
             for f in files or []:
                 it = BatchSignItem.objects.create(job=job, placements=(placements if mode == "bulk_same_spot" else []))
                 it.source_file.save(getattr(f, "name", "upload.pdf"), f, save=True)
-
-        process_batch_sign_job.delay(job.id)
+    
+        # ---- lancer le worker EN LUI PASSANT la signature
+        process_batch_sign_job.delay(
+            job.id,
+            use_saved_signature_id=use_saved_signature_id,
+            signature_upload_path=sig_upload_path,
+        )
+    
         return Response(BatchSignJobSerializer(job).data, status=201)
 
 

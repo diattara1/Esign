@@ -2,45 +2,57 @@
 import React, { useEffect, useRef, useState, useLayoutEffect } from 'react';
 import { Document, Page } from 'react-pdf';
 import { toast } from 'react-toastify';
+import { FiUpload, FiX, FiEdit3, FiMenu, FiCheck, FiMove } from 'react-icons/fi';
 import signatureService from '../services/signatureService';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 
 export default function SelfSignWizard() {
-  const [files, setFiles] = useState([]);           // FileList -> Array<File>
-  const [pdfUrl, setPdfUrl] = useState(null);       // preview du 1er PDF
+  // --- états ---
+  const [file, setFile] = useState(null);          // UN SEUL PDF
+  const [pdfUrl, setPdfUrl] = useState(null);
   const [numPages, setNumPages] = useState(0);
   const [pageDims, setPageDims] = useState({});
   const viewerRef = useRef(null);
   const [viewerWidth, setViewerWidth] = useState(0);
+  const [isMobile, setIsMobile] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const [placing, setPlacing] = useState(false);
   const [placement, setPlacement] = useState(null); // {page,x,y,width,height}
   const [sigFile, setSigFile] = useState(null);
+  const [isProcessing, setIsProcessing] = useState(false);
 
+  // --- layout / resize ---
   useLayoutEffect(() => {
+    const checkMobile = () => {
+      const mobile = window.innerWidth < 768;
+      setIsMobile(mobile);
+      if (mobile) setSidebarOpen(false);
+    };
     const measure = () => setViewerWidth(viewerRef.current?.clientWidth || 600);
-    measure();
-    const ro = new ResizeObserver(measure);
+    checkMobile(); measure();
+    const ro = new ResizeObserver(() => { checkMobile(); measure(); });
     if (viewerRef.current) ro.observe(viewerRef.current);
+    window.addEventListener('resize', checkMobile);
     window.addEventListener('resize', measure);
     return () => {
       ro.disconnect();
+      window.removeEventListener('resize', checkMobile);
       window.removeEventListener('resize', measure);
     };
   }, []);
 
-  const onFiles = e => {
-    const arr = Array.from(e.target.files || []);
-    setFiles(arr);
-    setPlacement(null);
-    // preview du 1er
-    if (arr[0]) {
-      const url = URL.createObjectURL(arr[0]);
-      setPdfUrl(url);
-    } else {
-      setPdfUrl(null);
+  // --- upload d'un seul fichier ---
+  const onFile = (e) => {
+    const f = e.target.files?.[0] || null;
+    if (e.target.files && e.target.files.length > 1) {
+      toast.info('Un seul PDF est pris en compte ici (le premier a été sélectionné).');
     }
+    setFile(f);
+    setPlacement(null);
+    setPdfUrl(f ? URL.createObjectURL(f) : null);
+    if (isMobile) setSidebarOpen(false);
   };
 
   const onDocLoad = ({ numPages }) => setNumPages(numPages);
@@ -59,169 +71,271 @@ export default function SelfSignWizard() {
     setPlacement({ page: pageNumber, x, y, width, height });
     setPlacing(false);
     toast.success(`Zone posée p.${pageNumber}`);
+    if (isMobile) setSidebarOpen(false);
   };
 
+  // --- envoi : toujours en mode direct (sync=true) ---
   const submit = async () => {
-    if (!files.length) return toast.error('Ajoute au moins un PDF');
+    if (!file) return toast.error('Ajoute un PDF');
     if (!placement) return toast.error('Définis la zone de signature');
-    if (!sigFile) return toast.error('Ajoute une image de signature (PNG transparent recommandé)');
+    if (!sigFile) return toast.error('Ajoute une image de signature (PNG recommandé)');
 
+    setIsProcessing(true);
     const fd = new FormData();
-    files.forEach(f => fd.append('files[]', f));
+    fd.append('files[]', file);                                  // un seul fichier
     fd.append('placements', JSON.stringify([placement]));
     fd.append('signature_image', sigFile);
+    fd.append('sync', 'true');                                    // fast-path
 
     try {
-       if (files.length === 1) {
-        // mode direct
-        fd.append('sync', 'true');
-        const blob = await signatureService.selfSign(fd, { sync: true });
-        const url = URL.createObjectURL(blob);
-        const base = (files[0].name || 'document').replace(/\.pdf$/i,'');
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `${base}_signed.pdf`;
-        a.click();
-        URL.revokeObjectURL(url);
-        toast.success('Document signé et téléchargé');
-        return;
-      }
-
-      // sinon: batch
-      const job = await signatureService.selfSign(fd);
-      toast.success('Job lancé');
-let intervalId = null;
-
-const poll = async () => {
-  try {
-    const j = await signatureService.getBatchJob(job.id);
-    if (j.status === 'completed' || j.status === 'partial' || j.status === 'failed') {
-      if (intervalId) clearInterval(intervalId);
-      if (j.result_zip) {
-        const { url } = await signatureService.downloadBatchZip(j.id);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `batch_${j.id}.zip`;
-        a.click();
-        URL.revokeObjectURL(url);
-      }
-      toast.info(`Terminé: ${j.done}/${j.total}, échecs: ${j.failed}`);
-    }
-  } catch (e) {
-    if (intervalId) clearInterval(intervalId);
-    console.error(e);
-    toast.error('Erreur de suivi du job');
-  }
-};
-
-await poll();                 // 👉 un premier poll immédiat
-intervalId = setInterval(poll, 2000)
-
-      // polling simple (toutes les 2s)
-      const interval = setInterval(async () => {
-        const j = await signatureService.getBatchJob(job.id);
-        if (j.status === 'completed' || j.status === 'partial' || j.status === 'failed') {
-          clearInterval(interval);
-          if (j.result_zip) {
-            const { url } = await signatureService.downloadBatchZip(j.id);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `batch_${j.id}.zip`;
-            a.click();
-            URL.revokeObjectURL(url);
-          }
-          toast.info(`Terminé: ${j.done}/${j.total}, échecs: ${j.failed}`);
-        }
-      }, 2000);
+      const blob = await signatureService.selfSign(fd, { sync: true });
+      const url = URL.createObjectURL(blob);
+      const base = (file.name || 'document').replace(/\.pdf$/i, '');
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${base}_signed.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success('Document signé et téléchargé');
     } catch (e) {
-     console.error(e);
-     const msg = e?.response?.data?.error || 'Erreur au lancement du job';
-     toast.error(msg);
+      const msg = (await (async () => {
+        if (e?.response?.data instanceof Blob) {
+          const t = await e.response.data.text();
+          try { return JSON.parse(t).error || t; } catch { return t; }
+        }
+        return e?.response?.data?.error || e.message || 'Erreur inconnue';
+      })());
+      toast.error(msg);
+    } finally {
+      setIsProcessing(false);
     }
   };
 
-  return (
-    <div className="flex h-screen">
-      {/* Sidebar */}
-      <div className="w-1/3 p-6 bg-white border-r overflow-auto">
-        <h1 className="text-2xl font-bold mb-4">Signer maintenant</h1>
-
-        <div className="mb-4">
-          <label className="block font-medium mb-1">PDF(s)</label>
-          <input type="file" accept="application/pdf" multiple onChange={onFiles} />
-          <p className="text-xs text-gray-500 mt-1">Sélectionne 1 ou plusieurs PDF</p>
-        </div>
-
-        <div className="mb-4">
-          <label className="block font-medium mb-1">Signature (PNG)</label>
-          <input type="file" accept="image/*" onChange={e => setSigFile(e.target.files?.[0] || null)} />
-          <p className="text-xs text-gray-500 mt-1">Transparent recommandé pour un rendu propre</p>
-        </div>
-
-        <div className="mb-4">
-          <button
-            onClick={() => setPlacing(true)}
-            className={`px-3 py-2 rounded ${placing ? 'bg-yellow-600' : 'bg-yellow-500'} text-white`}
-          >
-            {placement ? 'Redéfinir la zone' : 'Définir la zone'}
-          </button>
-          {placement && (
-            <div className="mt-2 text-sm text-green-700">
-              p.{placement.page} x {Math.round(placement.x)} y {Math.round(placement.y)} w {Math.round(placement.width)} h {Math.round(placement.height)}
+  // --- UI sidebar ---
+  const SidebarContent = () => (
+    <>
+      <div className="p-4 md:p-6 border-b border-gray-200">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center space-x-3">
+            <div className="p-2 bg-emerald-100 rounded-lg">
+              <FiEdit3 className="w-5 h-5 text-emerald-600" />
             </div>
+            <div>
+              <h1 className="text-lg md:text-xl font-bold text-gray-900">Auto-signature</h1>
+              
+            </div>
+          </div>
+          {isMobile && (
+            <button onClick={() => setSidebarOpen(false)} className="p-2 hover:bg-gray-100 rounded-lg">
+              <FiX className="w-5 h-5" />
+            </button>
           )}
         </div>
 
+        <div className="grid grid-cols-2 gap-3 text-center">
+        
+          
+        </div>
+      </div>
+
+      {/* Upload (1 seul PDF) */}
+      <div className="p-4 md:p-6 border-b border-gray-200">
+        <label className="block text-sm font-medium text-gray-700 mb-2">PDF</label>
+        <div className="relative">
+          <input
+            type="file"
+            accept="application/pdf"
+            onChange={onFile}
+            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+          />
+          <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center hover:border-emerald-400 hover:bg-emerald-50 transition-colors">
+            <FiUpload className="w-6 md:w-8 h-6 md:h-8 text-gray-400 mx-auto mb-2" />
+            <p className="text-sm text-gray-600">Clique ou glisse ton PDF</p>
+            <p className="text-xs text-gray-400 mt-1">Un seul document</p>
+          </div>
+        </div>
+
+        {file && (
+          <div className="mt-3 flex items-center justify-between p-2 bg-gray-50 rounded text-sm">
+            <span className="truncate">{file.name}</span>
+            <button
+              onClick={() => { setFile(null); setPdfUrl(null); setPlacement(null); }}
+              className="ml-2 text-red-500 hover:text-red-700"
+            >
+              <FiX className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Signature PNG */}
+      <div className="p-4 md:p-6 border-b border-gray-200">
+        <label className="block text-sm font-medium text-gray-700 mb-2">Signature </label>
+        <input
+          type="file"
+          accept="image/*"
+          onChange={e => setSigFile(e.target.files?.[0] || null)}
+          className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100"
+        />
+        {sigFile && (
+          <div className="mt-2 flex items-center space-x-2">
+            <FiCheck className="w-4 h-4 text-green-500" />
+            <span className="text-sm text-green-600">{sigFile.name}</span>
+          </div>
+        )}
+      </div>
+
+
+      {/* Actions */}
+      <div className="p-4 md:p-6 bg-gray-50 mt-auto">
+        <button
+          onClick={() => { setPlacing(true); if (isMobile) setSidebarOpen(false); }}
+          disabled={!pdfUrl}
+          className={`w-full mb-3 px-4 py-2 rounded-lg font-medium transition-colors ${
+            placing ? 'bg-yellow-500 text-white cursor-not-allowed'
+                    : 'bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed'
+          }`}
+        >
+          {placement ? 'Redéfinir la zone' : 'Définir la zone'}
+        </button>
         <button
           onClick={submit}
-          className="w-full bg-blue-600 text-white py-2 rounded"
+          disabled={isProcessing || !file || !placement || !sigFile}
+          className="w-full px-4 py-2 bg-gradient-to-r from-emerald-600 to-blue-600 text-white font-medium rounded-lg hover:from-emerald-700 hover:to-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
         >
-          Lancer la signature
+          {isProcessing
+            ? <div className="flex items-center justify-center space-x-2"><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div><span>Signature...</span></div>
+            : <div className="flex items-center justify-center space-x-2"><FiEdit3 className="w-4 h-4" /><span>Signer et télécharger</span></div>}
         </button>
+      </div>
+    </>
+  );
+
+  // --- rendu ---
+  return (
+    <div className="flex h-screen bg-gray-50">
+      {isMobile && (
+        <button
+          onClick={() => setSidebarOpen(true)}
+          className="fixed top-20 left-4 z-50 p-3 bg-white rounded-lg shadow-lg border border-gray-200 md:hidden"
+        >
+          <FiMenu className="w-5 h-5" />
+        </button>
+      )}
+
+      {/* Sidebar */}
+      <div className={`${
+        isMobile
+          ? `fixed inset-y-0 left-0 z-40 w-80 transform transition-transform duration-300 ease-in-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`
+          : 'w-1/3'
+      } bg-white border-r border-gray-200 flex flex-col`}>
+        {isMobile && sidebarOpen && (
+          <div className="fixed inset-0 bg-black/50 z-30" onClick={() => setSidebarOpen(false)} />
+        )}
+        <div className="relative z-40 bg-white h-full flex flex-col">
+          <SidebarContent />
+        </div>
       </div>
 
       {/* Viewer */}
-      <div className="flex-1 p-4 overflow-auto bg-gray-50" ref={viewerRef}>
-        {!pdfUrl ? (
-          <div className="text-gray-500">Ajoute au moins un PDF pour prévisualiser</div>
-        ) : (
-          <Document file={pdfUrl} onLoadSuccess={onDocLoad} loading={<div>Chargement...</div>}>
-            {Array.from({ length: numPages }, (_, i) => (
-              <div key={i} className="relative mb-6">
-                <Page
-                  pageNumber={i + 1}
-                  width={viewerWidth || 600}
-                  renderTextLayer={false}
-                  onLoadSuccess={p => onPageLoad(i + 1, p)}
-                />
-                {pageDims[i + 1] && (
-                  <div
-                    onClick={e => handleOverlayClick(e, i + 1)}
-                    className="absolute top-0 left-0 w-full"
-                    style={{
-                      height: pageDims[i + 1].height * ((viewerWidth || 600) / (pageDims[i + 1].width || 600)),
-                      cursor: placing ? 'crosshair' : 'default',
-                      zIndex: 10,
-                      backgroundColor: placing ? 'rgba(255, 255, 0, 0.08)' : 'transparent'
-                    }}
-                  />
-                )}
-                {placement?.page === i + 1 && (
-                  <div
-                    className="absolute border-2 border-green-500 bg-green-100/60"
-                    style={{
-                      top: placement.y * ((viewerWidth || 600) / (pageDims[i + 1]?.width || 1)),
-                      left: placement.x * ((viewerWidth || 600) / (pageDims[i + 1]?.width || 1)),
-                      width: placement.width * ((viewerWidth || 600) / (pageDims[i + 1]?.width || 1)),
-                      height: placement.height * ((viewerWidth || 600) / (pageDims[i + 1]?.width || 1)),
-                      zIndex: 20
-                    }}
-                  />
+      <div className="flex-1 flex flex-col" ref={viewerRef}>
+        <div className="bg-white border-b border-gray-200 px-4 md:px-6 py-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-gray-900">
+              {file ? file.name : 'Aperçu PDF'}
+            </h2>
+            {placement && (
+              <span className="hidden md:inline px-2 py-1 bg-emerald-100 text-emerald-700 text-xs rounded-full">
+                Zone p.{placement.page}
+              </span>
+            )}
+            {placing && (
+              <span className="px-3 py-1 bg-yellow-100 text-yellow-800 text-sm rounded-full animate-pulse">
+                {isMobile ? 'Clique sur le PDF' : 'Mode placement actif'}
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-auto bg-gray-100">
+          {!pdfUrl ? (
+            <div className="flex items-center justify-center h-full p-6 text-center">
+              <FiUpload className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+              <div>
+                <p className="text-gray-600 text-lg">Ajoute un PDF pour prévisualiser</p>
+                <p className="text-gray-400 text-sm mt-2">Signature rapide d’un document</p>
+                {isMobile && (
+                  <button onClick={() => setSidebarOpen(true)} className="mt-4 px-4 py-2 bg-emerald-500 text-white rounded-lg">
+                    Ouvrir les options
+                  </button>
                 )}
               </div>
-            ))}
-          </Document>
-        )}
+            </div>
+          ) : (
+            <div className="p-3 md:p-6">
+              <Document
+                file={pdfUrl}
+                onLoadSuccess={onDocLoad}
+                loading={<div className="flex items-center justify-center p-8"><div className="w-8 h-8 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin"></div></div>}
+                error={<div className="text-red-500 text-center p-8">Erreur lors du chargement du PDF</div>}
+              >
+                {Array.from({ length: numPages }, (_, i) => {
+                  const pageWidth = Math.min(viewerWidth - (isMobile ? 24 : 48), isMobile ? 350 : 800);
+                  const scale = pageWidth / (pageDims[i + 1]?.width || 1);
+                  return (
+                    <div key={i} className="relative mb-6 bg-white shadow-lg rounded-lg overflow-hidden">
+                      <Page
+                        pageNumber={i + 1}
+                        width={pageWidth}
+                        renderTextLayer={false}
+                        onLoadSuccess={p => onPageLoad(i + 1, p)}
+                        className="mx-auto"
+                      />
+                      {pageDims[i + 1] && (
+                        <div
+                          onClick={e => handleOverlayClick(e, i + 1)}
+                          className="absolute top-0 left-1/2 transform -translate-x-1/2"
+                          style={{
+                            width: pageWidth,
+                            height: pageDims[i + 1].height * scale,
+                            cursor: placing ? 'crosshair' : 'default',
+                            zIndex: 10,
+                            backgroundColor: placing ? 'rgba(16, 185, 129, 0.08)' : 'transparent'
+                          }}
+                        />
+                      )}
+                      {placement?.page === i + 1 && (
+                        <div
+                          className="absolute border-2 border-emerald-500 bg-emerald-100/60 rounded"
+                          style={{
+                            top: placement.y * scale,
+                            left: `calc(50% - ${pageWidth / 2}px + ${placement.x * scale}px)`,
+                            width: placement.width * scale,
+                            height: placement.height * scale,
+                            zIndex: 20
+                          }}
+                        >
+                          <div className="absolute -top-6 left-0 bg-emerald-500 text-white text-xs px-2 py-1 rounded">
+                            Signature
+                          </div>
+                          <button
+                            onClick={() => setPlacement(null)}
+                            className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center text-xs hover:bg-red-600"
+                          >
+                            <FiX className="w-3 h-3" />
+                          </button>
+                        </div>
+                      )}
+                      <div className="absolute bottom-2 right-2 bg-gray-900/75 text-white text-sm px-2 py-1 rounded">
+                        Page {i + 1}/{numPages}
+                      </div>
+                    </div>
+                  );
+                })}
+              </Document>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

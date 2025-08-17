@@ -71,8 +71,6 @@ class Envelope(models.Model):
     deadline_at = models.DateTimeField(null=True, blank=True)
     jwt_token = models.CharField(max_length=512, blank=True)
     expires_at = models.DateTimeField(null=True, blank=True)
-    reminder_days = models.PositiveIntegerField(default=1)
-    deadline_at = models.DateTimeField(null=True, blank=True)
     def _file_changed(self):
         if not self.pk:
             return True

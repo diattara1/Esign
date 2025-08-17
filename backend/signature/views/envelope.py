@@ -10,21 +10,17 @@ from django.utils.decorators import method_decorator
 from rest_framework.response import Response
 from django.utils import timezone
 from django.db import transaction
-from django.http import Http404, StreamingHttpResponse, FileResponse
+from django.http import Http404, FileResponse
 from django.shortcuts import get_object_or_404
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
-from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.clickjacking import xframe_options_exempt
 import jwt, logging, io, base64
-import hashlib
-from datetime import datetime
-from ..tasks import send_signature_email, send_reminder_email
+from ..tasks import send_signature_email
 from django.conf import settings
 from ..otp import generate_otp, validate_otp, send_otp
 from ..hsm import hsm_sign
-from django.conf import settings
-from ..models import (Envelope,EnvelopeRecipient,SignatureDocument,PrintQRCode,AuditLog,EnvelopeDocument)
+from ..models import (Envelope,EnvelopeRecipient,SignatureDocument,PrintQRCode,EnvelopeDocument)
 from ..serializers import (
     EnvelopeSerializer,
     EnvelopeListSerializer,
@@ -32,39 +28,16 @@ from ..serializers import (
     SignatureDocumentSerializer,
     PrintQRCodeSerializer,
 )
-from signature.crypto_utils import sign_pdf_bytes, load_simple_signer
-from reportlab.lib.pagesizes import letter
+from signature.crypto_utils import sign_pdf_bytes
 from reportlab.pdfgen import canvas
 from django.core.files.base import ContentFile
 from PyPDF2 import PdfReader, PdfWriter
 from reportlab.lib.utils import ImageReader
 from django.db.models import Q
-from pyhanko.sign import signers
-from pyhanko.sign.signers import PdfSigner, PdfSignatureMetadata
-from pyhanko.sign.fields import SigFieldSpec
-from pyhanko.pdf_utils.incremental_writer import IncrementalPdfFileWriter
 from pyhanko.sign.timestamps.requests_client import HTTPTimeStamper
 from oscrypto import keys
 from pyhanko.sign.validation import ValidationContext
 
-# 1.a. chargez vos racines de confiance
-#    - votre propre certificat (selfsign ou Sectigo)
-#    - la racine FreeTSA pour valider le token
-sectigo_root = keys.parse_certificate(
-    open(settings.PDF_SIGNER_DIR / "selfsign_cert.pem", "rb").read()
-)
-freetsa_root = keys.parse_certificate(
-    open(settings.FREETSA_CACERT, "rb").read()
-)
-
-# 1.b. créez le contexte de validation
-vc = ValidationContext(
-    trust_roots=[sectigo_root, freetsa_root],
-    allow_fetching=True,    
-    revocation_mode="hard-fail"  
-)
-
-tsa_client = HTTPTimeStamper(settings.FREETSA_URL)
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -563,84 +536,7 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
         except Exception as e:
             return Response({'error': f'Échec d’ouverture du fichier : {e}'}, status=500)
 
-    # ---------- Cœur : signature incrémentale sans aplatir ----------
-    def _add_signature_overlay_to_pdf(self, pdf_bytes, signature_data, x, y_top, w, h, page_ix):
-        """
-        NOUVELLE MÉTHODE: Ajoute un overlay graphique sur un PDF existant
-        sans perdre les signatures précédentes.
-        """
-        import io, base64
-        from PyPDF2 import PdfReader, PdfWriter
-        from reportlab.pdfgen import canvas
-        from reportlab.lib.utils import ImageReader
-    
-        # 1) Lire le PDF de base
-        base_reader = PdfReader(io.BytesIO(pdf_bytes))
-        
-        # 2) Obtenir les dimensions de la page cible
-        if page_ix >= len(base_reader.pages):
-            page_ix = 0
-        page = base_reader.pages[page_ix]
-        page_w = float(page.mediabox.width)
-        page_h = float(page.mediabox.height)
-        
-        # 3) Convertir les coordonnées
-        y_pdf = page_h - (y_top + h)
-        
-        # 4) Extraire l'image de signature
-        img_data = None
-        if isinstance(signature_data, dict):
-            for key, value in signature_data.items():
-                if isinstance(value, str) and value:
-                    img_data = value
-                    break
-        elif isinstance(signature_data, str):
-            img_data = signature_data
-    
-        # 5) Créer l'overlay avec ReportLab
-        packet = io.BytesIO()
-        c = canvas.Canvas(packet, pagesize=(page_w, page_h))
-        
-        try:
-            if img_data and isinstance(img_data, str):
-                # Gérer les data URLs
-                b64_data = img_data.split(',', 1)[1] if img_data.startswith('data:') else img_data
-                if b64_data:
-                    img_bytes = base64.b64decode(b64_data)
-                    c.drawImage(
-                        ImageReader(io.BytesIO(img_bytes)),
-                        x, y_pdf, width=w, height=h,
-                        preserveAspectRatio=True, mask='auto'
-                    )
-        except Exception as e:
-            # En cas d'erreur avec l'image, on continue sans bloquer
-            logger.warning(f"Erreur lors de l'ajout de l'overlay graphique: {e}")
-        
-        c.showPage()
-        c.save()
-        packet.seek(0)
-    
-        # 6) Fusionner l'overlay avec le PDF existant
-        try:
-            overlay_reader = PdfReader(packet)
-            writer = PdfWriter()
-            
-            for i, base_page in enumerate(base_reader.pages):
-                if i == page_ix and len(overlay_reader.pages) > 0:
-                    # Fusionner l'overlay sur la page cible
-                    base_page.merge_page(overlay_reader.pages[0])
-                writer.add_page(base_page)
-            
-            # Écrire le résultat
-            output = io.BytesIO()
-            writer.write(output)
-            return output.getvalue()
-            
-        except Exception as e:
-            logger.error(f"Erreur lors de la fusion de l'overlay: {e}")
-            # En cas d'échec, retourner le PDF original
-            return pdf_bytes
-    
+
     # ---------- Signature ----------
     @action(detail=True, methods=['post'], permission_classes=[permissions.AllowAny])
 # Dans envelope.py - Méthode sign corrigée
@@ -928,6 +824,7 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
                 envelope.save(update_fields=['status'])
     
         return Response({'status': 'signed'})   
+    
     def _add_signature_overlay_to_pdf(self, pdf_bytes, signature_data, x, y_top, w, h, page_ix):
         """
         Version améliorée qui préserve TOUJOURS les signatures existantes
@@ -1015,6 +912,7 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
             logger.error(f"Erreur critique lors de l'ajout de l'overlay graphique: {e}")
             # En cas d'échec, retourner le PDF original pour ne pas bloquer le processus
             return pdf_bytes
+    
     def _refuse_if_deadline_passed(self, envelope):
         if envelope.deadline_at and timezone.now() >= envelope.deadline_at:
             if envelope.status in ['sent', 'pending']:
@@ -1030,12 +928,7 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
         except jwt.InvalidTokenError:
             return False
 
-def _verify_token(self, envelope, token):
-        try:
-            payload = jwt.decode(token, settings.SECRET_KEY, algorithms=['HS256'])
-            return payload.get('env_id') == envelope.id and 'recipient_id' in payload
-        except jwt.InvalidTokenError:
-            return False
+
 @api_view(['GET'])
 @permission_classes([AllowAny])
 @authentication_classes([])
@@ -1142,12 +1035,3 @@ class PrintQRCodeViewSet(viewsets.ModelViewSet):
             'file_url': qr.envelope.document_file.url,
             'token': qr.envelope.jwt_token
         })
-
-class SignatureDocumentViewSet(viewsets.ReadOnlyModelViewSet):
-    serializer_class = SignatureDocumentSerializer
-    permission_classes = [permissions.IsAuthenticated]
-
-    def get_queryset(self):
-        return SignatureDocument.objects.filter(
-            envelope__created_by=self.request.user
-        ).order_by('-signed_at')

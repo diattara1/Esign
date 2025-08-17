@@ -12,7 +12,7 @@ const ActionRequiredEnvelopes = () => {
   useEffect(() => {
     const loadEnvelopes = async () => {
       try {
-        const data = await signatureService.getActionRequiredEnvelopes();
+        const data = await signatureService.getReceivedEnvelopes();
         setEnvelopes(data);
       } catch (err) {
         toast.error("Impossible de charger les actions requises");

@@ -1,7 +1,7 @@
 // src/pages/LoginPage.js
 import React, { useState } from 'react';
 import { useAuth } from '../AuthContext';
-import { useLocation } from 'react-router-dom';
+import { useLocation, Link } from 'react-router-dom';
 
 const LoginPage = () => {
   const { login, isLoading } = useAuth();
@@ -72,6 +72,18 @@ const LoginPage = () => {
         >
           {isLoading ? 'Connexion…' : 'Se connecter'}
         </button>
+         <Link
+          to="/password-reset"
+          className="block mt-4 text-center text-blue-600 hover:underline"
+        >
+          Mot de passe oublié ?
+        </Link>
+        <Link
+          to="/register"
+          className="block mt-2 text-center text-blue-600 hover:underline"
+        >
+          Créer un compte
+        </Link>
       </form>
     </div>
   );

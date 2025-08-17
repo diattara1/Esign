@@ -106,16 +106,17 @@ class ChangePasswordSerializer(serializers.Serializer):
         return value
 
     def validate_new_password(self, value):
-        from django.contrib.auth.password_validation import validate_password
-
-        validate_password(value, self.context['request'].user)
+        if len(value) < 5: 
+            raise serializers.ValidationError("Le mot de passe doit contenir au moins 5 caractères.") 
         return value
+
 
     def save(self, **kwargs):
         user = self.context['request'].user
         user.set_password(self.validated_data['new_password'])
         user.save()
         return user
+
 
 
 class NotificationPreferenceSerializer(serializers.ModelSerializer):

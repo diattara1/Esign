@@ -15,6 +15,11 @@ const ProfilePage = () => {
   });
   const [avatarPreview, setAvatarPreview] = useState(null);
   const [message, setMessage] = useState('');
+  const [passwordData, setPasswordData] = useState({
+    old_password: '',
+    new_password: '',
+  });
+  const [pwdMessage, setPwdMessage] = useState('');
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -41,6 +46,22 @@ const ProfilePage = () => {
     setProfile((prev) => ({ ...prev, avatar: file }));
     if (file) {
       setAvatarPreview(URL.createObjectURL(file));
+    }
+  };
+
+  const handlePasswordChange = (e) => {
+    const { name, value } = e.target;
+    setPasswordData((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handlePasswordSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      await api.post('/api/signature/change-password/', passwordData);
+      setPwdMessage('Mot de passe mis à jour');
+      setPasswordData({ old_password: '', new_password: '' });
+    } catch (err) {
+      setPwdMessage('Erreur lors du changement de mot de passe');
     }
   };
 
@@ -168,6 +189,37 @@ const ProfilePage = () => {
           className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
         >
           Enregistrer
+        </button>
+      </form>
+      <hr className="my-6" />
+      <h3 className="text-xl font-bold mb-4">Changer le mot de passe</h3>
+      {pwdMessage && <div className="mb-4 text-center">{pwdMessage}</div>}
+      <form onSubmit={handlePasswordSubmit} className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700">Ancien mot de passe</label>
+          <input
+            type="password"
+            name="old_password"
+            value={passwordData.old_password}
+            onChange={handlePasswordChange}
+            className="w-full border border-gray-300 rounded px-3 py-2"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700">Nouveau mot de passe</label>
+          <input
+            type="password"
+            name="new_password"
+            value={passwordData.new_password}
+            onChange={handlePasswordChange}
+            className="w-full border border-gray-300 rounded px-3 py-2"
+          />
+        </div>
+        <button
+          type="submit"
+          className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+        >
+          Modifier le mot de passe
         </button>
       </form>
     </div>

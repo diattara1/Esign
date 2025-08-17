@@ -4,6 +4,8 @@ from django.contrib.auth.tokens import default_token_generator
 from django.core.mail import send_mail
 from django.conf import settings
 from django.db import transaction
+from django.utils.http import urlsafe_base64_encode
+from django.utils.encoding import force_bytes
 
 from .models import (SavedSignature, FieldTemplate, BatchSignJob, BatchSignItem,
     Envelope,EnvelopeRecipient,SigningField,SignatureDocument,PrintQRCode,
@@ -85,7 +87,8 @@ class PasswordResetSerializer(serializers.Serializer):
         email = self.validated_data['email']
         user = User.objects.get(email=email)
         token = default_token_generator.make_token(user)
-        reset_link = request.build_absolute_uri(f"/reset-password/{user.pk}/{token}/")
+        uid = urlsafe_base64_encode(force_bytes(user.pk))
+        reset_link = request.build_absolute_uri(f"/reset-password/{uid}/{token}/")
         send_mail(
             'Réinitialisation de mot de passe',
             f'Utilisez ce lien pour réinitialiser votre mot de passe : {reset_link}',

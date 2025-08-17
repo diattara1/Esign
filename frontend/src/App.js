@@ -12,6 +12,7 @@ import SignatureLayout from './pages/SignatureLayout';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import PasswordResetPage from './pages/PasswordResetPage';
+import PasswordResetConfirmPage from './pages/PasswordResetConfirmPage';
 import NotificationSettings from './pages/NotificationSettings';
 import ProfilePage from './pages/ProfilePage';
 import SelfSignWizard from './pages/SelfSignWizard';
@@ -55,11 +56,12 @@ const App = () => {
       {/* ROUTES PUBLIQUES - À PLACER EN PREMIER ET DANS LE BON ORDRE */}
       
       {/* LOGIN */}
-      <Route path="/login" element={<LoginPage />} />
-      <Route path="/register" element={<RegisterPage />} />
-      <Route path="/password-reset" element={<PasswordResetPage />} />
-      {/* Signature invitée avec token - ROUTE PUBLIQUE */}
-      <Route path="/sign/:id" element={<DocumentSign />} />
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/register" element={<RegisterPage />} />
+        <Route path="/password-reset" element={<PasswordResetPage />} />
+        <Route path="/reset-password/:uid/:token" element={<PasswordResetConfirmPage />} />
+        {/* Signature invitée avec token - ROUTE PUBLIQUE */}
+        <Route path="/sign/:id" element={<DocumentSign />} />
       
       {/* Page de confirmation - PUBLIQUE */}
       <Route path="/signature/success" element={<SignatureConfirmation />} />

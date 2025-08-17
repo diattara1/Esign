@@ -12,6 +12,7 @@ from .views.auth import (
     activate_account,
     user_profile,
     password_reset_request,
+    password_reset_confirm,
 )
 from .views.notification import NotificationPreferenceViewSet
 from .views.batch import SelfSignView, BatchSignCreateView, BatchSignJobViewSet
@@ -30,6 +31,7 @@ urlpatterns = [
     path('activate/<uidb64>/<token>/', activate_account, name='activate-account'),
     path('profile/', user_profile, name='user-profile'),
     path('password-reset/', password_reset_request, name='password-reset'),
+    path('password-reset/<uidb64>/<token>/', password_reset_confirm, name='password-reset-confirm'),
     path('envelopes/<int:pk>/guest/', guest_envelope_view, name='guest-envelope'),
     path('envelopes/<int:pk>/document/', serve_decrypted_pdf, name='serve-decrypted-pdf'),
 ]

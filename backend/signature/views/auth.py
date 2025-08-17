@@ -13,7 +13,12 @@ from django.contrib.auth.tokens import default_token_generator
 from django.contrib.auth import get_user_model
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
-from ..serializers import UserRegistrationSerializer, UserProfileSerializer, PasswordResetSerializer
+from ..serializers import (
+    UserRegistrationSerializer,
+    UserProfileSerializer,
+    PasswordResetSerializer,
+    ChangePasswordSerializer,
+)
 
 User = get_user_model()
 
@@ -122,6 +127,16 @@ def password_reset_request(request):
     if serializer.is_valid():
         serializer.save()
         return Response({'detail': 'Email de réinitialisation envoyé'}, status=status.HTTP_200_OK)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def change_password(request):
+    serializer = ChangePasswordSerializer(data=request.data, context={'request': request})
+    if serializer.is_valid():
+        serializer.save()
+        return Response({'detail': 'Mot de passe mis à jour'}, status=status.HTTP_200_OK)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 @api_view(['GET'])

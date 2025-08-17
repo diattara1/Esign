@@ -18,9 +18,13 @@ const SentEnvelopes = () => {
 
   const DocumentCell = ({ row }) => (
     <div>
-      <div className="text-base font-medium text-gray-900">{row.title}</div>
-      <div className="text-xs text-gray-500 mt-1">Destinataires: {row.recipients.map(r => r.email).join(', ')}</div>
-    </div>
+     <div className="text-base font-medium text-gray-900">{row.title}</div>
+      <div className="text-xs text-gray-500 mt-1">
+        Destinataires: {row.recipients.map(r => r.email).join(', ')}
+      </div>
+      <div className="text-xs text-gray-500">
+        Progression: {row.recipients.filter(r => r.signed).length}/{row.recipients.length} signés
+      </div></div>
   );
 
   const columns = [
@@ -37,11 +41,17 @@ const SentEnvelopes = () => {
     {
       Header: 'Statut',
       accessor: 'status',
-      Cell: ({ value }) => (
-        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-          {value || 'Envoyé'}
-        </span>
-      )
+        Cell: ({ value }) => {
+        const label = value === 'pending' ? 'En cours' : (value || 'Envoyé');
+        const badgeClass = value === 'pending'
+          ? 'bg-yellow-100 text-yellow-800'
+          : 'bg-blue-100 text-blue-800';
+        return (
+          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${badgeClass}`}>
+            {label}
+          </span>
+        );
+      }
     },
     {
       Header: 'Actions',

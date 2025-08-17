@@ -9,6 +9,7 @@ import { Document, Page, pdfjs } from 'react-pdf';
 import signatureService from '../services/signatureService';
 import SignaturePadComponent from '../components/SignaturePadComponent';
 import Modal from 'react-modal';
+import Countdown from '../components/Countdown';
 
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
@@ -23,6 +24,7 @@ const DocumentSign = () => {
   const isGuest = Boolean(token);
 
   const navigate = useNavigate();
+  const [expired, setExpired] = useState(false);
 
   // viewer stable (évite le zoom/retrécissement)
   const pdfWrapper = useRef(null);
@@ -161,9 +163,9 @@ const DocumentSign = () => {
       }
     };
     init();
-  }, [id, token, isGuest, navigate]); // logiques initiales conservées :contentReference[oaicite:1]{index=1}
+  }, [id, token, isGuest, navigate]);
 
-  // ✅ Révocation différée de l'URL blob (comme dans Workflow)
+  // ✅ Révocation différée de l'URL blob
   const prevUrlRef = useRef(null);
   useEffect(() => {
     const prev = prevUrlRef.current;
@@ -175,7 +177,7 @@ const DocumentSign = () => {
         }
       } catch {}
     };
-  }, [pdfUrl]); // pattern identique à DocumentWorkflow :contentReference[oaicite:2]{index=2}
+  }, [pdfUrl]);
 
   // ✅ Changement de document → charger le nouveau PDF
   useEffect(() => {
@@ -207,7 +209,7 @@ const DocumentSign = () => {
     load();
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedDoc]); // fix de la course et du remount :contentReference[oaicite:3]{index=3}
+  }, [selectedDoc]);
 
   // OTP
   const handleSendOtp = async () => {
@@ -303,6 +305,18 @@ const DocumentSign = () => {
     return envelope.fields.filter(f => f.editable).every(f => f.signed);
   };
 
+  // Utilitaire: dataURL -> base64 pur
+  const toBase64 = (val) => {
+    if (typeof val !== 'string') return '';
+    const m = val.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
+    return m ? m[2] : val; // si déjà base64 pur, on le laisse tel quel
+  };
+
+  const normalizeAllSignatures = (sigMap) =>
+    Object.fromEntries(
+      Object.entries(sigMap || {}).map(([k, v]) => [k, toBase64(v)])
+    );
+
   const handleSign = async () => {
     if (signing) return;
     if (!canSign()) return toast.error('Veuillez compléter toutes vos signatures');
@@ -312,9 +326,10 @@ const DocumentSign = () => {
         acc[f.id] = { ...f, signed: f.signed };
         return acc;
       }, {});
+      const normalizedSigData = normalizeAllSignatures(signatureData);
       await signatureService.sign(
         id,
-        { signature_data: signatureData, signed_fields: signedFields },
+        { signature_data: normalizedSigData, signed_fields: signedFields },
         isGuest ? token : undefined
       );
       toast.success('Document signé');

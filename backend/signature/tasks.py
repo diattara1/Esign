@@ -16,6 +16,8 @@ from PIL import Image
 from PyPDF2 import PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
 from reportlab.lib.utils import ImageReader
+from .crypto_utils import sign_pdf_bytes
+
 
 from django.conf import settings
 
@@ -103,15 +105,18 @@ def _paste_signature_on_pdf(pdf_bytes: bytes, sig_img_bytes: bytes, placements: 
 
 
 
-def _crypto_sign_pdf(pdf_bytes: bytes) -> bytes:
-    """
-    Signature numérique (pyHanko) minimaliste.
-    Si tu as déjà une util utilitaire dans envelope.py, appelle-la ici.
-    """
-    # TODO: remplace par ton flux pyHanko existant (certs/tsa)
-    # Pour garder le kit auto-contenu on renvoie le même fichier (sans crypto)
-    # -> à brancher avec ta fonction existante de signature PAdES.
-    return pdf_bytes
+# signature/tasks.py
+
+def _crypto_sign_pdf(pdf_bytes: bytes, field_name: str | None = None) -> bytes:
+    # Reload pour éviter les versions obsolètes en mémoire du worker
+    from importlib import reload
+    from . import crypto_utils as cu
+    try:
+        reload(cu)
+    except Exception:
+        pass
+    return cu.sign_pdf_bytes(pdf_bytes, field_name=field_name)
+
 
 
 @shared_task
@@ -131,11 +136,15 @@ def process_batch_sign_job(job_id: int, use_saved_signature_id=None, signature_u
     if use_saved_signature_id:
         from .models import SavedSignature
         ss = SavedSignature.objects.get(pk=use_saved_signature_id, user=job.created_by)
-        if ss.image:
-            sig_bytes = ss.image.read()
-        elif ss.data_url:
-            head, b64 = ss.data_url.split(",", 1)
+        if getattr(ss, "image", None):
+            f = ss.image
+            f.open("rb")
+            sig_bytes = f.read()
+            f.close()
+        elif getattr(ss, "data_url", None):
+            head, b64 = ss.data_url.split(",", 1) if "," in ss.data_url else ("", ss.data_url)
             sig_bytes = base64.b64decode(b64)
+
     elif signature_upload_path:
         with open(signature_upload_path, "rb") as f:
             sig_bytes = f.read()
@@ -171,7 +180,8 @@ def process_batch_sign_job(job_id: int, use_saved_signature_id=None, signature_u
             stamped = _paste_signature_on_pdf(pdf_src, sig_bytes, placements)
 
             # signature numérique (branche ici ton pyHanko/HSM)
-            signed_bytes = _crypto_sign_pdf(stamped)
+            signed_bytes = _crypto_sign_pdf(stamped, field_name=f"Batch_{item.id}")
+
 
             base_name = None
             if item.envelope_document and item.envelope_document.name:

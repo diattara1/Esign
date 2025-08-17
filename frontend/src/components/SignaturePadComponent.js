@@ -1,8 +1,16 @@
-import React, { useRef } from 'react';
+import React, { useRef,useEffect } from 'react';
 import SignatureCanvas from 'react-signature-canvas';
 
-const SignaturePadComponent = ({ onEnd, canvasProps }) => {
+const SignaturePadComponent = ({ onEnd, onChange, initialValue, canvasProps }) => {
+   
   const sigRef = useRef();
+  // Charger une valeur initiale (dataURL) si fournie
+  useEffect(() => {
+    if (!sigRef.current || !initialValue) return;
+    try {
+      sigRef.current.fromDataURL(initialValue);
+    } catch {}
+  }, [initialValue]);
 
   return (
     <div className="border border-gray-300 rounded-md p-2 bg-white">
@@ -10,7 +18,9 @@ const SignaturePadComponent = ({ onEnd, canvasProps }) => {
         penColor="black"
         canvasProps={{ className: 'sigCanvas', ...canvasProps }}
         ref={sigRef}
-        onEnd={() => onEnd(sigRef.current.toDataURL())}
+        onBegin={() => onChange?.(sigRef.current.toDataURL())}
+        onEnd={() => onEnd?.(sigRef.current.toDataURL())}
+        onTouchEnd={() => onEnd?.(sigRef.current.toDataURL())}
       />
       <button
         onClick={() => sigRef.current.clear()}

@@ -19,6 +19,11 @@ env = environ.Env()
 
 environ.Env.read_env(os.path.join(BASE_DIR, ".env"))
 PDF_SIGNER_DIR = BASE_DIR / "certs"
+# --- Signature / Certs (ton certificat SIGNER) ---
+SELF_SIGN_CERT_FILE = PDF_SIGNER_DIR / "selfsign_cert.pem"   #  cert de signature (PEM)
+SELF_SIGN_KEY_FILE  = PDF_SIGNER_DIR / "selfsign_key.pem"    #  clé privée (PEM)
+SELF_SIGN_CA_CHAIN  = [PDF_SIGNER_DIR / "selfsign_cert.pem"] # chaîne complète si tu as un CA
+
 # URL du TSA
 FREETSA_URL    = "https://freetsa.org/tsr"
 

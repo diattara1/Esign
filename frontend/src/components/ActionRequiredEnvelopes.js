@@ -45,11 +45,16 @@ const ActionRequiredEnvelopes = () => {
     {
       Header: 'Statut',
       accessor: 'status',
-      Cell: ({ value }) => (
-        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-          {value || 'En attente'}
-        </span>
-      )
+       Cell: ({ value }) => {
+        const isPending = value === 'pending';
+        const label = isPending ? 'En cours' : (value || 'En attente');
+        const cls = isPending ? 'bg-yellow-100 text-yellow-800' : 'bg-blue-100 text-blue-800';
+        return (
+          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${cls}`}>
+            {label}
+          </span>
+        );
+      }
     },
     {
       Header: 'Actions',

@@ -32,6 +32,7 @@ from ..serializers import (
     SignatureDocumentSerializer,
     PrintQRCodeSerializer,
 )
+from signature.crypto_utils import sign_pdf_bytes, load_simple_signer
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from django.core.files.base import ContentFile
@@ -134,53 +135,65 @@ def guest_envelope_view(request, pk):
     })
 
     return Response(data)
-
+def _clean_b64(data: str | None) -> str | None:
+    """
+    Accepte 'data:image/...;base64,AAAA' ou déjà 'AAAA', renvoie le base64 pur ou None.
+    """
+    if not data:
+        return None
+    if isinstance(data, str) and data.startswith('data:image'):
+        return data.split(',', 1)[1]
+    return data
 class EnvelopeViewSet(viewsets.ModelViewSet):
     serializer_class = EnvelopeSerializer
     permission_classes = [IsAuthenticated]
     parser_classes = [JSONParser, MultiPartParser, FormParser]
 
+    # ---------- Queryset & pages ----------
     def get_queryset(self):
         user = self.request.user
-        status = self.request.query_params.get('status')
+        status_q = self.request.query_params.get('status')
         recipient_filter = (
             Q(recipients__user=user) |
             (Q(recipients__user__isnull=True) & Q(recipients__email=user.email))
         )
 
-        # 1) Brouillons, envoyées, supprimées : seuls le créateur
-        if status in ['draft', 'sent', 'cancelled']:
+        # 1) Brouillons / annulées (créateur)
+        if status_q in ['draft', 'cancelled']:
             return Envelope.objects.filter(
-                created_by=user,
-                status=status
+                created_by=user, status=status_q
             ).order_by('-created_at')
-        # 2) Actions requises : destinataire non encore signé
-        if status == 'action_required':
+
+        # 2) Envoyées = sent OU pending (créateur)
+        if status_q == 'sent':
             return Envelope.objects.filter(
-                status='sent',  # on ne propose qu’aux enveloppes envoyées
-            ).filter(
-                recipient_filter & Q(recipients__signed=False)
-            ).distinct().order_by('-created_at')
-        # 3) Complétées : créateur + destinataires ayant signé
-        if status == 'completed':
-            return Envelope.objects.filter(
-                status='completed'
-            ).filter(
-                Q(created_by=user) |
-                (recipient_filter & Q(recipients__signed=True))
-            ).distinct().order_by('-created_at')
-        # 4) Page “Documents” (pas de filtre de statut) → créateur et destinataires
-        return Envelope.objects.filter(
-            Q(created_by=user) | recipient_filter
-        ).distinct().order_by('-created_at')
-        
+                created_by=user, status__in=['sent', 'pending']
+            ).order_by('-created_at')
+
+        # 3) Action requise (destinataire non encore signé)
+        if status_q == 'action_required':
+            return (Envelope.objects
+                    .filter(status__in=['sent', 'pending'])
+                    .filter(recipient_filter & Q(recipients__signed=False))
+                    ).distinct().order_by('-created_at')
+
+        # 4) Complétées : créateur + destinataires ayant signé
+        if status_q == 'completed':
+            return (Envelope.objects.filter(status='completed')
+                    .filter(Q(created_by=user) |
+                            (recipient_filter & Q(recipients__signed=True)))
+                    ).distinct().order_by('-created_at')
+
+        # 5) Page “Documents” (tout : créateur + destinataires)
+        return (Envelope.objects
+                .filter(Q(created_by=user) | recipient_filter)
+                ).distinct().order_by('-created_at')
+
     @action(detail=True, methods=['get'], url_path='sign-page', permission_classes=[IsAuthenticated])
     def sign_page(self, request, pk=None):
         """
-        Récupère pour le destinataire connecté :
-         - les infos d'enveloppe
-         - la liste des champs à signer (avec editable=False/True)
-         - l'URL de téléchargement déchiffré (via downloadEnvelope)
+        Page de signature pour un utilisateur authentifié (sans OTP/token invité).
+        Renvoie l’enveloppe + champs signables + infos destinataire.
         """
         try:
             envelope = Envelope.objects.get(pk=pk)
@@ -191,11 +204,7 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
         except EnvelopeRecipient.DoesNotExist:
             return Response({'error': 'Vous n’êtes pas destinataire'}, status=403)
 
-        # Construire la réponse exactement comme pour guest_envelope_view,
-        # mais sans token ni OTP
         data = EnvelopeSerializer(envelope).data
-
-        # champs signables
         fields = []
         for f in envelope.fields.all():
             fld = SigningFieldSerializer(f).data
@@ -203,20 +212,18 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
             fld['signed'] = assigned.signed
             fld['signature_data'] = (
                 SignatureDocument.objects
-                  .filter(envelope=envelope, recipient=assigned)
-                  .order_by('-signed_at')
-                  .first()
-                  .signature_data
+                .filter(envelope=envelope, recipient=assigned)
+                .order_by('-signed_at').first().signature_data
                 if assigned.signed else None
             )
             fld['editable'] = (assigned.user_id == request.user.id and not assigned.signed)
             fields.append(fld)
 
         data.update({
-            'fields':       fields,
+            'fields': fields,
             'recipient_id': rec.id,
             'recipient_full_name': rec.full_name,
-            # on chargera le PDF via signatureService.downloadEnvelope()
+            # côté front, utilisez l’endpoint download/document fournis ci-dessous
         })
         return Response(data)
 
@@ -225,6 +232,7 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
         envelope = serializer.save(created_by=self.request.user, status='draft')
         envelope.save()
 
+    # ---------- Envoi / Annulation ----------
     @action(detail=True, methods=['post'])
     def send(self, request, pk=None):
         envelope = self.get_object()
@@ -238,7 +246,7 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
         envelope.status = 'sent'
         envelope.save()
 
-        # init planification des rappels
+        # Planification des rappels
         if envelope.flow_type == 'sequential':
             first = envelope.recipients.order_by('order').first()
             if first:
@@ -255,14 +263,6 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
 
         return Response({'status': 'sent', 'message': 'Document envoyé avec succès'})
 
-    def _refuse_if_deadline_passed(self, envelope):
-        if envelope.deadline_at and timezone.now() >= envelope.deadline_at:
-            if envelope.status in ['sent', 'pending']:  # fige le statut
-                envelope.status = 'expired'
-                envelope.save(update_fields=['status'])
-            return True
-        return False
-
     @action(detail=True, methods=['post'])
     def cancel(self, request, pk=None):
         envelope = self.get_object()
@@ -272,14 +272,12 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
         envelope.save()
         return Response({'status': 'cancelled', 'message': 'Document annulé'})
 
+    # ---------- OTP (invités) ----------
     @action(detail=True, methods=['post'], url_path='send_otp', permission_classes=[permissions.AllowAny])
     def send_otp(self, request, pk=None):
-        token = (
-            request.data.get('token')
-            or request.GET.get('token')
-            or request.headers.get('X-Signature-Token', '')
-            or request.headers.get('Authorization', '').replace('Bearer ', '')
-        )
+        token = (request.data.get('token') or request.GET.get('token')
+                 or request.headers.get('X-Signature-Token', '')
+                 or request.headers.get('Authorization', '').replace('Bearer ', ''))
         if not token:
             return Response({'error': 'Token requis'}, status=status.HTTP_403_FORBIDDEN)
 
@@ -287,7 +285,6 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
             envelope = Envelope.objects.get(pk=pk)
             if not self._verify_token(envelope, token):
                 return Response({'error': 'Token invalide'}, status=status.HTTP_403_FORBIDDEN)
-
             payload = jwt.decode(token, settings.SECRET_KEY, algorithms=['HS256'])
             recipient = EnvelopeRecipient.objects.get(envelope=pk, id=payload.get('recipient_id'))
         except (Envelope.DoesNotExist, jwt.InvalidTokenError, EnvelopeRecipient.DoesNotExist):
@@ -300,7 +297,7 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
 
         otp = generate_otp(recipient)
         send_otp(recipient, otp)
-        if recipient.user:  # Notify in-app if user has an account
+        if recipient.user:
             recipient.in_app_notified = True
             recipient.notified_at = timezone.now()
             recipient.save()
@@ -308,12 +305,9 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'], url_path='verify_otp', permission_classes=[permissions.AllowAny])
     def verify_otp(self, request, pk=None):
-        token = (
-            request.data.get('token')
-            or request.GET.get('token')
-            or request.headers.get('X-Signature-Token', '')
-            or request.headers.get('Authorization', '').replace('Bearer ', '')
-        )
+        token = (request.data.get('token') or request.GET.get('token')
+                 or request.headers.get('X-Signature-Token', '')
+                 or request.headers.get('Authorization', '').replace('Bearer ', ''))
         if not token:
             return Response({'error': 'Token requis'}, status=status.HTTP_403_FORBIDDEN)
 
@@ -321,12 +315,13 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
             envelope = Envelope.objects.get(pk=pk)
             if not self._verify_token(envelope, token):
                 return Response({'error': 'Token invalide'}, status=status.HTTP_403_FORBIDDEN)
-
             payload = jwt.decode(token, settings.SECRET_KEY, algorithms=['HS256'])
             recipient = EnvelopeRecipient.objects.get(envelope=pk, id=payload.get('recipient_id'))
         except (Envelope.DoesNotExist, jwt.InvalidTokenError, EnvelopeRecipient.DoesNotExist):
             return Response({'error': 'Destinataire non valide'}, status=status.HTTP_403_FORBIDDEN)
 
+        if self._refuse_if_deadline_passed(envelope):
+            return Response({'error': 'Échéance dépassée. La signature est fermée.'}, status=400)
         if envelope.flow_type == 'sequential':
             prev = envelope.recipients.filter(order__lt=recipient.order)
             if prev.filter(signed=False).exists():
@@ -343,42 +338,34 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
 
         return Response({'status': 'otp_verified'}, status=status.HTTP_200_OK)
 
-    @action(detail=True, methods=['post'], url_path='sign', permission_classes=[permissions.AllowAny])
-    def sign(self, request, pk=None):
-        token = (
-            request.data.get('token')
-            or request.GET.get('token')
-            or request.headers.get('X-Signature-Token', '')
-            or request.headers.get('Authorization', '').replace('Bearer ', '')
-        )
-        if not token:
-            return Response({'error': 'Token requis'}, status=status.HTTP_403_FORBIDDEN)
 
-        try:
-            envelope = Envelope.objects.get(pk=pk)
-            if not self._verify_token(envelope, token):
-                return Response({'error': 'Token invalide'}, status=status.HTTP_403_FORBIDDEN)
 
-            payload = jwt.decode(token, settings.SECRET_KEY, algorithms=['HS256'])
-            recipient = EnvelopeRecipient.objects.get(envelope=pk, id=payload.get('recipient_id'))
-        except (Envelope.DoesNotExist, jwt.InvalidTokenError, EnvelopeRecipient.DoesNotExist):
-            return Response({'error': 'Destinataire non valide'}, status=status.HTTP_403_FORBIDDEN)
-        if self._refuse_if_deadline_passed(envelope):
-            return Response({'error': 'Échéance dépassée. La signature est fermée.'}, status=400)
-        if envelope.flow_type == 'sequential':
-            prev = envelope.recipients.filter(order__lt=recipient.order)
-            if prev.filter(signed=False).exists():
-                return Response({'error': "Les destinataires précédents doivent signer d'abord"}, status=status.HTTP_400_BAD_REQUEST)
-
+    @action(detail=True, methods=['post'], url_path='sign_authenticated')
+    def sign_authenticated(self, request, pk=None):
+        """
+        Signature par un utilisateur authentifié.
+        """
+        envelope = self.get_object()
+    
+        # récupérer les données envoyées par le front
         signature_data = request.data.get('signature_data')
-        signed_fields   = request.data.get('signed_fields')
-        if not signature_data or not signed_fields:
-            return Response({'error': 'signature_data et signed_fields requis'}, status=status.HTTP_400_BAD_REQUEST)
-
-        return self._do_sign(recipient, signature_data, signed_fields)
+        signed_fields = request.data.get('signed_fields') or {}
+    
+        # trouver le destinataire correspondant à l'utilisateur connecté
+        try:
+            recipient = envelope.recipients.get(user=request.user)
+        except EnvelopeRecipient.DoesNotExist:
+            return Response({"detail": "Aucun destinataire correspondant."}, status=status.HTTP_403_FORBIDDEN)
+    
+        # exécuter la signature (graphiquement + électroniquement)
+        self._do_sign(envelope, recipient, signature_data, signed_fields)
+    
+        return Response({"detail": "Document signé avec succès."}, status=status.HTTP_200_OK)
+    
 
     @action(detail=True, methods=['post'])
     def hsm_sign(self, request, pk=None):
+        """Signature via HSM (PIN requis)."""
         recipient_id = request.data.get('recipient_id')
         if not recipient_id:
             return Response({'error': 'recipient_id requis'}, status=status.HTTP_400_BAD_REQUEST)
@@ -392,105 +379,93 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
             if prev.filter(signed=False).exists():
                 return Response({'error': "Les destinataires précédents doivent signer d'abord"}, status=status.HTTP_400_BAD_REQUEST)
 
-        
-
         pin = request.data.get('pin')
         try:
             signature = hsm_sign(recipient, pin)
-            return self._do_sign(recipient, signature, request.data.get('signed_fields', {}))
+            return self._do_sign(recipient.envelope, recipient, signature, request.data.get('signed_fields', {}))
+
         except Exception as e:
             return Response({'error': f'Erreur HSM : {e}'}, status=status.HTTP_400_BAD_REQUEST)
 
-    @action(detail=True, methods=['post'], url_path='sign_authenticated')
-    def sign_authenticated(self, request, pk=None):
+    # ---------- Téléchargement / Visualisation ----------
+    @action(detail=True, methods=['get'])
+    def download(self, request, pk=None):
         """
-        Signing endpoint for authenticated users (no token required)
+        Renvoie une URL de téléchargement :
+        - s’il existe déjà un PDF signé (même en 'pending'), on propose l’URL du signé,
+        - sinon, l’URL de l’original.
         """
-        try:
-            envelope = Envelope.objects.get(pk=pk)
-        except Envelope.DoesNotExist:
-            return Response({'error': 'Enveloppe non trouvée'}, status=status.HTTP_404_NOT_FOUND)
-        
-        # Get the recipient for the authenticated user
-        try:
-            recipient = envelope.recipients.get(user=request.user)
-        except EnvelopeRecipient.DoesNotExist:
-            return Response({'error': 'Vous n\'êtes pas destinataire de cette enveloppe'}, 
-                          status=status.HTTP_403_FORBIDDEN)
-        if self._refuse_if_deadline_passed(envelope):
-            return Response({'error': 'Échéance dépassée. La signature est fermée.'}, status=400)
-
-        # Check sequential flow
-        if envelope.flow_type == 'sequential':
-            prev = envelope.recipients.filter(order__lt=recipient.order)
-            if prev.filter(signed=False).exists():
-                return Response({'error': "Les destinataires précédents doivent signer d'abord"}, 
-                              status=status.HTTP_400_BAD_REQUEST)
-        
-        # Check if already signed
-        if recipient.signed:
-            return Response({'error': 'Vous avez déjà signé ce document'}, 
-                          status=status.HTTP_400_BAD_REQUEST)
-        
-        # Validate required data
-        signature_data = request.data.get('signature_data')
-        signed_fields = request.data.get('signed_fields')
-        if not signature_data or not signed_fields:
-            return Response({'error': 'signature_data et signed_fields requis'}, 
-                          status=status.HTTP_400_BAD_REQUEST)
-        
-        return self._do_sign(recipient, signature_data, signed_fields)
-    
-    @action(detail=True, methods=['get'], url_path=r'documents/(?P<doc_id>\d+)/file')
-    @method_decorator(xframe_options_exempt, name='dispatch')
-    def document_file(self, request, pk=None, doc_id=None):
         try:
             envelope = Envelope.objects.get(pk=pk)
         except Envelope.DoesNotExist:
             return Response({'error': 'Enveloppe non trouvée'}, status=404)
-    
-        # autorisations : créateur ou destinataire de l'enveloppe
+
+        is_owner = (envelope.created_by == request.user)
+        is_signed_recipient = envelope.recipients.filter(user=request.user).exists()
+        if not (is_owner or is_signed_recipient):
+            return Response({'error': 'Non autorisé'}, status=403)
+
+        sig_doc = (SignatureDocument.objects
+                   .filter(envelope=envelope, signed_file__isnull=False)
+                   .order_by('-signed_at').first())
+
+        if sig_doc:
+            download_url = request.build_absolute_uri(f'/api/signature/envelopes/{pk}/signed-document/')
+        else:
+            if envelope.document_file or envelope.documents.exists():
+                download_url = request.build_absolute_uri(f'/api/signature/envelopes/{pk}/original-document/')
+            else:
+                return Response({'error': 'Pas de document disponible'}, status=404)
+
+        return Response({'download_url': download_url})
+
+    @action(detail=True, methods=['get'], url_path=r'documents/(?P<doc_id>\d+)/file')
+    @method_decorator(xframe_options_exempt, name='dispatch')
+    def document_file(self, request, pk=None, doc_id=None):
+        """Fournit un PDF original par sous-document (auth requis)."""
+        try:
+            envelope = Envelope.objects.get(pk=pk)
+        except Envelope.DoesNotExist:
+            return Response({'error': 'Enveloppe non trouvée'}, status=404)
+
         is_owner = (envelope.created_by == request.user)
         is_recipient = envelope.recipients.filter(user=request.user).exists()
         if not (is_owner or is_recipient):
             return Response({'error': 'Non autorisé'}, status=403)
-    
+
         try:
             doc = envelope.documents.get(pk=doc_id)
         except EnvelopeDocument.DoesNotExist:
             return Response({'error': 'Document introuvable'}, status=404)
-    
+
         f = doc.file.open('rb')
         f.seek(0)
-        head = f.read(10)
-        f.seek(0)
-        if not head.startswith(b'%PDF-'):
+        if not f.read(10).startswith(b'%PDF-'):
             return Response({'error': 'Document non valide'}, status=400)
-    
+        f.seek(0)
+
         resp = FileResponse(f, content_type='application/pdf')
         resp['Content-Disposition'] = f'inline; filename="{doc.name or f"document_{doc.id}.pdf"}"'
         resp['X-Frame-Options'] = 'SAMEORIGIN'
         resp['Content-Security-Policy'] = "frame-ancestors 'self'"
         resp['Access-Control-Allow-Origin'] = request.META.get('HTTP_ORIGIN', '*')
         return resp
+
     @action(detail=True, methods=['get'], url_path='original-document')
     @method_decorator(xframe_options_exempt, name='dispatch')
     def original_document(self, request, pk=None):
-        # Get the envelope directly without queryset filtering
+        """Fournit le PDF original (auth requis : créateur ou destinataire)."""
         try:
             envelope = Envelope.objects.get(pk=pk)
         except Envelope.DoesNotExist:
             return Response({'error': 'Enveloppe non trouvée'}, status=status.HTTP_404_NOT_FOUND)
-        
+
         is_owner = (envelope.created_by == request.user)
         is_recipient = envelope.recipients.filter(user=request.user).exists()
-        
         if not (is_owner or is_recipient):
             return Response({'error': 'Non autorisé'}, status=status.HTTP_403_FORBIDDEN)
-    
-        doc = envelope.document_file or (
-            envelope.documents.first().file if envelope.documents.exists() else None
-        )
+
+        doc = envelope.document_file or (envelope.documents.first().file if envelope.documents.exists() else None)
         if not doc:
             return Response({'error': 'Pas de document original'}, status=status.HTTP_404_NOT_FOUND)
         file_obj = doc.open('rb')
@@ -498,9 +473,10 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
         if not file_obj.read(10).startswith(b'%PDF-'):
             return Response({'error': 'Document non valide'}, status=status.HTTP_400_BAD_REQUEST)
         file_obj.seek(0)
+
         resp = FileResponse(file_obj, content_type='application/pdf')
         resp['Content-Disposition'] = f'inline; filename="{envelope.title}.pdf"'
-        resp['X-Frame-Options'] = 'SAMEORIGIN'
+        resp['X-Frame-Options']   = 'SAMEORIGIN'
         resp['Content-Security-Policy'] = "frame-ancestors 'self'"
         resp['Access-Control-Allow-Origin'] = request.META.get('HTTP_ORIGIN', '*')
         return resp
@@ -508,363 +484,552 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['get'], url_path='signed-document')
     @method_decorator(xframe_options_exempt, name='dispatch')
     def signed_document(self, request, pk=None):
-        # Get the envelope directly without queryset filtering
+        """Fournit le DERNIER PDF signé (auth requis : créateur ou destinataire)."""
         try:
             envelope = Envelope.objects.get(pk=pk)
         except Envelope.DoesNotExist:
             return Response({'error': 'Enveloppe non trouvée'}, status=status.HTTP_404_NOT_FOUND)
-        
+
         is_owner = (envelope.created_by == request.user)
         is_recipient = envelope.recipients.filter(user=request.user).exists()
-        
         if not (is_owner or is_recipient):
             return Response({'error': 'Non autorisé'}, status=status.HTTP_403_FORBIDDEN)
-    
+
         sig_doc = SignatureDocument.objects.filter(envelope=envelope).order_by('-signed_at').first()
         if not sig_doc or not sig_doc.signed_file:
             return Response({'error': 'Pas de document signé'}, status=status.HTTP_404_NOT_FOUND)
-    
+
         file_obj = sig_doc.signed_file.open('rb')
         file_obj.seek(0)
         if not file_obj.read(10).startswith(b'%PDF-'):
             return Response({'error': 'Document signé non valide'}, status=status.HTTP_400_BAD_REQUEST)
         file_obj.seek(0)
+
         resp = FileResponse(file_obj, content_type='application/pdf')
         resp['Content-Disposition'] = f'inline; filename="{envelope.title}_signed.pdf"'
-        resp['X-Frame-Options'] = 'SAMEORIGIN'
+        resp['X-Frame-Options']   = 'SAMEORIGIN'
         resp['Content-Security-Policy'] = "frame-ancestors 'self'"
         resp['Access-Control-Allow-Origin'] = request.META.get('HTTP_ORIGIN', '*')
         return resp
 
-    @action(detail=True, methods=['get'])
-    def download(self, request, pk=None):
+    @action(detail=True, methods=['get'], url_path='document', permission_classes=[permissions.AllowAny])
+    @method_decorator(xframe_options_exempt, name='dispatch')
+    def document(self, request, pk=None):
         """
-        Renvoie l'URL pour récupérer le PDF :
-         - si un PDF signé existe déjà (même statut 'pending'), on le sert
-         - sinon, on sert le PDF original
+        Sert un PDF lisible par les invités **ou** les utilisateurs connectés :
+        - si un PDF signé existe → on sert le DERNIER signé,
+        - sinon → on sert l’original.
+        Autorisation :
+          - utilisateur connecté = créateur ou destinataire
+          - OU invité avec token valide (?token=...)
         """
-        # On récupère l’enveloppe brute, sans filtrage DRF
         try:
             envelope = Envelope.objects.get(pk=pk)
         except Envelope.DoesNotExist:
             return Response({'error': 'Enveloppe non trouvée'}, status=404)
 
-        # Autorisation : soit le créateur, soit un destinataire qui a signé
-        is_owner = (envelope.created_by == request.user)
-        is_signed_recipient = envelope.recipients.filter(
-            user=request.user
-        ).exists()
-        if not (is_owner or is_signed_recipient):
+        # Auth: owner/recipient connecté, OU token invité valide
+        is_owner = (request.user.is_authenticated and envelope.created_by == request.user)
+        is_recipient = (request.user.is_authenticated and envelope.recipients.filter(user=request.user).exists())
+        token = (request.GET.get('token') or request.headers.get('X-Signature-Token', '')
+                 or request.headers.get('Authorization', '').replace('Bearer ', ''))
+        token_ok = bool(token and self._verify_token(envelope, token))
+
+        if not (is_owner or is_recipient or token_ok):
             return Response({'error': 'Non autorisé'}, status=403)
 
-        # On cherche le dernier document signé (qu'il soit pending ou completed)
-        sig_doc = SignatureDocument.objects.filter(
-            envelope=envelope,
-            signed_file__isnull=False
-        ).order_by('-signed_at').first()
-
-        if sig_doc:
-            download_url = request.build_absolute_uri(
-                f'/api/signature/envelopes/{pk}/signed-document/'
-            )
+        # Choix du fichier à servir
+        sig = (SignatureDocument.objects
+               .filter(envelope=envelope, signed_file__isnull=False)
+               .order_by('-signed_at').first())
+        if sig:
+            file_field = sig.signed_file
+            filename_suffix = 'signed'
         else:
-            if envelope.document_file or envelope.documents.exists():
-                download_url = request.build_absolute_uri(
-                    f'/api/signature/envelopes/{pk}/original-document/'
-                )
-            else:
+            doc = envelope.document_file or (envelope.documents.first().file if envelope.documents.exists() else None)
+            if not doc:
                 return Response({'error': 'Pas de document disponible'}, status=404)
+            file_field = doc
+            filename_suffix = 'original'
 
-        return Response({'download_url': download_url})
+        try:
+            fh = file_field.storage.open(file_field.name, 'rb')
+            resp = FileResponse(fh, content_type='application/pdf')
+            resp['Content-Disposition'] = f'inline; filename="{envelope.title}_{filename_suffix}.pdf"'
+            resp['X-Frame-Options'] = 'ALLOWALL'
+            resp['Content-Security-Policy'] = "frame-ancestors *"
+            resp['Access-Control-Allow-Origin'] = '*'
+            return resp
+        except Exception as e:
+            return Response({'error': f'Échec d’ouverture du fichier : {e}'}, status=500)
 
-    def _do_sign(self, recipient, signature_data, signed_fields):
-        if recipient.signed:
-            return Response({'error': 'Destinataire a déjà signé'}, status=status.HTTP_400_BAD_REQUEST)
-
-        # 1. Marquer le destinataire signé
-        with transaction.atomic():
-            recipient.signature_data = signature_data
-            recipient.signed = True
-            recipient.signed_at = timezone.now()
-            recipient.save()
-
-            # 2. Créer l'enregistrement sans fichier
-            sig_doc = SignatureDocument.objects.create(
-                envelope=recipient.envelope,
-                recipient=recipient,
-                is_guest=recipient.user is None,
-                signature_data=signature_data,
-                signed_fields=signed_fields,
-                ip_address=self.request.META.get('REMOTE_ADDR'),
-                user_agent=self.request.META.get('HTTP_USER_AGENT', '')
-            )
-
-            AuditLog.objects.create(
-                user=self.request.user if self.request.user.is_authenticated else None,
-                envelope=recipient.envelope,
-                action='document_signed',
-                details={'recipient_id': recipient.id, 'signature_id': sig_doc.id},
-                ip_address=self.request.META.get('REMOTE_ADDR'),
-                user_agent=self.request.META.get('HTTP_USER_AGENT', ''),
-            )
-
-            # 3. Fusionner image+PDF
-            merged = self._merge_pdf(recipient.envelope, signature_data, signed_fields)
-
-            # 4. Signer numériquement avec PyHanko (version corrigée)
-            merged_bytes = io.BytesIO(merged.read())
-            merged_bytes.seek(0)
-            
-            # Crée un writer pyhanko à partir du PDF fusionné
-            pdf_out = IncrementalPdfFileWriter(merged_bytes)
-            
-            output_buffer = io.BytesIO()
-            signer = signers.SimpleSigner.load(
-         key_file=settings.PDF_SIGNER_DIR / "selfsign_key.pem",
-         cert_file=settings.PDF_SIGNER_DIR / "selfsign_cert.pem",
-         ca_chain_files=[settings.PDF_SIGNER_DIR / "selfsign_cert.pem"],
-         key_passphrase=None
-     )
- 
-     # 4.b Signer avec l’instance signer
-            sig_meta = PdfSignatureMetadata(
-    field_name=f"Sig_{recipient.id}",
-    reason="Signature numérique",
-    location="IntelliVibe",
-    embed_validation_info=True,    # collecte OCSP/CRL dans le DSS
-    use_pades_lta=True,            # ajoute les VRI pour LTV complet
-    validation_context=vc          # le contexte de validation chargé plus haut
-)
-
-# 2) Créez le PdfSigner
-            pdf_signer = PdfSigner(
-    signature_meta=sig_meta,
-    signer=signer,
-    timestamper=tsa_client,
-    new_field_spec=SigFieldSpec(sig_field_name=f"Sig_{recipient.id}")
-)
-
-            pdf_signer.sign_pdf(pdf_out, output=output_buffer)
-            
-            output_buffer.seek(0)
-
-            # 5. Sauver le PDF signé
-            sig_doc.signed_file.save(
-                f"signed_{recipient.envelope.id}_{recipient.id}.pdf",
-                ContentFile(output_buffer.read()),
-                save=True
-            )
-
-            # 6. Stocker certificate_data
-            cert_der = signer.signing_cert[0].dump()
-            sig_hash = hashlib.sha256(output_buffer.getvalue()).hexdigest()
-            timestamp_utc = datetime.utcnow().isoformat() + "Z"
-            sig_doc.certificate_data = {
-                "certificate_der": base64.b64encode(cert_der).decode(),
-                "signature_sha256": sig_hash,
-                "timestamp_utc": timestamp_utc
-            }
-            sig_doc.save()
-
-            # 7. Mettre à jour le statut de l'enveloppe
-            env = recipient.envelope
-            env.status = 'pending' if env.recipients.filter(signed=False).exists() else 'completed'
-            env.save(update_fields=['status'])
-
-        # 8. Prévenir le suivant si séquentiel
-        if env.flow_type == 'sequential' and env.status == 'pending':
-            next_rec = env.recipients.filter(signed=False).order_by('order').first()
-            if next_rec:
-                # (ré)initialise sa fenêtre de rappel
-                next_rec.reminder_count = 0
-                next_rec.last_reminder_at = None
-                next_rec.next_reminder_at = timezone.now() + timezone.timedelta(days=env.reminder_days)
-                next_rec.save(update_fields=['reminder_count', 'last_reminder_at', 'next_reminder_at'])
-                send_signature_email.delay(env.id, next_rec.id)
-
-        return Response({'status': 'signed', 'message': 'Document signé avec succès'})
-    @action(detail=True, methods=['post'], url_path='remind')
-    def remind_now(self, request, pk=None):
-        """Relance manuelle par le créateur (respecte séquentiel/parallèle)."""
-        env = self.get_object()
-        if env.created_by != request.user:
-            return Response({'error': 'Non autorisé'}, status=403)
-
-        if env.status not in ['sent', 'pending']:
-            return Response({'error': 'Enveloppe non éligible à une relance'}, status=400)
-
-        if env.deadline_at and env.deadline_at <= timezone.now():
-            env.status = 'expired'
-            env.save(update_fields=['status'])
-            return Response({'error': 'Échéance dépassée'}, status=400)
-
-        max_reminders = getattr(settings, 'MAX_REMINDERS_SIGN', 3)
-        count = 0
-
-        if env.flow_type == 'sequential':
-            rec = env.recipients.filter(signed=False).order_by('order').first()
-            if rec and rec.reminder_count < max_reminders:
-                send_reminder_email.delay(env.id, rec.id)
-                count = 1
-        else:
-            for rec in env.recipients.filter(signed=False):
-                if rec.reminder_count < max_reminders:
-                    send_reminder_email.delay(env.id, rec.id)
-                    count += 1
-
-        return Response({'status': 'ok', 'reminders': count}, status=200)
-    def _merge_pdf(self, envelope, signature_data, signed_fields):
+    # ---------- Cœur : signature incrémentale sans aplatir ----------
+    def _add_signature_overlay_to_pdf(self, pdf_bytes, signature_data, x, y_top, w, h, page_ix):
         """
-        Construit un PDF avec les nouvelles signatures.
-        - S'il existe un signed_file précédent, on repart de ce PDF (pour conserver l'historique)
-        - Sinon on reconstruit à partir du document unique ou de la liste EnvelopeDocument
-        - Les champs sont positionnés par (document_id, page, position)
+        NOUVELLE MÉTHODE: Ajoute un overlay graphique sur un PDF existant
+        sans perdre les signatures précédentes.
         """
-        # 0) Normaliser signature_data et signed_fields
-        #    signed_fields: dict[field_id] -> {page, position, document_id?}
-        #    signature_data: dict[field_id] -> dataURL
+        import io, base64
+        from PyPDF2 import PdfReader, PdfWriter
+        from reportlab.pdfgen import canvas
+        from reportlab.lib.utils import ImageReader
+    
+        # 1) Lire le PDF de base
+        base_reader = PdfReader(io.BytesIO(pdf_bytes))
+        
+        # 2) Obtenir les dimensions de la page cible
+        if page_ix >= len(base_reader.pages):
+            page_ix = 0
+        page = base_reader.pages[page_ix]
+        page_w = float(page.mediabox.width)
+        page_h = float(page.mediabox.height)
+        
+        # 3) Convertir les coordonnées
+        y_pdf = page_h - (y_top + h)
+        
+        # 4) Extraire l'image de signature
+        img_data = None
+        if isinstance(signature_data, dict):
+            for key, value in signature_data.items():
+                if isinstance(value, str) and value:
+                    img_data = value
+                    break
+        elif isinstance(signature_data, str):
+            img_data = signature_data
+    
+        # 5) Créer l'overlay avec ReportLab
+        packet = io.BytesIO()
+        c = canvas.Canvas(packet, pagesize=(page_w, page_h))
+        
+        try:
+            if img_data and isinstance(img_data, str):
+                # Gérer les data URLs
+                b64_data = img_data.split(',', 1)[1] if img_data.startswith('data:') else img_data
+                if b64_data:
+                    img_bytes = base64.b64decode(b64_data)
+                    c.drawImage(
+                        ImageReader(io.BytesIO(img_bytes)),
+                        x, y_pdf, width=w, height=h,
+                        preserveAspectRatio=True, mask='auto'
+                    )
+        except Exception as e:
+            # En cas d'erreur avec l'image, on continue sans bloquer
+            logger.warning(f"Erreur lors de l'ajout de l'overlay graphique: {e}")
+        
+        c.showPage()
+        c.save()
+        packet.seek(0)
+    
+        # 6) Fusionner l'overlay avec le PDF existant
+        try:
+            overlay_reader = PdfReader(packet)
+            writer = PdfWriter()
+            
+            for i, base_page in enumerate(base_reader.pages):
+                if i == page_ix and len(overlay_reader.pages) > 0:
+                    # Fusionner l'overlay sur la page cible
+                    base_page.merge_page(overlay_reader.pages[0])
+                writer.add_page(base_page)
+            
+            # Écrire le résultat
+            output = io.BytesIO()
+            writer.write(output)
+            return output.getvalue()
+            
+        except Exception as e:
+            logger.error(f"Erreur lors de la fusion de l'overlay: {e}")
+            # En cas d'échec, retourner le PDF original
+            return pdf_bytes
+    
+    # ---------- Signature ----------
+    @action(detail=True, methods=['post'], permission_classes=[permissions.AllowAny])
+# Dans envelope.py - Méthode sign corrigée
+
+    @action(detail=True, methods=['post'], permission_classes=[permissions.AllowAny])
+    def sign(self, request, pk=None):
+        """Signature pour invité via token."""
+        token = (request.data.get('token') or request.GET.get('token')
+                 or request.headers.get('X-Signature-Token', '')
+                 or request.headers.get('Authorization', '').replace('Bearer ', ''))
+        if not token:
+            return Response({'error': 'Token requis'}, status=status.HTTP_403_FORBIDDEN)
+        try:
+            envelope = Envelope.objects.get(pk=pk)
+            if not self._verify_token(envelope, token):
+                return Response({'error': 'Token invalide'}, status=status.HTTP_403_FORBIDDEN)
+            payload = jwt.decode(token, settings.SECRET_KEY, algorithms=['HS256'])
+            recipient = EnvelopeRecipient.objects.get(envelope=pk, id=payload.get('recipient_id'))
+        except (Envelope.DoesNotExist, jwt.InvalidTokenError, EnvelopeRecipient.DoesNotExist):
+            return Response({'error': 'Destinataire non valide'}, status=status.HTTP_403_FORBIDDEN)
+    
+        if self._refuse_if_deadline_passed(envelope):
+            return Response({'error': 'Échéance dépassée. La signature est fermée.'}, status=400)
+        if envelope.flow_type == 'sequential':
+            prev = envelope.recipients.filter(order__lt=recipient.order)
+            if prev.filter(signed=False).exists():
+                return Response({'error': "Les destinataires précédents doivent signer d'abord"}, status=status.HTTP_400_BAD_REQUEST)
+    
+        signature_data = request.data.get('signature_data')
+        signed_fields   = request.data.get('signed_fields')
         if not signature_data or not signed_fields:
-            raise ValueError("signature_data et signed_fields requis")
+            return Response({'error': 'signature_data et signed_fields requis'}, status=status.HTTP_400_BAD_REQUEST)
     
-        # 1) Construire la liste des 'sources' (docs) et calculer les offsets de pages.
-        sources = []  # liste de tuples (key, file_field, reader, num_pages)
-        if envelope.document_file:
-            # Cas "mono-doc historique" (key 'main')
-            f = envelope.document_file
-            fh = f.open('rb')
-            reader = PdfReader(fh)
-            sources.append(('main', f, reader, len(reader.pages)))
-        else:
-            docs = envelope.documents.all().order_by('id')
-            if not docs.exists():
-                raise ValueError("Aucun document original dans l'enveloppe")
-            for d in docs:
-                fh = d.file.open('rb')
-                reader = PdfReader(fh)
-                sources.append((str(d.id), d.file, reader, len(reader.pages)))
-    
-        # Offsets globaux (pour retrouver l'index de page dans un PDF fusionné)
-        offsets = {}
-        total_pages = 0
-        for key, _file, reader, n in sources:
-            offsets[key] = total_pages
-            total_pages += n
-    
-        # 2) Construire la base PDF à surimprimer
-        #    - Si un précédent signed_file existe => on repart de ce PDF
-        #    - Sinon on concatène toutes les sources dans l'ordre
-        prev = (
+        
+        my_fields_meta = []
+        for f in envelope.fields.all():
+            meta = SigningFieldSerializer(f).data
+            rid = str(meta.get('recipient_id') or meta.get('assigned_recipient_id') or "")
+            if rid and rid == str(recipient.id):
+                my_fields_meta.append(meta)
+        
+        
+        if not my_fields_meta:
+            my_fields_meta = list((signed_fields or {}).values())
+        
+        if not my_fields_meta:
+            raise ValueError("Aucun champ de signature valide pour ce destinataire")
+        
+        
+        latest = (
             SignatureDocument.objects
             .filter(envelope=envelope, signed_file__isnull=False)
             .order_by('-signed_at')
             .first()
         )
-    
-        base_reader = None
-        base_stream_handles = []  # pour garder les handles ouverts vivants jusqu'à la fin
-        if prev and prev.signed_file:
-            # Point de départ = dernier PDF signé (déjà fusionné/concaténé)
-            fh = prev.signed_file.open('rb')
-            base_stream_handles.append(fh)
-            base_reader = PdfReader(fh)
+        
+        if latest and latest.signed_file:
+            with latest.signed_file.open('rb') as bf:
+                base_bytes = bf.read()
         else:
-            # Concaténer les sources pour obtenir un PDF de base
-            tmp_writer = PdfWriter()
-            for key, _file, reader, _n in sources:
-                for p in reader.pages:
-                    tmp_writer.add_page(p)
-            tmp_buf = io.BytesIO()
-            tmp_writer.write(tmp_buf)
-            tmp_buf.seek(0)
-            base_stream_handles.append(tmp_buf)
-            base_reader = PdfReader(tmp_buf)
+            doc = envelope.document_file or (
+                envelope.documents.first().file if envelope.documents.exists() else None
+            )
+            if not doc:
+                raise ValueError("Pas de document original")
+            with doc.open('rb') as f:
+                base_bytes = f.read()
     
-        # 3) Préparer la liste des overlays par page globale
-        #    Pour chaque champ, on détermine sa page globale : offset[doc_key] + (page-1)
-        overlays_by_global_page = {}  # index_page -> [ (pos, data_url) ... ]
-        for field_id, data_url in signature_data.items():
-            fmeta = signed_fields.get(str(field_id)) or signed_fields.get(field_id)
-            if not fmeta:
-                continue
-            # clé document
-            doc_key = None
-            # champs venant du serializer : 'document_id' ou 'document'
-            if 'document_id' in fmeta and fmeta['document_id'] is not None:
-                doc_key = str(fmeta['document_id'])
-            elif 'document' in fmeta and fmeta['document'] is not None:
-                doc_key = str(fmeta['document'])
+        
+        with transaction.atomic():
+            recipient.signed = True
+            recipient.signed_at = timezone.now()
+            recipient.save(update_fields=['signed', 'signed_at'])
+            
+            sig_doc = SignatureDocument.objects.create(
+                envelope=envelope,
+                recipient=recipient,
+                signer=(self.request.user if self.request and self.request.user.is_authenticated else None),
+                is_guest=(recipient.user is None),
+                signature_data=json.dumps(signature_data) if isinstance(signature_data, dict) else (signature_data or ""),
+                signed_fields=signed_fields,
+                ip_address=self.request.META.get('REMOTE_ADDR'),
+                user_agent=self.request.META.get('HTTP_USER_AGENT', ''),
+            )
+            
+            
+            for fmeta in my_fields_meta:
+                pos = fmeta.get('position') or {}
+                try:
+                    x = float(pos.get('x', 0)); y_top = float(pos.get('y', 0))
+                    w = float(pos.get('width', 0)); h = float(pos.get('height', 0))
+                except Exception:
+                    x, y_top, w, h = 0, 0, 180, 60
+                page_num = int(fmeta.get('page') or 1)
+                page_ix = max(0, page_num - 1)
+                
+                
+                reader = PdfReader(io.BytesIO(base_bytes))
+                page_h = float(reader.pages[page_ix].mediabox.height)
+                y_pdf = page_h - (y_top + h)
+                rect_widget = (x, y_pdf, x + w, y_pdf + h)
+                
+                field_id = str(fmeta.get('id') or fmeta.get('field_id') or '')
+                img_for_this_field = None
+                if isinstance(signature_data, dict):
+                    candidates = [
+                        signature_data.get(field_id),
+                        signature_data.get(int(field_id)) if field_id.isdigit() else None,
+                        signature_data.get('data_url'),
+                    ]
+                    img_for_this_field = next((v for v in candidates if isinstance(v, str) and v), None)
+                elif isinstance(signature_data, str):
+                    img_for_this_field = signature_data
+                
+                
+                img_for_this_field = _clean_b64(img_for_this_field)
+                
+                
+                signed_bytes = sign_pdf_bytes(
+                    base_bytes,
+                    field_name=f"Sig_{recipient.id}_{field_id}",  
+                    reason="Signature numérique",
+                    location="Plateforme",
+                    rect=rect_widget,
+                    page_ix=page_ix,
+                    appearance_image_b64=img_for_this_field  
+                )
+                base_bytes = signed_bytes  
+            
+            
+            file_name = f"signed_{envelope.id}_{recipient.id}.pdf"
+            sig_doc.signed_file.save(file_name, ContentFile(base_bytes), save=True)
+        
+            # Statut enveloppe
+            if envelope.recipients.filter(signed=False).exists():
+                if envelope.status != 'pending':
+                    envelope.status = 'pending'
+                    envelope.save(update_fields=['status'])
             else:
-                # legacy mono-doc
-                doc_key = 'main'
+                envelope.status = 'completed'
+                envelope.save(update_fields=['status'])
+        
+        return Response({'status': 'signed'})
     
-            if doc_key not in offsets:
-                # Si on ne trouve pas la clé, ignorer proprement
+    
+    # Méthode _do_sign corrigée aussi
+    def _do_sign(self, envelope, recipient, signature_data, signed_fields):
+        import io, uuid
+        from PyPDF2 import PdfReader
+        from django.core.files.base import ContentFile
+    
+        # 1) Trouver TOUS les champs de CE destinataire
+        my_fields_meta = []
+        for _, meta in (signed_fields or {}).items():
+            if not meta:
                 continue
+            rid = str(meta.get('recipient_id') or meta.get('assigned_recipient_id') or "")
+            if rid and rid == str(recipient.id):
+                my_fields_meta.append(meta)
+        
+        # fallback si rien trouvé
+        if not my_fields_meta:
+            for _, meta in (signed_fields or {}).items():
+                if meta:
+                    my_fields_meta.append(meta)
+                    break
+        if not my_fields_meta:
+            raise ValueError("Aucun champ de signature valide pour ce destinataire")
     
-            page = int(fmeta.get('page') or 1)
+        logger.info(f"_do_sign: traitement de {len(my_fields_meta)} champs pour le destinataire {recipient.id}")
+    
+        # 2) Choisir la base PDF : partir du dernier PDF signé s'il existe
+        latest = (
+            SignatureDocument.objects
+            .filter(envelope=envelope, signed_file__isnull=False)
+            .order_by('-signed_at')
+            .first()
+        )
+        
+        if latest and latest.signed_file:
+            with latest.signed_file.open('rb') as bf:
+                base_bytes = bf.read()
+            logger.info(f"_do_sign: base = dernier PDF signé (SignatureDocument {latest.id})")
+        else:
+            doc = envelope.document_file or (
+                envelope.documents.first().file if envelope.documents.exists() else None
+            )
+            if not doc:
+                raise ValueError("Pas de document original")
+            with doc.open('rb') as f:
+                base_bytes = f.read()
+            logger.info("_do_sign: base = document original")
+    
+        # 3) ✅ TRAITEMENT CHAMP PAR CHAMP : overlay + signature immédiatement
+        for i, fmeta in enumerate(my_fields_meta):
             pos = fmeta.get('position') or {}
             try:
-                gx = int(pos.get('x', 0))
-                gy_t = int(pos.get('y', 0))
-                gw = int(pos.get('width', 0))
-                gh = int(pos.get('height', 0))
+                x = float(pos.get('x', 0)); y_top = float(pos.get('y', 0))
+                w = float(pos.get('width', 0)); h = float(pos.get('height', 0))
             except Exception:
-                # position invalide
-                continue
+                x, y_top, w, h = 0, 0, 180, 60
+            page_num = int(fmeta.get('page') or 1)
+            page_ix = max(0, page_num - 1)
     
-            global_index = offsets[doc_key] + (page - 1)
-            overlays_by_global_page.setdefault(global_index, []).append(
-                {'x': gx, 'y_top': gy_t, 'w': gw, 'h': gh, 'data_url': data_url}
+            # Extraire l'image de signature POUR CE CHAMP
+            field_id = str(fmeta.get('id') or fmeta.get('field_id') or '')
+            img_for_this_field = None
+            if isinstance(signature_data, dict):
+                candidates = [
+                    signature_data.get(field_id),
+                    signature_data.get(int(field_id)) if field_id.isdigit() else None,
+                    signature_data.get('data_url'),
+                ]
+                img_for_this_field = next((v for v in candidates if isinstance(v, str) and v), None)
+            elif isinstance(signature_data, str):
+                img_for_this_field = signature_data
+    
+            img_for_this_field = _clean_b64(img_for_this_field)
+    
+            # ✅ ÉTAPE A : Ajouter l'overlay graphique POUR CE CHAMP
+            if img_for_this_field:
+                logger.info(f"_do_sign: ajout overlay graphique pour champ {field_id}")
+                base_bytes = self._add_signature_overlay_to_pdf(
+                    base_bytes, img_for_this_field, x, y_top, w, h, page_ix
+                )
+    
+            # ✅ ÉTAPE B : Ajouter IMMÉDIATEMENT la signature numérique POUR CE CHAMP
+            reader = PdfReader(io.BytesIO(base_bytes))
+            page_h = float(reader.pages[page_ix].mediabox.height)
+            y_pdf = page_h - (y_top + h)
+            
+            # ⚠️ IMPORTANT : Coordonnées légèrement décalées pour éviter les conflits
+            rect_crypto = (x + 1, y_pdf + 1, x + w - 1, y_pdf + h - 1)
+    
+            # Nom de champ ULTRA-unique avec microseconde et index
+            signature_timestamp = timezone.now().strftime("%Y%m%d_%H%M%S_%f")
+            unique_suffix = str(uuid.uuid4())[:8]
+            unique_field_name = f"Sig_{recipient.id}_{field_id}_{i}_{signature_timestamp}_{unique_suffix}"
+    
+            logger.info(f"_do_sign: ajout signature numérique {unique_field_name} pour champ {field_id}")
+            
+            # Signature numérique SANS apparence (car on a déjà l'overlay)
+            base_bytes = sign_pdf_bytes(
+                base_bytes,
+                field_name=unique_field_name,
+                reason=f"Signature numérique - {recipient.full_name}",
+                location="Plateforme IntelliVibe",
+                rect=rect_crypto,
+                page_ix=page_ix,
+                # ❌ NE PAS passer appearance_image_b64
             )
+            
+            logger.info(f"_do_sign: champ {i+1}/{len(my_fields_meta)} traité avec succès")
     
-        # 4) Appliquer les overlays page par page sur la base
-        writer = PdfWriter()
-        for idx, page in enumerate(base_reader.pages):
-            # Dimensions de la page courante
-            media = page.mediabox
-            pw, ph = float(media.width), float(media.height)
+        # 4) Sauvegarder le résultat
+        with transaction.atomic():
+            recipient.signed = True
+            recipient.signed_at = timezone.now()
+            recipient.save(update_fields=['signed', 'signed_at'])
+        
+            sig_doc = SignatureDocument.objects.create(
+                envelope=envelope,
+                recipient=recipient,
+                signer=(self.request.user if self.request and self.request.user.is_authenticated else None),
+                is_guest=(recipient.user is None),
+                signature_data=signature_data,
+                signed_fields=signed_fields,
+                ip_address=self.request.META.get('REMOTE_ADDR'),
+                user_agent=self.request.META.get('HTTP_USER_AGENT', ''),
+            )
+        
+            signature_timestamp = timezone.now().strftime("%Y%m%d_%H%M%S")
+            file_name = f"signed_{envelope.id}_{recipient.id}_{signature_timestamp}.pdf"
+            sig_doc.signed_file.save(file_name, ContentFile(base_bytes), save=True)
     
-            if idx in overlays_by_global_page:
-                packet = io.BytesIO()
-                c = canvas.Canvas(packet, pagesize=(pw, ph))
+            logger.info(f"_do_sign: PDF final sauvegardé : {file_name}")
     
-                for item in overlays_by_global_page[idx]:
-                    x = item['x']
-                    w = item['w']
-                    h = item['h']
-                    # convertir y depuis le haut : PDF a l'origine en bas-gauche
-                    y = ph - item['y_top'] - h
+            # Statut enveloppe
+            if envelope.recipients.filter(signed=False).exists():
+                if envelope.status != 'pending':
+                    envelope.status = 'pending'
+                    envelope.save(update_fields=['status'])
+            else:
+                envelope.status = 'completed'
+                envelope.save(update_fields=['status'])
     
-                    try:
-                        b64 = item['data_url'].split(',')[1]
-                        img = ImageReader(io.BytesIO(base64.b64decode(b64)))
-                        c.drawImage(img, x, y, width=w, height=h, mask='auto')
-                    except Exception:
-                        # on ignore un overlay foireux, mais on continue
-                        pass
+        return Response({'status': 'signed'})   
+    def _add_signature_overlay_to_pdf(self, pdf_bytes, signature_data, x, y_top, w, h, page_ix):
+        """
+        Version améliorée qui préserve TOUJOURS les signatures existantes
+        """
+        import io, base64
+        from PyPDF2 import PdfReader, PdfWriter
+        from reportlab.pdfgen import canvas
+        from reportlab.lib.utils import ImageReader
     
-                c.showPage()
-                c.save()
-                packet.seek(0)
-                overlay_reader = PdfReader(packet)
-                page.merge_page(overlay_reader.pages[0])
-    
-            writer.add_page(page)
-    
-        # 5) Retourner un ContentFile prêt pour signature numérique
-        out = io.BytesIO()
-        writer.write(out)
-        out.seek(0)
-    
-        # fermer les handles ouverts
-        for h in base_stream_handles:
+        try:
+            logger.info(f"_add_signature_overlay_to_pdf: overlay à ({x}, {y_top}, {w}, {h}) sur page {page_ix}")
+            
+            # 1) Lire le PDF de base (qui peut déjà contenir des signatures)
+            base_reader = PdfReader(io.BytesIO(pdf_bytes))
+            
+            # 2) Obtenir les dimensions de la page cible
+            if page_ix >= len(base_reader.pages):
+                logger.warning(f"Page {page_ix} n'existe pas, utilisation de la page 0")
+                page_ix = 0
+            page = base_reader.pages[page_ix]
+            page_w = float(page.mediabox.width)
+            page_h = float(page.mediabox.height)
+            
+            # 3) Convertir les coordonnées (front-end -> PDF)
+            y_pdf = page_h - (y_top + h)
+            
+            # 4) Extraire et valider l'image de signature
+            img_data = signature_data
+            if isinstance(signature_data, dict):
+                for key, value in signature_data.items():
+                    if isinstance(value, str) and value:
+                        img_data = value
+                        break
+        
+            if not img_data or not isinstance(img_data, str):
+                logger.warning("Pas d'image de signature trouvée, overlay ignoré")
+                return pdf_bytes
+        
+            # 5) Créer l'overlay avec ReportLab
+            packet = io.BytesIO()
+            c = canvas.Canvas(packet, pagesize=(page_w, page_h))
+            
             try:
-                h.close()
-            except Exception:
-                pass
+                # Gérer les data URLs
+                b64_data = img_data.split(',', 1)[1] if img_data.startswith('data:') else img_data
+                if b64_data:
+                    img_bytes = base64.b64decode(b64_data)
+                    c.drawImage(
+                        ImageReader(io.BytesIO(img_bytes)),
+                        x, y_pdf, width=w, height=h,
+                        preserveAspectRatio=True, mask='auto'
+                    )
+                    logger.info(f"Image de signature ajoutée avec succès à ({x}, {y_pdf})")
+            except Exception as e:
+                logger.warning(f"Erreur lors du traitement de l'image de signature: {e}")
+                # Continuer sans l'image plutôt que d'échouer
+            
+            c.showPage()
+            c.save()
+            packet.seek(0)
     
-        return ContentFile(out.read(), name=f"merged_{envelope.id}.pdf")
-    
+            # 6) Fusionner l'overlay avec TOUTES les pages existantes (préserve les signatures)
+            overlay_reader = PdfReader(packet)
+            writer = PdfWriter()
+            
+            for i, base_page in enumerate(base_reader.pages):
+                if i == page_ix and len(overlay_reader.pages) > 0:
+                    # Fusionner l'overlay UNIQUEMENT sur la page cible
+                    try:
+                        base_page.merge_page(overlay_reader.pages[0])
+                        logger.info(f"Overlay fusionné sur page {i}")
+                    except Exception as e:
+                        logger.warning(f"Erreur lors de la fusion de l'overlay sur la page {i}: {e}")
+                writer.add_page(base_page)
+            
+            # 7) Écrire le résultat
+            output = io.BytesIO()
+            writer.write(output)
+            result = output.getvalue()
+            
+            logger.info(f"Overlay ajouté avec succès, taille finale: {len(result)} bytes")
+            return result
+            
+        except Exception as e:
+            logger.error(f"Erreur critique lors de l'ajout de l'overlay graphique: {e}")
+            # En cas d'échec, retourner le PDF original pour ne pas bloquer le processus
+            return pdf_bytes
+    def _refuse_if_deadline_passed(self, envelope):
+        if envelope.deadline_at and timezone.now() >= envelope.deadline_at:
+            if envelope.status in ['sent', 'pending']:
+                envelope.status = 'expired'
+                envelope.save(update_fields=['status'])
+            return True
+        return False
+
+    def _verify_token(self, envelope, token):
+        try:
+            payload = jwt.decode(token, settings.SECRET_KEY, algorithms=['HS256'])
+            return payload.get('env_id') == envelope.id and 'recipient_id' in payload
+        except jwt.InvalidTokenError:
+            return False
+
 def _verify_token(self, envelope, token):
         try:
             payload = jwt.decode(token, settings.SECRET_KEY, algorithms=['HS256'])

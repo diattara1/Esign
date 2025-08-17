@@ -23,15 +23,24 @@ export const setLogoutCallback = (cb) => {
 
 // Logique de refresh à déclencher sur 401
 const refreshAuthLogic = (failedRequest) => {
-  // On utilise axios brut pour éviter l'intercepteur
+  const url = failedRequest.response?.config?.url;
+
+  // Ne pas essayer de rafraîchir pour /api/verify-token/
+  if (url && url.includes('/api/verify-token/')) {
+    // Ne déclenche PAS le logout ici : on laisse le contexte gérer ça
+    return Promise.reject(failedRequest);
+  }
+
+  // Rafraîchit le token pour les autres cas (401)
   return axios
     .post(`${API_BASE_URL}/api/token/refresh/`, {}, { withCredentials: true })
     .then(() => Promise.resolve())
     .catch(err => {
-      if (logoutCallback) logoutCallback();
+      if (logoutCallback) logoutCallback();  // Déconnecte si le refresh échoue
       return Promise.reject(err);
     });
 };
+
 
 // Monte l'intercepteur de refresh AVANT tout autre intercepteur de réponse
 createAuthRefreshInterceptor(api, refreshAuthLogic);

@@ -51,7 +51,7 @@ const RegisterPage = () => {
     if (!form.username.trim()) stepErrors.username = 'Nom d\'utilisateur requis';
     if (!form.email.trim()) stepErrors.email = 'Email requis';
     if (!form.password.trim()) stepErrors.password = 'Mot de passe requis';
-    if (form.password.length < 8) stepErrors.password = 'Minimum 8 caractères';
+    if (form.password.length < 5) stepErrors.password = 'Minimum 5 caractères';
     
     setErrors(stepErrors);
     return Object.keys(stepErrors).length === 0;
@@ -251,7 +251,7 @@ const RegisterPage = () => {
                       onChange={handleChange}
                       required
                       className="block w-full pl-10 pr-10 py-3 border border-gray-300 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition-colors"
-                      placeholder="Minimum 8 caractères"
+                      placeholder="Minimum 5 caractères"
                     />
                     <button
                       type="button"
@@ -365,7 +365,7 @@ const RegisterPage = () => {
                         value={form.phone_number}
                         onChange={handleChange}
                         className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition-colors"
-                        placeholder="+33 1 23 45 67 89"
+                        placeholder="77 259 39 94"
                       />
                     </div>
                   </div>

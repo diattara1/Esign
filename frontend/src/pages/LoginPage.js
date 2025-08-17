@@ -177,7 +177,7 @@ const LoginPage = () => {
       {/* Footer */}
       <div className="mt-8 text-center">
         <p className="text-sm text-gray-500">
-          © 2025 Signature Électronique. Tous droits réservés.
+          © 2025 IntelliSign. Tous droits réservés.
         </p>
       </div>
     </div>

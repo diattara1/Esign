@@ -333,7 +333,7 @@ const ProfilePage = () => {
                       value={profile.phone_number || ''}
                       onChange={handleChange}
                       className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition-colors"
-                      placeholder="+221 77 259 39 94"
+                      placeholder="77 259 39 94"
                     />
                   </div>
                 </div>

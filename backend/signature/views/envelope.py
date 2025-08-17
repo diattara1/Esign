@@ -34,9 +34,6 @@ from django.core.files.base import ContentFile
 from PyPDF2 import PdfReader, PdfWriter
 from reportlab.lib.utils import ImageReader
 from django.db.models import Q
-from pyhanko.sign.timestamps.requests_client import HTTPTimeStamper
-from oscrypto import keys
-from pyhanko.sign.validation import ValidationContext
 
 
 # Configure logging
@@ -539,7 +536,7 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
 
     # ---------- Signature ----------
     @action(detail=True, methods=['post'], permission_classes=[permissions.AllowAny])
-# Dans envelope.py - Méthode sign corrigée
+
 
     @action(detail=True, methods=['post'], permission_classes=[permissions.AllowAny])
     def sign(self, request, pk=None):
@@ -678,7 +675,11 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
             else:
                 envelope.status = 'completed'
                 envelope.save(update_fields=['status'])
-        
+            if envelope.flow_type == 'sequential' and envelope.status != 'completed':
+                next_rec = envelope.recipients.filter(signed=False).order_by('order').first()
+                if next_rec:
+                    send_signature_email.delay(envelope.id, next_rec.id)
+                    
         return Response({'status': 'signed'})
     
     
@@ -822,6 +823,10 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
             else:
                 envelope.status = 'completed'
                 envelope.save(update_fields=['status'])
+            if envelope.flow_type == 'sequential' and envelope.status != 'completed':
+                next_rec = envelope.recipients.filter(signed=False).order_by('order').first()
+                if next_rec:
+                    send_signature_email.delay(envelope.id, next_rec.id)
     
         return Response({'status': 'signed'})   
     
@@ -829,7 +834,7 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
         """
         Version améliorée qui préserve TOUJOURS les signatures existantes
         """
-        import io, base64
+        import io
         from PyPDF2 import PdfReader, PdfWriter
         from reportlab.pdfgen import canvas
         from reportlab.lib.utils import ImageReader

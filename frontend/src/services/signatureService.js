@@ -16,9 +16,7 @@ export default {
   getEnvelopes: (params = {}) =>
     api.get(`${BASE}/envelopes/`, { params }).then(res => res.data),
 
-  getActionRequiredEnvelopes: () =>
-    api.get(`${BASE}/envelopes/`, { params: { status: 'action_required' } })
-       .then(res => res.data),
+  
 
   getReceivedEnvelopes: () =>
     api.get(`${BASE}/envelopes/`, { params: { status: 'action_required' } })
@@ -112,13 +110,7 @@ export default {
 
   // Téléchargement d'un document précis (si tu ajoutes un endpoint côté vue)
   // Sinon, utilise simplement doc.file_url côté front.
-  downloadEnvelopeDocument: async (envelopeId, documentId) => {
-    const { download_url } = await api
-      .get(`${BASE}/envelopes/${envelopeId}/documents/${documentId}/download/`)
-      .then(res => res.data);
-    const pdfResp = await api.get(download_url, { responseType: 'blob' });
-    return { download_url: URL.createObjectURL(pdfResp.data) };
-  },
+  
 fetchDocumentBlob: async (envelopeId, documentId) => {
   const url = `${BASE}/envelopes/${envelopeId}/documents/${documentId}/file/`;
   const resp = await api.get(url, { responseType: 'blob' });

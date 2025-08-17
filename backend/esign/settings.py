@@ -43,7 +43,6 @@ except Exception as e:
 
 # Use custom EncryptedFileSystemStorage
 DEFAULT_FILE_STORAGE = 'signature.storages.EncryptedFileSystemStorage'
-ALLOWED_HOSTS = ["localhost", ".localhost", '*']
 CORS_ALLOW_ALL_ORIGINS = True
 AUTH_USER_MODEL = 'signature.CustomUser'
 # Application definition

@@ -8,6 +8,7 @@ import DocumentUpload from './pages/DocumentUpload';
 import DocumentWorkflow from './pages/DocumentWorkflow';
 import EnvelopeSent from './pages/EnvelopeSent';
 import SignatureConfirmation from './pages/SignatureConfirmation';
+import GuestSignatureConfirmation from './pages/GuestSignatureConfirmation';
 import SignatureLayout from './pages/SignatureLayout';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
@@ -63,6 +64,8 @@ const App = () => {
       
       {/* Page de confirmation - PUBLIQUE */}
       <Route path="/signature/success" element={<SignatureConfirmation />} />
+      <Route path="/signature/guest/success" element={<GuestSignatureConfirmation />} />
+
 
       {/* ROUTES PROTÉGÉES - Toutes les routes nécessitant auth */}
       <Route element={<ProtectedRoute />}>

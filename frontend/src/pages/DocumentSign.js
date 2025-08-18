@@ -1,6 +1,7 @@
 // src/pages/DocumentSign.js
 // Signature multi-docs, PDF stable (pas de zoom), invité/auth OK,
 // modal au-dessus de tout, et deux modes: "dessiner" et "importer".
+// MISE À JOUR: Redirection selon le type d'utilisateur
 
 import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
@@ -111,7 +112,7 @@ const DocumentSign = () => {
     }
   };
 
-  // INIT (charge l’enveloppe et choisit le 1er document)
+  // INIT (charge l'enveloppe et choisit le 1er document)
   useEffect(() => {
     const init = async () => {
       try {
@@ -220,7 +221,7 @@ const DocumentSign = () => {
   }, [selectedDoc, otpVerified, envelope, id, token, isGuest]);
 
   // OTP
-  const handleSendOtp = async () => {
+ const handleSendOtp = async () => {
     if (isAlreadySigned) return toast.info('Déjà signé');
     setSendingOtp(true);
     try {
@@ -334,6 +335,7 @@ const DocumentSign = () => {
       Object.entries(sigMap || {}).map(([k, v]) => [k, toBase64(v)])
     );
 
+  // 🔥 MODIFICATION PRINCIPALE : Redirection selon le type d'utilisateur
   const handleSign = async () => {
     if (signing) return;
     if (!canSign()) return toast.error('Veuillez compléter toutes vos signatures');
@@ -349,8 +351,21 @@ const DocumentSign = () => {
         { signature_data: normalizedSigData, signed_fields: signedFields },
         isGuest ? token : undefined
       );
+      
       toast.success('Document signé');
-      navigate('/signature/success', { state: { id } });
+      
+      // 🎯 Redirection selon le type d'utilisateur
+      if (isGuest) {
+        // Pour les invités : redirection vers la page de confirmation invité avec token
+        navigate(`/signature/guest/success?id=${id}&token=${token}`, { 
+          state: { id, token } 
+        });
+      } else {
+        // Pour les utilisateurs connectés : redirection vers la page de confirmation standard
+        navigate('/signature/success', { 
+          state: { id } 
+        });
+      }
     } catch (e) {
       console.error(e);
       toast.error(e?.response?.data?.error || 'Erreur lors de la signature');

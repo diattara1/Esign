@@ -24,7 +24,7 @@ import base64
 
 from django.conf import settings
 
-from ..tasks import send_signature_email
+from ..tasks import send_signature_email,send_document_completed_notification,send_signed_pdf_to_all_signers
 from ..otp import generate_otp, validate_otp, send_otp
 from ..hsm import hsm_sign
 from ..models import (
@@ -679,39 +679,65 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
 
             logger.info(f"_do_sign: champ {i+1}/{len(my_fields_meta)} traité avec succès")
 
-        # 4) Sauvegarder le résultat & statut
+                # 4) Sauvegarder le résultat & statut
+        # --- DEBUT DU BLOC A COLLER DANS _do_sign ---
         with transaction.atomic():
+            # 1) Marquer ce destinataire comme signé
             recipient.signed = True
             recipient.signed_at = timezone.now()
             recipient.save(update_fields=['signed', 'signed_at'])
-
-            sig_doc = SignatureDocument.objects.create(
-                envelope=envelope,
-                recipient=recipient,
-                signer=(self.request.user if self.request and self.request.user.is_authenticated else None),
-                is_guest=(recipient.user is None),
-                signature_data=signature_data,
-                signed_fields=signed_fields,
-                ip_address=self.request.META.get('REMOTE_ADDR'),
-                user_agent=self.request.META.get('HTTP_USER_AGENT', ''),
-            )
-
+            print(f"[SIGN] Recipient {recipient.id} marqué signé à {recipient.signed_at}")
+        
+            # 2) Créer l'empreinte de signature
+            sig_doc =SignatureDocument.objects.create( envelope=envelope,
+                        recipient=recipient,
+                        signer=(self.request.user if self.request and self.request.user.is_authenticated else None),
+                        is_guest=(recipient.user is None),
+                        signature_data=signature_data,
+                        signed_fields=signed_fields,
+                        ip_address=self.request.META.get('REMOTE_ADDR'),
+                        user_agent=self.request.META.get('HTTP_USER_AGENT', ''),
+                         ) 
+            print(f"[SIGN] SignatureDocument créé id={sig_doc.id}")
+        
+            # 3) Sauvegarder le PDF signé
             file_name = self._signed_filename(envelope.id, recipient.id)
             sig_doc.signed_file.save(file_name, ContentFile(base_bytes), save=True)
-
-            # Statut enveloppe
-            if envelope.recipients.filter(signed=False).exists():
+            print(f"[SIGN] PDF signé sauvegardé → {sig_doc.signed_file.name}")
+        
+            # 4) Mettre à jour le statut de l'enveloppe
+            unsigned_exists = envelope.recipients.filter(signed=False).exists()
+            if unsigned_exists:
                 if envelope.status != 'pending':
                     envelope.status = 'pending'
                     envelope.save(update_fields=['status'])
+                print(f"[SIGN] Envelope {envelope.id} encore en cours → status=pending")
             else:
                 envelope.status = 'completed'
                 envelope.save(update_fields=['status'])
-
-            # Notifier le suivant si nécessaire
-            self._notify_next_recipient_if_needed(envelope)
-
+                print(f"[SIGN] Envelope {envelope.id} COMPLETED ✅")
+        
+            # 5) Déclenchements APRÈS COMMIT
+            def _after_commit():
+                try:
+                    if unsigned_exists:
+                        print(f"[SIGN] on_commit → notifier le prochain destinataire pour envelope {envelope.id}")
+                        self._notify_next_recipient_if_needed(envelope)
+                    else:
+                        # Enveloppe complète → mails finaux
+                        print(f"[SIGN] on_commit → enqueue send_document_completed_notification({envelope.id})")
+                        send_document_completed_notification.delay(envelope.id)
+        
+                        print(f"[SIGN] on_commit → enqueue send_signed_pdf_to_all_signers({envelope.id})")
+                        send_signed_pdf_to_all_signers.delay(envelope.id)
+                except Exception as e:
+                    print(f"[SIGN][ERR] on_commit error (envelope {envelope.id}): {e}")
+        
+            transaction.on_commit(_after_commit)
+        
         return Response({'status': 'signed'})
+
+
 
     def _add_signature_overlay_to_pdf(self, pdf_bytes, signature_data, x, y_top, w, h, page_ix):
         """Version améliorée qui préserve TOUJOURS les signatures existantes"""

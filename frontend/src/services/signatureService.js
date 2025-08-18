@@ -51,18 +51,10 @@ export default {
     api.post(`${BASE}/envelopes/${id}/send/`).then(res => res.data),
 
   // ─── Guest signing (token / OTP) ────────────────────────────────────
-  // On tente d'abord /guest/:id/ (correspond à ton view def guest_envelope_view),
-  // sinon fallback /envelopes/:id/guest/
   getGuestEnvelope: async (id, token) => {
     const headers = token ? { 'X-Signature-Token': token } : {};
-    try {
-      return await tryGet(`${BASE}/guest/${id}/`, { headers });
-    } catch {
-      // fallback
-      return await tryGet(`${BASE}/envelopes/${id}/guest/`, { headers });
-    }
+    return await tryGet(`${BASE}/envelopes/${id}/guest/`, { headers });
   },
-
   sendOtp: (id, token) =>
     api.post(
       `${BASE}/envelopes/${id}/send_otp/`,
@@ -130,8 +122,14 @@ remindNow: (id) =>
   getSignedDocumentUrl: envelopeId =>
     `${BASE}/envelopes/${envelopeId}/signed-document/`,
 
-  getDecryptedDocumentUrl: (envelopeId, token) =>
-    `${BASE}/envelopes/${envelopeId}/document/?token=${token}`,
+    // renvoyer une URL ABSOLUE (utilise api.defaults.baseURL)
+  getDecryptedDocumentUrl: (envelopeId, token) => {
+    const rel = `${BASE}/envelopes/${envelopeId}/document/?token=${encodeURIComponent(
+      token || ''
+    )}`;
+    const base = (api.defaults.baseURL || '').replace(/\/$/, '');
+    return `${base}/${rel.replace(/^\//, '')}`;
+  },
 
   // ─── Signatures / QR codes  ───────────────────────────────
   getSignatures: envelopeId =>

@@ -85,14 +85,18 @@ class PasswordResetSerializer(serializers.Serializer):
         email = self.validated_data['email']
         user = User.objects.get(email=email)
         token = default_token_generator.make_token(user)
+        
+        # Construire le lien de réinitialisation
         reset_link = request.build_absolute_uri(f"/reset-password/{user.pk}/{token}/")
-        send_mail(
-            'Réinitialisation de mot de passe',
-            f'Utilisez ce lien pour réinitialiser votre mot de passe : {reset_link}',
-            settings.DEFAULT_FROM_EMAIL,
-            [email],
-            fail_silently=True,
-        )
+        
+        # Utiliser le nouveau template d'email
+        try:
+            EmailTemplates.password_reset_email(user, reset_link)
+        except Exception as e:
+            # Log l'erreur mais ne pas échouer la requête
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Erreur envoi email reset password: {e}")
 
 
 class ChangePasswordSerializer(serializers.Serializer):

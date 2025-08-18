@@ -1,11 +1,11 @@
-# signature/otp.py
+# signature/otp.py (mis à jour)
 import pyotp
 from django.core.cache import cache
-from django.core.mail import send_mail
 from django.conf import settings
+from .email_utils import EmailTemplates
 
-OTP_TTL = 300  # secondes
-MAX_OTP_ATTEMPTS = 5
+OTP_TTL = 100  # secondes
+MAX_OTP_ATTEMPTS = 3
 
 
 def _cache_key(recipient):
@@ -56,10 +56,13 @@ def validate_otp(recipient, token):
 
 def send_otp(recipient, otp):
     """
-    Envoie l’OTP par email (ou SMS si vous voulez étendre).
+    Envoie l'OTP par email en utilisant le template uniforme.
     """
-    subject = "Votre code OTP de signature"
-    message = f"Bonjour {recipient.full_name},\n\nVotre code de signature est : {otp}\nIl est valable {OTP_TTL//60} minutes."
-    from_email = settings.DEFAULT_FROM_EMAIL
-    recipient_list = [recipient.email]
-    send_mail(subject, message, from_email, recipient_list)
+    try:
+        EmailTemplates.otp_email(recipient, otp, OTP_TTL//60)
+    except Exception as e:
+        # Log l'erreur mais ne pas faire échouer la fonction
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Erreur envoi OTP pour recipient {recipient.id}: {e}")
+        raise  # Re-lever l'exception pour signaler l'échec

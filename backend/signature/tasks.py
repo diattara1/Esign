@@ -1,13 +1,12 @@
-# signature/tasks.py
+# signature/tasks.py (parties mises à jour)
 
 from celery import shared_task
-from django.core.mail import send_mail
 from django.conf import settings
 from datetime import datetime, timedelta
 import jwt
 import logging
 import base64  
-from .models import Envelope, EnvelopeRecipient,BatchSignJob, BatchSignItem
+from .models import Envelope, EnvelopeRecipient, BatchSignJob, BatchSignItem
 import io, zipfile, os
 from django.core.files.base import ContentFile
 from django.utils import timezone
@@ -16,9 +15,7 @@ from PyPDF2 import PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
 from reportlab.lib.utils import ImageReader
 from .crypto_utils import sign_pdf_bytes
-
-
-from django.conf import settings
+from .email_utils import EmailTemplates
 
 logger = logging.getLogger(__name__)
 
@@ -103,9 +100,6 @@ def _paste_signature_on_pdf(pdf_bytes: bytes, sig_img_bytes: bytes, placements: 
     return buf.getvalue()
 
 
-
-# signature/tasks.py
-
 def _crypto_sign_pdf(pdf_bytes: bytes, field_name: str | None = None) -> bytes:
     # Reload pour éviter les versions obsolètes en mémoire du worker
     from importlib import reload
@@ -115,7 +109,6 @@ def _crypto_sign_pdf(pdf_bytes: bytes, field_name: str | None = None) -> bytes:
     except Exception:
         pass
     return cu.sign_pdf_bytes(pdf_bytes, field_name=field_name)
-
 
 
 @shared_task
@@ -181,7 +174,6 @@ def process_batch_sign_job(job_id: int, use_saved_signature_id=None, signature_u
             # signature numérique (branche ici ton pyHanko/HSM)
             signed_bytes = _crypto_sign_pdf(stamped, field_name=f"Batch_{item.id}")
 
-
             base_name = None
             if item.envelope_document and item.envelope_document.name:
                 base_name = item.envelope_document.name.rsplit(".", 1)[0]
@@ -229,6 +221,8 @@ def process_batch_sign_job(job_id: int, use_saved_signature_id=None, signature_u
         job.status = "failed"
     job.finished_at = timezone.now()
     job.save(update_fields=["status", "finished_at", "result_zip"])
+
+
 def _build_sign_link(envelope, recipient):
     """Construit le lien de signature (in-app si user, sinon lien invité avec JWT)."""
     expire_at = datetime.utcnow() + timedelta(hours=24)
@@ -245,19 +239,9 @@ def _build_sign_link(envelope, recipient):
     return f"{settings.FRONT_BASE_URL}/sign/{envelope.id}?token={token}"
 
 
-def _send_email(subject, message, to):
-    send_mail(
-        subject=subject,
-        message=message,
-        from_email=settings.DEFAULT_FROM_EMAIL,
-        recipient_list=[to],
-        fail_silently=False,
-    )
-
-
 @shared_task
 def send_signature_email(envelope_id, recipient_id):
-    """Notification initiale (appelée à l’envoi ou à l’ouverture du suivant en séquentiel)."""
+    """Notification initiale avec template (appelée à l'envoi ou à l'ouverture du suivant en séquentiel)."""
     try:
         envelope = Envelope.objects.get(pk=envelope_id)
         recipient = EnvelopeRecipient.objects.get(pk=recipient_id, envelope=envelope, signed=False)
@@ -268,10 +252,13 @@ def send_signature_email(envelope_id, recipient_id):
         return  # déjà expiré
 
     link = _build_sign_link(envelope, recipient)
-    subject = f"Signature requise : {envelope.title}"
-    message = f"Bonjour {recipient.full_name},\n\nVeuillez signer « {envelope.title} » :\n{link}\n\nMerci."
-
-    _send_email(subject, message, recipient.email)
+    
+    # Utiliser le template d'email
+    try:
+        EmailTemplates.signature_request_email(recipient, envelope, link)
+    except Exception as e:
+        logger.error(f"Erreur envoi email signature: {e}")
+        return
 
     # trace
     recipient.reminder_count += 1
@@ -284,7 +271,7 @@ def send_signature_email(envelope_id, recipient_id):
 
 @shared_task
 def send_reminder_email(envelope_id, recipient_id):
-    """Rappel (passe par process_signature_reminders)."""
+    """Rappel avec template (passe par process_signature_reminders)."""
     try:
         envelope = Envelope.objects.get(pk=envelope_id)
         recipient = EnvelopeRecipient.objects.get(pk=recipient_id, envelope=envelope, signed=False)
@@ -298,10 +285,13 @@ def send_reminder_email(envelope_id, recipient_id):
         return
 
     link = _build_sign_link(envelope, recipient)
-    subject = f"Rappel de signature : {envelope.title}"
-    message = f"Bonjour {recipient.full_name},\n\nUn rappel pour signer « {envelope.title} » :\n{link}\n\nMerci."
-
-    _send_email(subject, message, recipient.email)
+    
+    # Utiliser le template d'email
+    try:
+        EmailTemplates.signature_reminder_email(recipient, envelope, link)
+    except Exception as e:
+        logger.error(f"Erreur envoi email rappel: {e}")
+        return
 
     recipient.reminder_count += 1
     recipient.last_reminder_at = timezone.now()
@@ -337,19 +327,33 @@ def process_signature_reminders():
 
 @shared_task
 def send_deadline_email(envelope_id):
-    """Avertit le créateur et les non-signés que l’échéance est dépassée."""
+    """Avertit le créateur et les non-signés que l'échéance est dépassée avec template."""
     try:
         env = Envelope.objects.get(pk=envelope_id)
     except Envelope.DoesNotExist:
         return
 
-    subject = f"Échéance dépassée : {env.title}"
-    msg_owner = f"Bonjour,\n\nL’échéance du document « {env.title} » est dépassée. Statut: {env.status}."
-    _send_email(subject, msg_owner, env.created_by.email)
+    # Email au créateur
+    try:
+        EmailTemplates.deadline_expired_email(env.created_by, env)
+    except Exception as e:
+        logger.error(f"Erreur envoi email deadline créateur: {e}")
 
+    # Email aux destinataires non-signés
     for rec in env.recipients.filter(signed=False):
-        msg_rec = f"Bonjour {rec.full_name},\n\nL’échéance pour signer « {env.title} » est dépassée."
-        _send_email(subject, msg_rec, rec.email)
+        try:
+            from .email_utils import send_templated_email
+            send_templated_email(
+                recipient_email=rec.email,
+                subject=f"Échéance dépassée : {env.title}",
+                message_content=f"La date limite pour signer le document '{env.title}' est maintenant dépassée. Le processus de signature a été interrompu.",
+                user_name=rec.full_name,
+                email_type="Échéance dépassée",
+                info_message="Si vous devez toujours signer ce document, contactez la personne qui vous l'a envoyé pour obtenir un nouveau lien.",
+                info_type="warning"
+            )
+        except Exception as e:
+            logger.error(f"Erreur envoi email deadline destinataire {rec.id}: {e}")
 
 
 @shared_task
@@ -366,3 +370,24 @@ def process_deadlines():
         env.save(update_fields=['status'])
         send_deadline_email.delay(env.id)
         env.recipients.filter(signed=False).update(next_reminder_at=None)
+
+
+@shared_task
+def send_document_completed_notification(envelope_id):
+    """Notifie le créateur quand un document est entièrement signé."""
+    try:
+        env = Envelope.objects.get(pk=envelope_id)
+        EmailTemplates.document_completed_email(env.created_by, env)
+    except Exception as e:
+        logger.error(f"Erreur notification document complété: {e}")
+
+
+@shared_task 
+def send_otp_email(recipient_id, otp_code, expiry_minutes=5):
+    """Envoie un code OTP avec template."""
+    try:
+        from .models import EnvelopeRecipient
+        recipient = EnvelopeRecipient.objects.get(pk=recipient_id)
+        EmailTemplates.otp_email(recipient, otp_code, expiry_minutes)
+    except Exception as e:
+        logger.error(f"Erreur envoi OTP: {e}")

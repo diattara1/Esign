@@ -1,10 +1,11 @@
+# signature/views/auth.py (mis à jour)
+
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes, parser_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.response import Response
 from django.shortcuts import redirect
-from django.core.mail import send_mail
 from django.conf import settings
 from django.urls import reverse
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
@@ -19,6 +20,7 @@ from ..serializers import (
     PasswordResetSerializer,
     ChangePasswordSerializer,
 )
+from ..email_utils import EmailTemplates
 
 User = get_user_model()
 
@@ -78,17 +80,20 @@ def register(request):
         activation_link = request.build_absolute_uri(
             reverse('activate-account', kwargs={'uidb64': uid, 'token': token})
         )
-        send_mail(
-            'Activation de compte',
-            f'Cliquez sur ce lien pour activer votre compte : {activation_link}',
-            settings.DEFAULT_FROM_EMAIL,
-            [user.email],
-            fail_silently=True,
-        )
-        return Response(
-            {'detail': 'Inscription réussie. Vérifiez votre e-mail pour activer votre compte.'},
-            status=status.HTTP_201_CREATED,
-        )
+        
+        # Utiliser le nouveau template d'email
+        try:
+            EmailTemplates.activation_email(user, activation_link)
+            return Response(
+                {'detail': 'Inscription réussie. Vérifiez votre e-mail pour activer votre compte.'},
+                status=status.HTTP_201_CREATED,
+            )
+        except Exception as e:
+            # Fallback en cas d'erreur d'envoi d'email
+            return Response(
+                {'detail': 'Inscription réussie mais erreur d\'envoi d\'email. Contactez le support.'},
+                status=status.HTTP_201_CREATED,
+            )
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 @api_view(['GET'])
@@ -140,7 +145,7 @@ def change_password(request):
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 @api_view(['GET'])
-@permission_classes([IsAuthenticated])
+@permission_classes([AllowAny])
 def verify_token(request):
     """Endpoint pour vérifier la validité du token JWT"""
     try:

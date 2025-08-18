@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{subject}}</title>
+    <style>
+        /* Reset et styles de base */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: #374151;
+            background-color: #f9fafb;
+        }
+        
+        /* Container principal */
+        .email-container {
+            max-width: 600px;
+            margin: 20px auto;
+            background: #ffffff;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+        
+        /* Header avec logo et branding */
+        .email-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 30px;
+            text-align: center;
+            color: white;
+        }
+        
+        .logo {
+            width: 60px;
+            height: 60px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 15px;
+            backdrop-filter: blur(10px);
+        }
+        
+        .logo svg {
+            width: 30px;
+            height: 30px;
+            fill: white;
+        }
+        
+        .email-title {
+            font-size: 24px;
+            font-weight: 700;
+            margin: 0;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        
+        .email-subtitle {
+            font-size: 16px;
+            margin-top: 8px;
+            opacity: 0.9;
+            font-weight: 400;
+        }
+        
+        /* Contenu principal */
+        .email-body {
+            padding: 40px 30px;
+        }
+        
+        .greeting {
+            font-size: 18px;
+            font-weight: 600;
+            color: #1f2937;
+            margin-bottom: 20px;
+        }
+        
+        .message {
+            font-size: 16px;
+            line-height: 1.7;
+            color: #4b5563;
+            margin-bottom: 30px;
+        }
+        
+        /* Boutons d'action */
+        .action-button {
+            display: inline-block;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white !important;
+            text-decoration: none;
+            padding: 15px 30px;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 16px;
+            text-align: center;
+            margin: 20px 0;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        .action-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.5);
+        }
+        
+        .action-container {
+            text-align: center;
+            margin: 30px 0;
+        }
+        
+        /* Code OTP styling */
+        .otp-code {
+            background: #f3f4f6;
+            border: 2px dashed #d1d5db;
+            border-radius: 8px;
+            padding: 20px;
+            text-align: center;
+            margin: 25px 0;
+        }
+        
+        .otp-number {
+            font-size: 32px;
+            font-weight: 700;
+            color: #1f2937;
+            letter-spacing: 8px;
+            font-family: 'Courier New', monospace;
+            margin: 10px 0;
+        }
+        
+        .otp-label {
+            font-size: 14px;
+            color: #6b7280;
+            text-transform: uppercase;
+            font-weight: 600;
+            letter-spacing: 1px;
+        }
+        
+        /* Informations supplémentaires */
+        .info-box {
+            background: #eff6ff;
+            border: 1px solid #dbeafe;
+            border-left: 4px solid #3b82f6;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 25px 0;
+        }
+        
+        .info-box.warning {
+            background: #fef3cd;
+            border-color: #fde68a;
+            border-left-color: #f59e0b;
+        }
+        
+        .info-box.success {
+            background: #d1fae5;
+            border-color: #a7f3d0;
+            border-left-color: #10b981;
+        }
+        
+        .info-icon {
+            width: 20px;
+            height: 20px;
+            display: inline-block;
+            vertical-align: middle;
+            margin-right: 8px;
+        }
+        
+        .info-title {
+            font-weight: 600;
+            color: #1f2937;
+            margin-bottom: 8px;
+        }
+        
+        .info-text {
+            font-size: 14px;
+            color: #4b5563;
+            line-height: 1.6;
+        }
+        
+        /* Footer */
+        .email-footer {
+            background: #f9fafb;
+            padding: 30px;
+            text-align: center;
+            border-top: 1px solid #e5e7eb;
+        }
+        
+        .footer-text {
+            font-size: 14px;
+            color: #6b7280;
+            line-height: 1.6;
+        }
+        
+        .footer-links {
+            margin-top: 20px;
+        }
+        
+        .footer-link {
+            color: #667eea;
+            text-decoration: none;
+            font-size: 14px;
+            margin: 0 10px;
+        }
+        
+        .footer-link:hover {
+            text-decoration: underline;
+        }
+        
+        /* Responsive design */
+        @media (max-width: 600px) {
+            .email-container {
+                margin: 10px;
+                border-radius: 8px;
+            }
+            
+            .email-header {
+                padding: 25px 20px;
+            }
+            
+            .email-title {
+                font-size: 20px;
+            }
+            
+            .email-subtitle {
+                font-size: 14px;
+            }
+            
+            .email-body {
+                padding: 30px 20px;
+            }
+            
+            .greeting {
+                font-size: 16px;
+            }
+            
+            .message {
+                font-size: 15px;
+            }
+            
+            .action-button {
+                display: block;
+                width: 100%;
+                padding: 15px;
+                font-size: 15px;
+            }
+            
+            .otp-number {
+                font-size: 28px;
+                letter-spacing: 4px;
+            }
+            
+            .email-footer {
+                padding: 25px 20px;
+            }
+        }
+        
+        /* Dark mode support */
+        @media (prefers-color-scheme: dark) {
+            .email-container {
+                background: #1f2937;
+            }
+            
+            .email-body {
+                color: #e5e7eb;
+            }
+            
+            .greeting {
+                color: #f9fafb;
+            }
+            
+            .message {
+                color: #d1d5db;
+            }
+            
+            .info-box {
+                background: #374151;
+                border-color: #4b5563;
+            }
+            
+            .email-footer {
+                background: #111827;
+                border-color: #374151;
+            }
+            
+            .footer-text {
+                color: #9ca3af;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="email-container">
+        <!-- Header -->
+        <div class="email-header">
+            <div class="logo">
+                <svg viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+            </div>
+            <h1 class="email-title">{{app_name|default:"Signature Platform"}}</h1>
+            <p class="email-subtitle">{{email_type|default:"Notification"}}</p>
+        </div>
+
+        <!-- Corps de l'email -->
+        <div class="email-body">
+            <div class="greeting">
+                Bonjour {{user_name|default:"cher utilisateur"}},
+            </div>
+
+            <div class="message">
+                {{message_content}}
+            </div>
+
+            <!-- Bouton d'action (conditionnel) -->
+            {% if action_url %}
+            <div class="action-container">
+                <a href="{{action_url}}" class="action-button">
+                    {{action_text|default:"Continuer"}}
+                </a>
+            </div>
+            {% endif %}
+
+            <!-- Code OTP (conditionnel) -->
+            {% if otp_code %}
+            <div class="otp-code">
+                <div class="otp-label">Votre code de vérification</div>
+                <div class="otp-number">{{otp_code}}</div>
+                <div class="info-text">Ce code expire dans {{otp_expiry|default:"5"}} minutes</div>
+            </div>
+            {% endif %}
+
+            <!-- Boîte d'information (conditionnelle) -->
+            {% if info_message %}
+            <div class="info-box {{info_type|default:''}}">
+                <div class="info-title">
+                    {% if info_type == 'warning' %}
+                        <span class="info-icon">⚠️</span> Important
+                    {% elif info_type == 'success' %}
+                        <span class="info-icon">✅</span> Information
+                    {% else %}
+                        <span class="info-icon">ℹ️</span> À noter
+                    {% endif %}
+                </div>
+                <div class="info-text">{{info_message}}</div>
+            </div>
+            {% endif %}
+
+            <!-- Lien alternatif -->
+            {% if action_url %}
+            <div class="info-box">
+                <div class="info-title">Problème avec le bouton ?</div>
+                <div class="info-text">
+                    Copiez et collez ce lien dans votre navigateur :<br>
+                    <a href="{{action_url}}" style="color: #667eea; word-break: break-all;">{{action_url}}</a>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Footer -->
+        <div class="email-footer">
+            <div class="footer-text">
+                Cet email a été envoyé automatiquement depuis {{app_name|default:"notre plateforme"}}.<br>
+                Si vous n'êtes pas à l'origine de cette demande, vous pouvez ignorer ce message.
+            </div>
+            
+            <div class="footer-links">
+                <a href="{{base_url}}" class="footer-link">Accueil</a>
+                <a href="{{base_url}}/support" class="footer-link">Support</a>
+                <a href="{{base_url}}/privacy" class="footer-link">Confidentialité</a>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

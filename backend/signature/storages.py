@@ -1,15 +1,37 @@
 # storages.py - Version améliorée avec meilleure gestion d'erreurs
 import os
+import io
+import logging
 from django.core.files.storage import FileSystemStorage
-from django.core.files.base import ContentFile
+from django.core.files.base import File
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
-import logging
-import io
 
 logger = logging.getLogger(__name__)
+
+class _ChunkedIteratorIO(io.RawIOBase):
+    def __init__(self, iterator):
+        self.iterator = iter(iterator)
+        self.buffer = b""
+
+    def readable(self):
+        return True
+
+    def read(self, n=-1):
+        if n == -1:
+            chunks = [self.buffer]
+            chunks.extend(self.iterator)
+            self.buffer = b""
+            return b"".join(chunks)
+        while len(self.buffer) < n:
+            try:
+                self.buffer += next(self.iterator)
+            except StopIteration:
+                break
+        result, self.buffer = self.buffer[:n], self.buffer[n:]
+        return result
 
 class EncryptedFileSystemStorage(FileSystemStorage):
     """
@@ -25,38 +47,35 @@ class EncryptedFileSystemStorage(FileSystemStorage):
 
     def _save(self, name, content):
         try:
-            # Ensure we're at the beginning of the file
-            if hasattr(content, 'seek'):
+            if hasattr(content, "seek"):
                 content.seek(0)
-            
-            # Read the entire file content into memory
-            if hasattr(content, 'read'):
-                data = content.read()
-            else:
-                data = content
-                
-            if not data:
+
+            chunks = content.chunks()
+            try:
+                first_chunk = next(chunks)
+            except StopIteration:
                 logger.error(f"File {name} is empty")
                 raise ValidationError("Le fichier est vide.")
-                
-            logger.debug(f"Saving file {name}: {len(data)} bytes")
-            
-            # Vérifier si c'est un PDF
-            if name.lower().endswith('.pdf') and not data.startswith(b'%PDF-'):
+
+            if name.lower().endswith(".pdf") and not first_chunk.startswith(b"%PDF-"):
                 logger.error(f"File {name} is not a valid PDF")
                 raise ValidationError("Le fichier n'est pas un PDF valide.")
-            
-            # Generate IV and encrypt
+
             iv = os.urandom(16)
             cipher = Cipher(algorithms.AES(self.key), modes.CFB(iv), backend=default_backend())
             encryptor = cipher.encryptor()
-            encrypted = encryptor.update(data) + encryptor.finalize()
-            
-            # Save IV + encrypted data
-            encrypted_content = ContentFile(iv + encrypted)
-            encrypted_content.name = name
+
+            def gen():
+                yield iv
+                yield encryptor.update(first_chunk)
+                for chunk in chunks:
+                    if chunk:
+                        yield encryptor.update(chunk)
+                yield encryptor.finalize()
+
+            encrypted_content = File(_ChunkedIteratorIO(gen()), name)
             saved_name = super()._save(name, encrypted_content)
-            logger.info(f"File {saved_name} saved and encrypted successfully ({len(data)} bytes)")
+            logger.info(f"File {saved_name} saved and encrypted successfully")
             return saved_name
         except Exception as e:
             logger.error(f"Error saving file {name}: {str(e)}")
@@ -64,47 +83,56 @@ class EncryptedFileSystemStorage(FileSystemStorage):
 
     def open(self, name, mode='rb'):
         try:
-            # Read encrypted file
-            with super().open(name, mode) as f:
-                data = f.read()
-            
-            if len(data) < 16:
-                logger.error(f"File {name} too short to contain IV (size: {len(data)})")
-                raise ValueError(f"File too short to contain IV (size: {len(data)})")
-            
-            # Split IV and ciphertext
-            iv = data[:16]
-            encrypted = data[16:]
-            logger.debug(f"Opening file {name}: total size={len(data)}, IV length={len(iv)}, encrypted length={len(encrypted)}")
-            
-            # Decrypt
+            f = super().open(name, mode)
+            iv = f.read(16)
+            if len(iv) != 16:
+                f.close()
+                logger.error(f"File {name} too short to contain IV (size: {len(iv)})")
+                raise ValueError(f"File too short to contain IV (size: {len(iv)})")
+
             cipher = Cipher(algorithms.AES(self.key), modes.CFB(iv), backend=default_backend())
             decryptor = cipher.decryptor()
-            decrypted = decryptor.update(encrypted) + decryptor.finalize()
-            logger.debug(f"File {name} decrypted: {len(decrypted)} bytes")
-            
-            # Vérifier si c'est un PDF
-            if name.lower().endswith('.pdf') and not decrypted.startswith(b'%PDF-'):
-                logger.error(f"Decrypted file {name} is not a valid PDF. First 10 bytes: {decrypted[:10]}")
-                raise ValueError("Le fichier déchiffré n'est pas un PDF valide.")
-            
-            # Create a file-like object that can be seeked
-            decrypted_io = io.BytesIO(decrypted)
-            decrypted_io.name = name
-            decrypted_io.size = len(decrypted)
-            return decrypted_io
+
+            def gen():
+                first = True
+                try:
+                    for chunk in iter(lambda: f.read(64 * 1024), b""):
+                        decrypted_chunk = decryptor.update(chunk)
+                        if first:
+                            first = False
+                            if name.lower().endswith('.pdf') and not decrypted_chunk.startswith(b'%PDF-'):
+                                logger.error(f"Decrypted file {name} is not a valid PDF. First 10 bytes: {decrypted_chunk[:10]}")
+                                raise ValueError("Le fichier déchiffré n'est pas un PDF valide.")
+                        yield decrypted_chunk
+                    final_chunk = decryptor.finalize()
+                    if first and not final_chunk:
+                        logger.error(f"File {name} is empty after decryption")
+                        raise ValueError("Le fichier est vide.")
+                    if final_chunk:
+                        yield final_chunk
+                finally:
+                    f.close()
+
+            return File(_ChunkedIteratorIO(gen()), name)
         except Exception as e:
             logger.error(f"Error opening file {name}: {str(e)}")
             raise
 
     def size(self, name):
         try:
-            # Open file to get decrypted size
-            with self.open(name, 'rb') as f:
-                f.seek(0, 2)  # Seek to end
-                size = f.tell()
-                f.seek(0)  # Reset to beginning
-            return size
+            with super().open(name, 'rb') as f:
+                iv = f.read(16)
+                if len(iv) != 16:
+                    logger.error(f"File {name} too short to contain IV (size: {len(iv)})")
+                    raise ValueError(f"File too short to contain IV (size: {len(iv)})")
+
+                cipher = Cipher(algorithms.AES(self.key), modes.CFB(iv), backend=default_backend())
+                decryptor = cipher.decryptor()
+                total = 0
+                for chunk in iter(lambda: f.read(64 * 1024), b""):
+                    total += len(decryptor.update(chunk))
+                decryptor.finalize()
+            return total
         except Exception as e:
             logger.error(f"Error getting size of file {name}: {str(e)}")
             raise

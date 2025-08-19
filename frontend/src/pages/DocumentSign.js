@@ -78,6 +78,7 @@ const DocumentSign = () => {
   const [mode, setMode] = useState('draw');
   const [signatureData, setSignatureData] = useState({}); // {fieldId: dataURL}
   const [uploadPreview, setUploadPreview] = useState(null);
+  const [savedSignatures, setSavedSignatures] = useState([]);
 
   // --- helpers invités (auth par header token) ---
   const toAbsolute = (url) => {
@@ -171,6 +172,15 @@ const DocumentSign = () => {
     };
     init();
   }, [id, token, isGuest, navigate]);
+
+  // Load saved signatures for authenticated users
+  useEffect(() => {
+    if (isGuest) return;
+    signatureService
+      .listSavedSignatures()
+      .then(setSavedSignatures)
+      .catch(() => {});
+  }, [isGuest]);
 
   // Révocation différée de l'URL blob
   const prevUrlRef = useRef(null);
@@ -619,6 +629,17 @@ const DocumentSign = () => {
             />
             <span>Importer</span>
           </label>
+          {!isGuest && savedSignatures.length > 0 && (
+            <label className="flex items-center gap-2">
+              <input
+                type="radio"
+                name="mode"
+                checked={mode === 'saved'}
+                onChange={() => setMode('saved')}
+              />
+              <span>Mes signatures</span>
+            </label>
+          )}
         </div>
 
         {/* Contenu selon mode */}
@@ -635,7 +656,7 @@ const DocumentSign = () => {
             }}
             initialValue={signatureData[selectedField?.id]}
           />
-        ) : (
+        ) : mode === 'upload' ? (
           <div className="space-y-3">
             <input
               type="file"
@@ -672,6 +693,24 @@ const DocumentSign = () => {
                 Effacer
               </button>
             )}
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-2 max-h-64 overflow-auto">
+            {savedSignatures.map(sig => (
+              <div
+                key={sig.id}
+                className="border p-1 cursor-pointer flex items-center justify-center"
+                onClick={() => {
+                  if (!selectedField) return;
+                  const url = sig.data_url || toAbsolute(sig.image);
+                  setSignatureData(prev => ({ ...prev, [selectedField.id]: url }));
+                  setUploadPreview(url);
+                }}
+              >
+                <img src={sig.data_url || toAbsolute(sig.image)} alt="saved" className="max-h-20" />
+              </div>
+            ))}
+            {savedSignatures.length === 0 && <p>Aucune signature enregistrée.</p>}
           </div>
         )}
 

@@ -16,12 +16,14 @@ from .views.auth import (
 )
 from .views.notification import NotificationPreferenceViewSet
 from .views.batch import SelfSignView, BatchSignCreateView, BatchSignJobViewSet
+from .views.saved_signature import SavedSignatureViewSet
 
 router = DefaultRouter()
 router.register(r"batch-jobs", BatchSignJobViewSet, basename="batch-jobs")
 router.register(r'envelopes', EnvelopeViewSet, basename='envelopes')
 router.register(r'prints', PrintQRCodeViewSet, basename='prints')
 router.register(r'notifications', NotificationPreferenceViewSet, basename='notifications')
+router.register(r'saved-signatures', SavedSignatureViewSet, basename='saved-signatures')
 
 urlpatterns = [
     path('', include(router.urls)),

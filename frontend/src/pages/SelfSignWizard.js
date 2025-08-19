@@ -4,6 +4,7 @@ import { Document, Page } from 'react-pdf';
 import { toast } from 'react-toastify';
 import { FiUpload, FiX, FiEdit3, FiMenu, FiCheck, FiMove } from 'react-icons/fi';
 import signatureService from '../services/signatureService';
+import { api } from '../services/apiUtils';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 
@@ -21,6 +22,15 @@ export default function SelfSignWizard() {
   const [placing, setPlacing] = useState(false);
   const [placement, setPlacement] = useState(null); // {page,x,y,width,height}
   const [sigFile, setSigFile] = useState(null);
+  const [sigDataUrl, setSigDataUrl] = useState('');
+  const [savedSignatures, setSavedSignatures] = useState([]);
+
+  const toAbsolute = (url) => {
+    if (!url) return url;
+    if (/^https?:\/\//i.test(url)) return url;
+    const base = (api.defaults.baseURL || '').replace(/\/$/, '');
+    return `${base}/${url.replace(/^\//, '')}`;
+  };
   const [isProcessing, setIsProcessing] = useState(false);
 
   // --- layout / resize ---
@@ -41,6 +51,10 @@ export default function SelfSignWizard() {
       window.removeEventListener('resize', checkMobile);
       window.removeEventListener('resize', measure);
     };
+  }, []);
+
+  useEffect(() => {
+    signatureService.listSavedSignatures().then(setSavedSignatures).catch(() => {});
   }, []);
 
   // --- upload d'un seul fichier ---
@@ -78,13 +92,14 @@ export default function SelfSignWizard() {
   const submit = async () => {
     if (!file) return toast.error('Ajoute un PDF');
     if (!placement) return toast.error('Définis la zone de signature');
-    if (!sigFile) return toast.error('Ajoute une image de signature (PNG recommandé)');
+    if (!sigFile && !sigDataUrl) return toast.error('Ajoute une image de signature (PNG recommandé)');
 
     setIsProcessing(true);
     const fd = new FormData();
     fd.append('files[]', file);                                  // un seul fichier
     fd.append('placements', JSON.stringify([placement]));
-    fd.append('signature_image', sigFile);
+    if (sigFile) fd.append('signature_image', sigFile);
+    else if (sigDataUrl) fd.append('signature_image', sigDataUrl);
     fd.append('sync', 'true');                                    // fast-path
 
     try {
@@ -174,13 +189,26 @@ export default function SelfSignWizard() {
         <input
           type="file"
           accept="image/*"
-          onChange={e => setSigFile(e.target.files?.[0] || null)}
+          onChange={e => { setSigFile(e.target.files?.[0] || null); setSigDataUrl(''); }}
           className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100"
         />
         {sigFile && (
           <div className="mt-2 flex items-center space-x-2">
             <FiCheck className="w-4 h-4 text-green-500" />
             <span className="text-sm text-green-600">{sigFile.name}</span>
+          </div>
+        )}
+        {!sigFile && savedSignatures.length > 0 && (
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            {savedSignatures.map(sig => (
+              <div
+                key={sig.id}
+                className="border p-1 cursor-pointer flex items-center justify-center"
+                onClick={() => { setSigDataUrl(sig.data_url || toAbsolute(sig.image)); setSigFile(null); }}
+              >
+                <img src={sig.data_url || toAbsolute(sig.image)} alt="saved" className="max-h-20" />
+              </div>
+            ))}
           </div>
         )}
       </div>

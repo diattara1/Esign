@@ -17,6 +17,7 @@ import NotificationSettings from './pages/NotificationSettings';
 import ProfilePage from './pages/ProfilePage';
 import SelfSignWizard from './pages/SelfSignWizard';
 import BulkSignSameWizard from './pages/BulkSignSameWizard';
+import SavedSignaturesPage from './pages/SavedSignaturesPage';
 import SentEnvelopes from './components/SentEnvelopes';
 import CompletedEnvelopes from './components/CompletedEnvelopes';
 import ActionRequiredEnvelopes from './components/ActionRequiredEnvelopes';
@@ -75,6 +76,7 @@ const App = () => {
           {/* Routes de signature */}
           <Route path="/signature/self-sign" element={<SelfSignWizard />} />
           <Route path="/signature/bulk-same" element={<BulkSignSameWizard />} />
+          <Route path="/signature/saved-signatures" element={<SavedSignaturesPage />} />
           
           <Route path="/signature/upload" element={<DocumentUpload />} />
           <Route path="/signature/detail/:id" element={<DocumentDetail />} />

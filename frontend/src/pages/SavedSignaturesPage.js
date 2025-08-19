@@ -103,10 +103,10 @@ const SavedSignaturesPage = () => {
           {items.map(sig => (
             <div key={sig.id} className="border p-2 rounded relative">
               <img
-                src={sig.data_url || toAbsolute(sig.image)}
-                alt="signature"
-                className="max-w-full max-h-24 mx-auto"
-              />
+  src={sig.data_url || sig.image_url}
+  alt="signature"
+/>
+
               <button
                 onClick={() => remove(sig.id)}
                 className="absolute top-1 right-1 text-red-600"

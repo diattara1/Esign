@@ -4,7 +4,7 @@ from django.contrib.auth.tokens import default_token_generator
 from django.core.mail import send_mail
 from django.conf import settings
 from django.db import transaction
-
+from rest_framework.reverse import reverse
 from .models import (SavedSignature, FieldTemplate, BatchSignJob, BatchSignItem,
     Envelope,EnvelopeRecipient,SigningField,SignatureDocument,PrintQRCode,
     NotificationPreference,EnvelopeDocument,
@@ -465,9 +465,20 @@ class EnvelopeSerializer(serializers.ModelSerializer):
 
 
 class SavedSignatureSerializer(serializers.ModelSerializer):
+    image = serializers.ImageField(write_only=True, required=False, allow_null=True)
+    image_url = serializers.SerializerMethodField()
+
     class Meta:
         model = SavedSignature
-        fields = ["id", "kind", "image", "data_url", "created_at"]
+        fields = ["id", "kind", "image", "image_url", "data_url", "created_at"]
+
+    def get_image_url(self, obj):
+        request = self.context.get("request")
+        if obj.image and request:
+            # basename défini dans le router: 'saved-signatures'
+            # -> nom de route = 'saved-signatures-image'
+            return reverse("saved-signatures-image", args=[obj.pk], request=request)
+        return None
 
 class FieldTemplateSerializer(serializers.ModelSerializer):
     class Meta:

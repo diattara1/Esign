@@ -27,7 +27,7 @@ const DocumentSign = () => {
 
   const navigate = useNavigate();
   const [expired, setExpired] = useState(false);
-
+  const [savedSelectedId, setSavedSelectedId] = useState(null);
   // viewer stable (évite le zoom/rétrécissement)
   const pdfWrapper = useRef(null);
   const [viewerWidth, setViewerWidth] = useState(0);
@@ -304,14 +304,15 @@ const DocumentSign = () => {
 
   // modal ouverture
   const openFieldModal = (field) => {
-    if (isAlreadySigned) return toast.info('Document déjà signé');
-    if (!field.editable) return toast.info('Champ non éditable');
-    setSelectedField(field);
-    setMode('draw');
-    const existing = signatureData[field.id];
-    setUploadPreview(existing || null);
-    setModalOpen(true);
-  };
+  if (isAlreadySigned) return toast.info('Document déjà signé');
+  if (!field.editable) return toast.info('Champ non éditable');
+  setSelectedField(field);
+  setMode('draw');
+  setUploadPreview(signatureData[field.id] || null);
+  setSavedSelectedId(null); // <—
+  setModalOpen(true);
+};
+
 
   // validation du modal
   const handleModalConfirm = () => {
@@ -695,23 +696,38 @@ const DocumentSign = () => {
             )}
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-2 max-h-64 overflow-auto">
-            {savedSignatures.map(sig => (
-              <div
-                key={sig.id}
-                className="border p-1 cursor-pointer flex items-center justify-center"
-                onClick={() => {
-                  if (!selectedField) return;
-                  const url = sig.data_url || toAbsolute(sig.image);
-                  setSignatureData(prev => ({ ...prev, [selectedField.id]: url }));
-                  setUploadPreview(url);
-                }}
-              >
-                <img src={sig.data_url || toAbsolute(sig.image)} alt="saved" className="max-h-20" />
-              </div>
-            ))}
-            {savedSignatures.length === 0 && <p>Aucune signature enregistrée.</p>}
-          </div>
+         <div className="grid grid-cols-2 gap-2 max-h-64 overflow-auto">
+  {savedSignatures.map(sig => (
+    <div
+      key={sig.id}
+      className={`relative border p-1 cursor-pointer flex items-center justify-center rounded
+        ${savedSelectedId === sig.id
+          ? 'ring-2 ring-blue-600 border-blue-600 bg-blue-50'
+          : 'hover:bg-gray-50'}`}
+      onClick={() => {
+        if (!selectedField) return;
+        const url = sig.data_url || toAbsolute(sig.image_url);
+        setSignatureData(prev => ({ ...prev, [selectedField.id]: url }));
+        setUploadPreview(url);
+        setSavedSelectedId(sig.id); // <— mémorise la sélection
+      }}
+      aria-selected={savedSelectedId === sig.id}
+    >
+      <img
+        src={sig.data_url || toAbsolute(sig.image_url)}
+        alt="saved"
+        className="max-h-20"
+      />
+      {savedSelectedId === sig.id && (
+        <span className="absolute top-1 right-1 text-[10px] px-1 rounded bg-blue-600 text-white">
+          Choisie
+        </span>
+      )}
+    </div>
+  ))}
+  {savedSignatures.length === 0 && <p>Aucune signature enregistrée.</p>}
+</div>
+
         )}
 
         <div className="mt-4 flex justify-end gap-2">

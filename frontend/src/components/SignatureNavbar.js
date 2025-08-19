@@ -45,6 +45,13 @@ const SignatureNavbar = () => {
       icon: <FiLayers className="w-4 h-4" />,
       description: 'Plusieurs docs, même position',
       color: 'blue'
+    },
+    {
+      path: '/signature/saved-signatures',
+      label: 'Mes signatures',
+      icon: <FiZap className="w-4 h-4" />,
+      description: 'Gérer vos signatures sauvegardées',
+      color: 'purple'
     }
   ];
 

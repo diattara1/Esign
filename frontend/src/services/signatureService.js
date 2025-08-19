@@ -160,12 +160,26 @@ createBatchSign: (formData) =>
 getBatchJob: (id) =>
   api.get(`api/signature/batch-jobs/${id}/`).then(res => res.data),
 
-downloadBatchZip: (id) =>
-  api.get(`api/signature/batch-jobs/${id}/download/`, { responseType: 'blob' })
-    .then(res => {
-      const url = URL.createObjectURL(res.data);
-      return { url };
-    }),
+  downloadBatchZip: (id) =>
+    api.get(`api/signature/batch-jobs/${id}/download/`, { responseType: 'blob' })
+      .then(res => {
+        const url = URL.createObjectURL(res.data);
+        return { url };
+      }),
+
+  // ─── Saved signatures ───────────────────────────────────────────────
+  listSavedSignatures: () =>
+    api.get(`${BASE}/saved-signatures/`).then(res => res.data),
+
+  createSavedSignature: (payload) => {
+    const config = payload instanceof FormData ? {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    } : {};
+    return api.post(`${BASE}/saved-signatures/`, payload, config).then(res => res.data);
+  },
+
+  deleteSavedSignature: (id) =>
+    api.delete(`${BASE}/saved-signatures/${id}/`).then(res => res.data),
 
 
 };

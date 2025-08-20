@@ -1,21 +1,65 @@
-# signature/crypto_utils.py - Version corrigée pour signatures multiples
-import io
+# signature/crypto_utils.py 
+
 from pathlib import Path
 from django.conf import settings
-from asn1crypto import pem, x509
+from asn1crypto import pem, x509 as asn1x509  # pour ValidationContext pyHanko
 from pyhanko.sign import signers
 from pyhanko.sign.signers import PdfSigner, PdfSignatureMetadata
 from pyhanko.pdf_utils.incremental_writer import IncrementalPdfFileWriter
 from pyhanko.sign.timestamps.requests_client import HTTPTimeStamper
 from pyhanko.sign.validation import ValidationContext
 from pyhanko.sign.fields import SigFieldSpec
+import io, hashlib
+from cryptography import x509 as cx509
+from cryptography.hazmat.backends import default_backend
+from cryptography.x509.oid import NameOID
 
-def _load_x509_cert(pathlike) -> x509.Certificate:
+
+def extract_signer_certificate_info():
+    """
+    Lit le certificat de signature (settings.SELF_SIGN_CERT_FILE)
+    et renvoie un dict compact pour l'API publique.
+    """
+    with open(settings.SELF_SIGN_CERT_FILE, "rb") as f:
+        raw = f.read()
+
+    # PEM puis fallback DER
+    try:
+        cert = cx509.load_pem_x509_certificate(raw, default_backend())
+    except ValueError:
+        cert = cx509.load_der_x509_certificate(raw, default_backend())
+
+    subj = cert.subject
+
+    def _get(oid, default=""):
+        try:
+            return subj.get_attributes_for_oid(oid)[0].value
+        except Exception:
+            return default
+
+    return {
+        "common_name": _get(NameOID.COMMON_NAME),
+        "organization": _get(NameOID.ORGANIZATION_NAME),
+        "country": _get(NameOID.COUNTRY_NAME),
+        "serial_number": str(cert.serial_number),
+    }
+def compute_hashes(pdf_bytes: bytes):
+    return {
+        "hash_md5": hashlib.md5(pdf_bytes).hexdigest(),
+        "hash_sha256": hashlib.sha256(pdf_bytes).hexdigest(),
+    }
+
+
+def _load_x509_cert(pathlike) -> asn1x509.Certificate:
+    """
+    Utilitaire pyHanko (asn1crypto) pour la ValidationContext.
+    """
     p = Path(pathlike)
     data = p.read_bytes()
     if pem.detect(data):
         _, _, data = pem.unarmor(data)
-    return x509.Certificate.load(data)
+    return asn1x509.Certificate.load(data)
+
 
 def get_validation_context() -> ValidationContext:
     trust_roots = []
@@ -23,18 +67,16 @@ def get_validation_context() -> ValidationContext:
         try:
             trust_roots.append(_load_x509_cert(p))
         except Exception:
-            # ignore une entrée invalide plutôt que de crasher
             pass
-    # (Optionnel) ajouter la racine TSA si dispo
     try:
         trust_roots.append(_load_x509_cert(settings.FREETSA_CACERT))
     except Exception:
         pass
     return ValidationContext(trust_roots=trust_roots)
 
+
 def get_timestamper() -> HTTPTimeStamper:
     return HTTPTimeStamper(settings.FREETSA_URL)
-
 
 def load_simple_signer() -> signers.SimpleSigner:
     return signers.SimpleSigner.load(

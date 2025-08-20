@@ -778,17 +778,34 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
     
     
     @staticmethod
-    def _add_qr_overlay_to_pdf(pdf_bytes: bytes, qr_png_bytes: bytes, *, size_pt=72, margin_pt=18):
+    def _add_qr_overlay_to_pdf(pdf_bytes: bytes, qr_png_bytes: bytes, *, size_pt=50, margin_pt=13, y_offset=-8):
+        """
+        Ajoute un QR code en bas à droite du PDF, plus petit et légèrement plus bas.
+        - size_pt : taille du QR code (par défaut 60pt ≈ 0.8cm)
+        - margin_pt : marge avec le bord droit
+        - y_offset : permet de descendre un peu plus le QR (valeur négative -> plus bas)
+        """
         base_reader = PdfReader(io.BytesIO(pdf_bytes))
         writer = PdfWriter()
+    
         for page in base_reader.pages:
-            w = float(page.mediabox.width); h = float(page.mediabox.height)
+            w = float(page.mediabox.width)
+            h = float(page.mediabox.height)
     
             buf = io.BytesIO()
             c = canvas.Canvas(buf, pagesize=(w, h))
-            x = w - margin_pt - size_pt; y = margin_pt
-            c.drawImage(ImageReader(io.BytesIO(qr_png_bytes)), x, y, width=size_pt, height=size_pt, mask='auto')
-            c.showPage()                       # ← ajoute cette ligne
+    
+            # position : coin bas droit avec offset
+            x = w - margin_pt - size_pt
+            y = margin_pt + y_offset
+    
+            c.drawImage(
+                ImageReader(io.BytesIO(qr_png_bytes)),
+                x, y,
+                width=size_pt, height=size_pt,
+                mask='auto'
+            )
+            c.showPage()
             c.save()
             buf.seek(0)
     
@@ -799,6 +816,7 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
         out = io.BytesIO()
         writer.write(out)
         return out.getvalue()
+    
     
 
     def _add_signature_overlay_to_pdf(self, pdf_bytes, signature_data, x, y_top, w, h, page_ix):

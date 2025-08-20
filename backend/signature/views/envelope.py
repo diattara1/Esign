@@ -455,49 +455,39 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['get'], url_path='document', permission_classes=[permissions.AllowAny])
     @method_decorator(xframe_options_exempt, name='dispatch')
-    def document(self, request, pk=None):
-        """
-        Sert un PDF lisible par les invités **ou** les utilisateurs connectés :
-        - si un PDF signé existe → on sert le DERNIER signé,
-        - sinon → on sert l’original.
-        Autorisation :
-          - utilisateur connecté = créateur ou destinataire
-          - OU invité avec token valide (?token=...)
-        """
+    @action(detail=True, methods=['get'], permission_classes=[permissions.AllowAny])
+    def document(self, request, *args, **kwargs):
+        """Servez le PDF signé via un lien pérenne (uuid + hmac), sans JWT."""
         try:
-            envelope = Envelope.objects.get(pk=pk)
-        except Envelope.DoesNotExist:
-            return Response({'error': 'Enveloppe non trouvée'}, status=404)
+            qr = self.get_object()
+        except Exception:
+            return Response({'error': 'QR non trouvé'}, status=status.HTTP_404_NOT_FOUND)
 
-        # Auth: owner/recipient connecté, OU token invité valide
-        is_owner = (request.user.is_authenticated and envelope.created_by == request.user)
-        is_recipient = (request.user.is_authenticated and envelope.recipients.filter(user=request.user).exists())
-        token = self._get_token(request)
-        token_ok = False
-        if token:
-            token_ok = bool(self._verify_token(envelope, token))
+        sig = request.GET.get('sig')
+        if not sig or sig != qr.hmac:
+            return Response({'error': 'Signature HMAC manquante ou invalide'}, status=status.HTTP_403_FORBIDDEN)
 
-        if not (is_owner or is_recipient or token_ok):
-            # Decode minimal pour 'qr_view' (limité dans le temps par 'exp')
-            try:
-                payload = jwt.decode(token, settings.SECRET_KEY, algorithms=['HS256'])
-                token_ok = (payload.get('env_id') == envelope.id and payload.get('scope') == 'qr_view')
-            except Exception:
-                token_ok = False
-        
-            if not token_ok:
-                return Response({'error': 'Non autorisé'}, status=403)
-        try:
-            file_field, suffix = self._select_pdf(envelope, prefer_signed=True)
-            filename = f"{envelope.title}_{suffix}.pdf"
-            # Politique : ALLOWALL pour permettre l'intégration publique (invite)
-            return self._serve_pdf(file_field, filename, frame_policy='allowall', check_header=True)
-        except ValueError as e:
-            return Response({'error': str(e)}, status=404)
-        except Exception as e:
-            return Response({'error': f'Échec d\'ouverture du fichier : {e}'}, status=500)
+        if not qr.is_valid:
+            return Response({'error': 'QR révoqué'}, status=status.HTTP_403_FORBIDDEN)
 
-    # ---------- Signature ----------
+        env = qr.envelope
+        last_sig = (
+            SignatureDocument.objects
+            .filter(envelope=env)
+            .order_by('-signed_at')
+            .first()
+        )
+        if not last_sig or not last_sig.signed_file:
+            return Response({'error': 'Aucun document signé'}, status=status.HTTP_404_NOT_FOUND)
+
+        # Stream du PDF (inline)
+        f = last_sig.signed_file
+        f.open('rb')
+        resp = FileResponse(f, content_type='application/pdf')
+        resp["Content-Disposition"] = f'inline; filename="{env.title}.pdf"'
+        # (optionnel) entêtes cache
+        resp["Cache-Control"] = "public, max-age=3600"
+        return resp
 
     @action(detail=True, methods=['post'], permission_classes=[permissions.AllowAny])
     def sign(self, request, pk=None):
@@ -778,7 +768,7 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
     
     
     @staticmethod
-    def _add_qr_overlay_to_pdf(pdf_bytes: bytes, qr_png_bytes: bytes, *, size_pt=50, margin_pt=13, y_offset=-8):
+    def _add_qr_overlay_to_pdf(pdf_bytes: bytes, qr_png_bytes: bytes, *, size_pt=50, margin_pt=13, y_offset=-5):
         """
         Ajoute un QR code en bas à droite du PDF, plus petit et légèrement plus bas.
         - size_pt : taille du QR code (par défaut 60pt ≈ 0.8cm)
@@ -1010,59 +1000,45 @@ class PrintQRCodeViewSet(viewsets.ModelViewSet):
     serializer_class = PrintQRCodeSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+    lookup_field = "uuid"
+    lookup_url_kwarg = "uuid"
+
     def get_queryset(self):
+        # ✅ Vérification & document publics
+        if getattr(self, "action", None) in ("verify", "page", "document"):
+            return PrintQRCode.objects.all()
+        # 🔐 le reste (ex: generate) réservé au propriétaire
         return PrintQRCode.objects.filter(envelope__created_by=self.request.user)
 
     @action(detail=False, methods=['post'])
     def generate(self, request):
         envelope_id = request.data.get('envelope')
-        qr_type = request.data.get('qr_type', 'dynamic')
-        
         try:
             envelope = Envelope.objects.get(id=envelope_id, created_by=request.user)
         except Envelope.DoesNotExist:
-            logger.error(f"Document {envelope_id} non trouvé pour génération de QR code")
-            return Response({'error': 'Document non trouvé'}, 
-                            status=status.HTTP_404_NOT_FOUND)
-        
-        qr = PrintQRCode.objects.create(
-            envelope=envelope,
-            qr_type=qr_type
-        )
-        
+            return Response({'error': 'Document non trouvé'}, status=status.HTTP_404_NOT_FOUND)
+
+        # Toujours "permanent"
+        qr = PrintQRCode.objects.create(envelope=envelope, qr_type='permanent')
         serializer = self.get_serializer(qr)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['get'], permission_classes=[permissions.AllowAny])
-    def verify(self, request, pk=None):
-        """
-        Vérification publique après scan du QR.
-        Retourne le JSON minimal + un lien vers le PDF signé (token 'qr_view' 10 min).
-        """
-        # 1) Récupérer le QR
+    def verify(self, request, *args, **kwargs):
+        """Preuve publique pérenne (aucun token, aucun expiry)."""
         try:
             qr = self.get_object()
         except Exception:
-            return Response({'error': 'QR non trouvé'}, status=404)
+            return Response({'error': 'QR non trouvé'}, status=status.HTTP_404_NOT_FOUND)
 
-        # 2) Preuve HMAC dans l’URL
         sig = request.GET.get('sig')
         if not sig or sig != qr.hmac:
-            return Response({'error': 'Signature HMAC manquante ou invalide'}, status=403)
+            return Response({'error': 'Signature HMAC manquante ou invalide'}, status=status.HTTP_403_FORBIDDEN)
 
-        # 3) Validité (expiration/état)
         if not qr.is_valid:
-            return Response({'error': 'QR expiré ou invalide'}, status=403)
-
-        # 4) Marquer "scanned" si dynamique
-        if qr.qr_type == 'dynamic' and qr.state != 'scanned':
-            qr.state = 'scanned'
-            qr.scanned_at = timezone.now()
-            qr.save(update_fields=['state', 'scanned_at'])
+            return Response({'error': 'QR révoqué'}, status=status.HTTP_403_FORBIDDEN)
 
         env = qr.envelope
-
-        # 5) Dernier PDF signé (celui de référence)
         last_sig = (
             SignatureDocument.objects
             .filter(envelope=env)
@@ -1070,52 +1046,43 @@ class PrintQRCodeViewSet(viewsets.ModelViewSet):
             .first()
         )
         if not last_sig or not last_sig.signed_file:
-            return Response({'error': 'Aucun document signé'}, status=404)
+            return Response({'error': 'Aucun document signé'}, status=status.HTTP_404_NOT_FOUND)
 
+        # Lire le PDF signé
         last_sig.signed_file.open('rb')
         pdf_bytes = last_sig.signed_file.read()
         last_sig.signed_file.close()
 
-        # 6) Hashes + hash court
         hashes = compute_hashes(pdf_bytes)
         sha256_short = hashes["hash_sha256"][:8].upper()
-
-        # 7) Certificat du signataire (issu de SELF_SIGN_CERT_FILE)
         cert = extract_signer_certificate_info()
 
-        # 8) Timestamps (ISO + humain côté serveur)
         signed_dt = last_sig.signed_at or env.created_at
         timestamp_iso = signed_dt.isoformat()
         timestamp_human = timezone.localtime(signed_dt).strftime("%d %B %Y %H:%M:%S %Z")
 
-        # 9) Token public 'qr_view' (10 minutes)
-        payload = {
-            "env_id": env.id,
-            "scope": "qr_view",
-            "qr_uuid": str(qr.uuid),
-            "exp": (timezone.now() + timezone.timedelta(minutes=10)).timestamp(),
-        }
-        public_token = jwt.encode(payload, settings.SECRET_KEY, algorithm="HS256")
-
-        # 10) URL pour ouvrir le PDF signé (endpoint existant)
+        # 🔗 Lien pérenne direct vers le PDF (pas de JWT) :
         document_url = request.build_absolute_uri(
-            f"/api/signature/envelopes/{env.id}/document/?token={public_token}"
+            f"/api/signature/prints/{qr.uuid}/document/?sig={qr.hmac}"
         )
+        verification_url = request.build_absolute_uri(request.get_full_path())
 
-        # 11) Réponse publique minimale (exactement ton format + 2 champs utiles)
         return Response({
             "file": f"{env.title}.pdf",
             "hash_md5": hashes["hash_md5"],
             "hash_sha256": hashes["hash_sha256"],
-            "sha256_short": sha256_short,          # pratique à imprimer près du QR
+            "sha256_short": sha256_short,
             "signer": cert.get("common_name") or "Intellivibe Signing",
             "timestamp": timestamp_iso,
-            "timestamp_human": timestamp_human,    # lisible pour l’utilisateur
+            "timestamp_human": timestamp_human,
             "certificate": {
                 "common_name": cert.get("common_name"),
                 "organization": cert.get("organization"),
                 "country": cert.get("country"),
                 "serial_number": cert.get("serial_number"),
             },
-            "document_url": document_url
+            "document_url": document_url,           # ✅ permanent
+            "verification_url": verification_url,   # ✅ permanent
         })
+
+

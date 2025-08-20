@@ -423,36 +423,34 @@ class SignatureDocument(models.Model):
     def __str__(self):
         return f"Signature de {self.recipient.full_name} - {self.envelope.title}"
 
+# signature/models.py
 class PrintQRCode(models.Model):
     TYPE_CHOICES = [
-        ('dynamic', 'Usage unique'),
+        ('dynamic', 'Usage unique'),   # (optionnel : on peut aussi le traiter comme permanent)
         ('permanent', 'Permanent')
     ]
-    
+
     uuid = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     envelope = models.ForeignKey(Envelope, on_delete=models.CASCADE, related_name='qr_codes')
     qr_type = models.CharField(max_length=20, choices=TYPE_CHOICES)
     hmac = models.CharField(max_length=64, editable=False)
     state = models.CharField(max_length=20, default='non_scanned')
     created_at = models.DateTimeField(auto_now_add=True)
-    scanned_at = models.DateTimeField(null=True, blank=True)
-    expires_at = models.DateTimeField()
 
     def save(self, *args, **kwargs):
         if not self.hmac:
             secret = settings.SECRET_KEY.encode()
             self.hmac = hmac.new(secret, str(self.uuid).encode(), hashlib.sha256).hexdigest()
-        if not self.expires_at:
-            days = 1 if self.qr_type == 'dynamic' else 30
-            self.expires_at = timezone.now() + timezone.timedelta(days=days)
         super().save(*args, **kwargs)
 
     @property
     def is_valid(self):
-        return self.expires_at > timezone.now() and self.state == 'non_scanned'
+        # ⬇️ Plus de notion d’expiration : toujours valide sauf si révoqué
+        return self.state != 'revoked'
 
     def __str__(self):
         return f"QR Code {self.uuid} - {self.envelope.title}"
+
 class NotificationPreference(models.Model):
     """Paramètres de notification par utilisateur"""
     user = models.OneToOneField(

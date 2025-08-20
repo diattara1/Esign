@@ -33,8 +33,8 @@ def get_validation_context() -> ValidationContext:
     return ValidationContext(trust_roots=trust_roots)
 
 def get_timestamper() -> HTTPTimeStamper:
-    # cast en str pour éviter les surprises sur certains OS
-    return HTTPTimeStamper(settings.FREETSA_URL, str(settings.FREETSA_CACERT))
+    return HTTPTimeStamper(settings.FREETSA_URL)
+
 
 def load_simple_signer() -> signers.SimpleSigner:
     return signers.SimpleSigner.load(
@@ -107,8 +107,6 @@ def sign_pdf_bytes(
         validation_context=vc,
     )
 
-    # ✅ CRUCIAL : Créer un nouveau writer pour CHAQUE signature
-    # Cela préserve toutes les signatures existantes dans pdf_bytes
     input_stream = io.BytesIO(pdf_bytes)
     out = IncrementalPdfFileWriter(input_stream)
     output_buf = io.BytesIO()

@@ -87,6 +87,16 @@ const DocumentSign = () => {
     const base = (api.defaults.baseURL || '').replace(/\/$/, '');
     return `${base}/${url.replace(/^\//, '')}`;
   };
+async function urlToDataUrl(url) {
+  const res = await fetch(url, { credentials: 'include' });
+  const blob = await res.blob();
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result); // data:image/...;base64,...
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
 
   const fetchPdfBlobWithToken = async (url) => {
     const headers = token ? { 'X-Signature-Token': token } : {};
@@ -704,13 +714,21 @@ const DocumentSign = () => {
         ${savedSelectedId === sig.id
           ? 'ring-2 ring-blue-600 border-blue-600 bg-blue-50'
           : 'hover:bg-gray-50'}`}
-      onClick={() => {
-        if (!selectedField) return;
-        const url = sig.data_url || toAbsolute(sig.image_url);
-        setSignatureData(prev => ({ ...prev, [selectedField.id]: url }));
-        setUploadPreview(url);
-        setSavedSelectedId(sig.id); // <— mémorise la sélection
-      }}
+      onClick={async () => {
+  if (!selectedField) return;
+  try {
+    const raw = sig.data_url || toAbsolute(sig.image_url);
+    const dataUrl = raw.startsWith('data:') ? raw : await urlToDataUrl(raw);
+
+    setSignatureData(prev => ({ ...prev, [selectedField.id]: dataUrl }));
+    setUploadPreview(dataUrl);
+    setSavedSelectedId(sig.id);
+  } catch (err) {
+    console.error("Erreur chargement signature:", err);
+    toast.error("Impossible de charger la signature enregistrée");
+  }
+}}
+
       aria-selected={savedSelectedId === sig.id}
     >
       <img

@@ -9,7 +9,6 @@ from django.core.exceptions import ImproperlyConfigured
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 ALLOWED_HOSTS = ['*']
-
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
 ]

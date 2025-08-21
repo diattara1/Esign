@@ -1,19 +1,8 @@
 # signature/urls.py
 from rest_framework.routers import DefaultRouter
 from django.urls import path, include
-from .views.envelope import (
-    EnvelopeViewSet,
-    PrintQRCodeViewSet,
-    guest_envelope_view,
-    serve_decrypted_pdf,
-)
-from .views.auth import (
-    register,
-    activate_account,
-    user_profile,
-    password_reset_request,
-    change_password,
-)
+from .views.envelope import (EnvelopeViewSet,PrintQRCodeViewSet,guest_envelope_view,serve_decrypted_pdf)
+from .views.auth import (register,activate_account,user_profile,password_reset_request,change_password,)
 from .views.notification import NotificationPreferenceViewSet
 from .views.batch import SelfSignView, BatchSignCreateView, BatchSignJobViewSet
 from .views.saved_signature import SavedSignatureViewSet
@@ -24,6 +13,8 @@ router.register(r'envelopes', EnvelopeViewSet, basename='envelopes')
 router.register(r'prints', PrintQRCodeViewSet, basename='prints')
 router.register(r'notifications', NotificationPreferenceViewSet, basename='notifications')
 router.register(r'saved-signatures', SavedSignatureViewSet, basename='saved-signatures')
+
+
 
 urlpatterns = [
     path('', include(router.urls)),

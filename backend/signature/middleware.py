@@ -73,3 +73,13 @@ class ClamAVMiddleware(MiddlewareMixin):
                     logger.error(f"ClamAVMiddleware: erreur durant le scan : {e}")
 
         return None
+
+class AllowIframeForPDFOnlyMiddleware:
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        response = self.get_response(request)
+        if request.path.startswith("/api/signature/envelopes/") and request.path.endswith("/signed-document/"):
+            response.headers["X-Frame-Options"] = "ALLOWALL"
+        return response

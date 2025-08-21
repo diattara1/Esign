@@ -454,22 +454,20 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
         return self._serve_pdf(sig_doc.signed_file, filename, frame_policy='sameorigin', check_header=True)
 
     @action(detail=True, methods=['get'], url_path='document', permission_classes=[permissions.AllowAny])
-    @method_decorator(xframe_options_exempt, name='dispatch')
-    @action(detail=True, methods=['get'], permission_classes=[permissions.AllowAny])
+    @xframe_options_exempt
     def document(self, request, *args, **kwargs):
-        """Servez le PDF signé via un lien pérenne (uuid + hmac), sans JWT."""
+        """Servez le PDF signé via un lien pérenne (uuid + hmac), sans JWT, et EMBEDDABLE."""
         try:
             qr = self.get_object()
         except Exception:
             return Response({'error': 'QR non trouvé'}, status=status.HTTP_404_NOT_FOUND)
-
+    
         sig = request.GET.get('sig')
         if not sig or sig != qr.hmac:
             return Response({'error': 'Signature HMAC manquante ou invalide'}, status=status.HTTP_403_FORBIDDEN)
-
         if not qr.is_valid:
             return Response({'error': 'QR révoqué'}, status=status.HTTP_403_FORBIDDEN)
-
+    
         env = qr.envelope
         last_sig = (
             SignatureDocument.objects
@@ -479,15 +477,10 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
         )
         if not last_sig or not last_sig.signed_file:
             return Response({'error': 'Aucun document signé'}, status=status.HTTP_404_NOT_FOUND)
-
-        # Stream du PDF (inline)
-        f = last_sig.signed_file
-        f.open('rb')
-        resp = FileResponse(f, content_type='application/pdf')
-        resp["Content-Disposition"] = f'inline; filename="{env.title}.pdf"'
-        # (optionnel) entêtes cache
-        resp["Cache-Control"] = "public, max-age=3600"
-        return resp
+    
+        # ⚠️ Utilise le helper pour poser les bons headers (embed cross-origin)
+        ev = EnvelopeViewSet(); ev.request = request
+        return ev._serve_pdf(last_sig.signed_file, f"{env.title}.pdf", frame_policy='allowall', check_header=True)
 
     @action(detail=True, methods=['post'], permission_classes=[permissions.AllowAny])
     def sign(self, request, pk=None):
@@ -704,7 +697,7 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
                         qr = PrintQRCode.objects.create(envelope=envelope, qr_type='permanent')
     
                     verify_url = self.request.build_absolute_uri(
-                        f"/api/signature/prints/{qr.uuid}/verify/?sig={qr.hmac}"
+                         f"/verify/{qr.uuid}?sig={qr.hmac}"
                     )
     
                     # Relire le PDF signé que l'on vient de sauver
@@ -1022,6 +1015,34 @@ class PrintQRCodeViewSet(viewsets.ModelViewSet):
         qr = PrintQRCode.objects.create(envelope=envelope, qr_type='permanent')
         serializer = self.get_serializer(qr)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
+    @action(detail=True, methods=['get'], url_path='document', permission_classes=[permissions.AllowAny])
+    @xframe_options_exempt
+    def document(self, request, *args, **kwargs):
+        """Servez le PDF signé via un lien pérenne (uuid + hmac), sans JWT, et EMBEDDABLE."""
+        try:
+            qr = self.get_object()
+        except Exception:
+            return Response({'error': 'QR non trouvé'}, status=status.HTTP_404_NOT_FOUND)
+    
+        sig = request.GET.get('sig')
+        if not sig or sig != qr.hmac:
+            return Response({'error': 'Signature HMAC manquante ou invalide'}, status=status.HTTP_403_FORBIDDEN)
+        if not qr.is_valid:
+            return Response({'error': 'QR révoqué'}, status=status.HTTP_403_FORBIDDEN)
+    
+        env = qr.envelope
+        last_sig = (
+            SignatureDocument.objects
+            .filter(envelope=env)
+            .order_by('-signed_at')
+            .first()
+        )
+        if not last_sig or not last_sig.signed_file:
+            return Response({'error': 'Aucun document signé'}, status=status.HTTP_404_NOT_FOUND)
+    
+        # ⚠️ Utilise le helper pour poser les bons headers (embed cross-origin)
+        ev = EnvelopeViewSet(); ev.request = request
+        return ev._serve_pdf(last_sig.signed_file, f"{env.title}.pdf", frame_policy='allowall', check_header=True)
 
     @action(detail=True, methods=['get'], permission_classes=[permissions.AllowAny])
     def verify(self, request, *args, **kwargs):

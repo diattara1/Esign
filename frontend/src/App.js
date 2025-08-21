@@ -24,7 +24,7 @@ import ActionRequiredEnvelopes from './components/ActionRequiredEnvelopes';
 import DraftEnvelopes from './components/DraftEnvelopes';
 import DeletedEnvelopes from './components/DeletedEnvelopes';
 import MainLayout from './layouts/MainLayout';
-
+import QrVerifyPage from './pages/QrVerifyPage';
 import { useAuth } from './AuthContext';
 import { setLogoutCallback } from './services/apiUtils';
 
@@ -60,6 +60,7 @@ const App = () => {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
       <Route path="/password-reset" element={<PasswordResetPage />} />
+      <Route path="/verify/:uuid" element={<QrVerifyPage />} />
       {/* Signature invitée avec token - ROUTE PUBLIQUE */}
       <Route path="/sign/:id" element={<DocumentSign />} />
       

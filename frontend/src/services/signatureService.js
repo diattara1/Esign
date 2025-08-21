@@ -99,6 +99,25 @@ export default {
     const pdfResp = await api.get(download_url, { responseType: 'blob' });
     return { download_url: URL.createObjectURL(pdfResp.data) };
   },
+// --- Vérification QR publique (uuid + sig) ---
+verifyQRCodeWithSig: (uuid, sig) =>
+  api.get(`${BASE}/prints/${uuid}/verify/`, { params: { sig } })
+     .then(res => res.data),
+
+// --- URL absolue vers le PDF signé via uuid+sig (sans JWT, pérenne) ---
+getQRCodeDocumentAbsoluteUrl: (uuid, sig) => {
+  const base = (api.defaults.baseURL || '').replace(/\/$/, '');
+  const rel = `${BASE}/prints/${uuid}/document/?sig=${encodeURIComponent(sig || '')}`;
+  return `${base}/${rel.replace(/^\//, '')}`;
+},
+
+// --- Ouvrir le PDF dans l'onglet courant (convenient) ---
+openQRCodeDocument: (uuid, sig) => {
+  const base = (api.defaults.baseURL || '').replace(/\/$/, '');
+const url = `${base}/api/signature/prints/${uuid}/document/?sig=${encodeURIComponent(sig || '')}`;
+window.location.assign(url);
+
+},
 
   // Téléchargement d'un document précis (si tu ajoutes un endpoint côté vue)
   // Sinon, utilise simplement doc.file_url côté front.

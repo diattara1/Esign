@@ -6,6 +6,7 @@ from rest_framework.decorators import (
     authentication_classes,
     parser_classes,
 )
+from signature.storages import AADContentFile
 from django.utils.decorators import method_decorator
 from rest_framework.response import Response
 from django.utils import timezone
@@ -663,29 +664,27 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
             logger.info(f"_do_sign: champ {i+1}/{len(my_fields_meta)} traité avec succès")
     
         # 4) Sauvegarder le résultat & statut
+        # 4) Sauvegarder le résultat & statut
         with transaction.atomic():
-            # 1) Marquer ce destinataire comme signé
             recipient.signed = True
             recipient.signed_at = timezone.now()
             recipient.save(update_fields=['signed', 'signed_at'])
-            logger.info(f"[SIGN] Recipient {recipient.id} marqué signé à {recipient.signed_at}")
-    
-            # 2) Créer l'empreinte de signature
+            
+            
             sig_doc = SignatureDocument.objects.create(
-                envelope=envelope,
-                recipient=recipient,
-                signer=(self.request.user if self.request and self.request.user.is_authenticated else None),
-                is_guest=(recipient.user is None),
-                signature_data=signature_data,
-                signed_fields=signed_fields,
-                ip_address=self.request.META.get('REMOTE_ADDR'),
-                user_agent=self.request.META.get('HTTP_USER_AGENT', ''),
-            )
-            logger.info(f"[SIGN] SignatureDocument créé id={sig_doc.id}")
-    
-            # 3) Sauvegarder le PDF signé
+                    envelope=envelope,
+                    recipient=recipient,
+                    signer=(self.request.user if self.request and self.request.user.is_authenticated else None),
+                    is_guest=(recipient.user is None),
+                    signature_data=signature_data,
+                    signed_fields=signed_fields,
+                    ip_address=self.request.META.get('REMOTE_ADDR'),
+                    user_agent=self.request.META.get('HTTP_USER_AGENT', ''),
+                    )
             file_name = self._signed_filename(envelope.id, recipient.id)
-            sig_doc.signed_file.save(file_name, ContentFile(base_bytes), save=True)
+            # IMPORTANT : AAD = doc_uuid de l'enveloppe (immutabilité de l'identité)
+            aad = envelope.doc_uuid.bytes
+            sig_doc.signed_file.save(file_name, AADContentFile(base_bytes, aad), save=True)
             logger.info(f"[SIGN] PDF signé sauvegardé → {sig_doc.signed_file.name}")
     
             # 3bis) Si c'était le DERNIER signataire : apposer le QR + re-scellement

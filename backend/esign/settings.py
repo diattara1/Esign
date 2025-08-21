@@ -1,7 +1,7 @@
 
 from pathlib import Path
 import base64
-import os
+import os,json
 import environ
 from datetime import timedelta
 from django.core.exceptions import ImproperlyConfigured
@@ -32,13 +32,11 @@ FREETSA_CACERT = BASE_DIR / "certs" / "cacert.pem"
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = env("DJANGO_SECRET_KEY")
 DEBUG = True
-# File encryption key
-try:
-    FILE_ENCRYPTION_KEY = base64.urlsafe_b64decode(env("FILE_ENCRYPTION_KEY"))
-    if len(FILE_ENCRYPTION_KEY) != 32:
-        raise ImproperlyConfigured("FILE_ENCRYPTION_KEY must be a 32-byte key")
-except Exception as e:
-    raise ImproperlyConfigured(f"Invalid FILE_ENCRYPTION_KEY: {e}")
+# --- Chiffrement/KMS ---
+# settings.py (remplace ces 3 lignes KMS)
+KMS_ACTIVE_KEY_ID = env.int("KMS_ACTIVE_KEY_ID", default=1)
+KMS_RSA_PUBLIC_KEYS  = json.loads(env.str("KMS_RSA_PUBLIC_KEYS",  default='{"1": "%s"}' % str(BASE_DIR / "certs" / "kms_pub_1.pem")))
+KMS_RSA_PRIVATE_KEYS = json.loads(env.str("KMS_RSA_PRIVATE_KEYS", default="{}"))
 
 # Use custom EncryptedFileSystemStorage
 DEFAULT_FILE_STORAGE = 'signature.storages.EncryptedFileSystemStorage'

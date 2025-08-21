@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from django.db import models
 from django.conf import settings
 from django.utils import timezone
@@ -34,59 +36,228 @@ class CustomUser(AbstractUser):
         return self.get_full_name() or self.username
 
 
+def _sha256(data: bytes | str) -> str:
+    if isinstance(data, str):
+        data = data.encode("utf-8")
+    return hashlib.sha256(data).hexdigest()
 
+
+class EnvelopeDocument(models.Model):
+    envelope = models.ForeignKey(
+        "Envelope", on_delete=models.CASCADE, related_name="documents"
+    )
+    # Identité immuable du document (utilisée comme AAD)
+    doc_uuid = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
+
+    file = models.FileField(upload_to="signature/documents/", storage=encrypted_storage)
+    name = models.CharField(max_length=255, blank=True)
+    file_type = models.CharField(max_length=50, blank=True)
+    file_size = models.PositiveIntegerField(null=True, blank=True)
+    hash_original = models.CharField(max_length=64, blank=True)
+    version = models.PositiveIntegerField(default=1)
+
+    def __str__(self):
+        return self.name or f"Document {self.pk}"
+
+    # ---------- util ----------
+    def _file_changed(self) -> bool:
+        if not self.pk:
+            return True
+        try:
+            orig = EnvelopeDocument.objects.get(pk=self.pk)
+        except EnvelopeDocument.DoesNotExist:
+            return True
+        return orig.file.name != self.file.name
+
+    # ---------- validation ----------
+    def clean(self):
+        if not self.file:
+            return
+
+        # PDF uniquement
+        ext = self.file.name.split(".")[-1].lower() if "." in self.file.name else ""
+        if ext != "pdf":
+            raise ValidationError(f"Type de fichier non autorisé: {ext} (PDF uniquement)")
+
+        if self.file.size > 10 * 1024 * 1024:
+            raise ValidationError("Fichier trop volumineux (max 10MB)")
+
+        if self.file.size == 0:
+            raise ValidationError("Le fichier est vide.")
+
+        # Validations PDF : header + parse
+        try:
+            self.file.seek(0)
+            content = self.file.read()
+            self.file.seek(0)
+            if not content.startswith(b"%PDF-"):
+                raise ValidationError("Le fichier PDF est corrompu ou invalide.")
+            pdf = PdfReader(io.BytesIO(content))
+            if len(pdf.pages) == 0:
+                raise ValidationError("Le PDF est vide.")
+        except ValidationError:
+            raise
+        except Exception as e:
+            logger.error(f"PDF validation error (EnvelopeDocument): {e}")
+            raise ValidationError("Le fichier PDF est corrompu ou invalide.")
+
+    # ---------- sauvegarde ----------
+    def save(self, *args, **kwargs):
+        is_new = self._state.adding
+
+        if self.file and (is_new or self._file_changed()):
+            # On s'assure que les validations s'appliquent
+            self.clean()
+
+            # Injecte l'AAD pour le chiffrement (doc_uuid immuable)
+            f = getattr(self.file, "file", None)
+            if f is not None:
+                setattr(f, "_encryption_aad", uuid.UUID(str(self.doc_uuid)).bytes)
+
+            # Métadonnées
+            self.name = self.file.name
+            self.file_type = (
+                self.file.name.split(".")[-1].lower() if "." in self.file.name else ""
+            )
+            self.file_size = self.file.size
+
+            # Hash clair (pour traçabilité) si PDF
+            if self.file_type == "pdf":
+                try:
+                    self.file.seek(0)
+                    content = self.file.read()
+                    self.hash_original = _sha256(content)
+                    self.file.seek(0)
+                except Exception as e:
+                    logger.error(f"Error computing hash for envelope document: {e}")
+
+            # Versioning : +1 si modification
+            if not is_new:
+                try:
+                    orig = EnvelopeDocument.objects.get(pk=self.pk)
+                    self.version = orig.version + 1
+                except EnvelopeDocument.DoesNotExist:
+                    pass
+
+        super().save(*args, **kwargs)
+
+
+# =========================
+# Envelope
+# =========================
 class Envelope(models.Model):
     STATUS_CHOICES = [
-        ('draft', 'Brouillon'),
-        ('sent', 'Envoyé'),
-        ('pending', 'En cours'),      # <- ajouté (si plusieurs signataires)
-        ('completed', 'Signé'),
-        ('cancelled', 'Annulé'),
-        ('expired', 'Expiré'),        # <- NOUVEAU statut
+        ("draft", "Brouillon"),
+        ("sent", "Envoyé"),
+        ("pending", "En cours"),
+        ("completed", "Signé"),
+        ("cancelled", "Annulé"),
+        ("expired", "Expiré"),
     ]
-    
-    FLOW_CHOICES = [
-        ('sequential', 'Séquentiel'),
-        ('parallel', 'Parallèle')
-    ]
+
+    FLOW_CHOICES = [("sequential", "Séquentiel"), ("parallel", "Parallèle")]
+
+    # Identité immuable de l'enveloppe (utilisée comme AAD pour document_file)
+    doc_uuid = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
 
     title = models.CharField(max_length=255)
     description = models.TextField(blank=True)
+
     document_file = models.FileField(
-        upload_to='signature/documents/',
+        upload_to="signature/documents/",
         storage=encrypted_storage,
         null=True,
         blank=True,
     )
-    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
+
+    status = models.CharField(
+        max_length=20, choices=STATUS_CHOICES, default="draft"
+    )
     hash_original = models.CharField(max_length=64, blank=True)
     version = models.PositiveIntegerField(default=1)
     file_size = models.PositiveIntegerField(null=True, blank=True)
     file_type = models.CharField(max_length=50, blank=True)
-    flow_type = models.CharField(max_length=20, choices=FLOW_CHOICES, default='sequential')
+
+    flow_type = models.CharField(
+        max_length=20, choices=FLOW_CHOICES, default="sequential"
+    )
     reminder_days = models.PositiveIntegerField(default=1)
     deadline_at = models.DateTimeField(null=True, blank=True)
     jwt_token = models.CharField(max_length=512, blank=True)
     expires_at = models.DateTimeField(null=True, blank=True)
-    def _file_changed(self):
+
+    def __str__(self):
+        return f"{self.title} ({self.get_status_display()})"
+
+    # ---------- utils ----------
+    def _file_changed(self) -> bool:
         if not self.pk:
             return True
         try:
             orig = Envelope.objects.get(pk=self.pk)
         except Envelope.DoesNotExist:
             return True
-        return orig.document_file.name != self.document_file.name
+        return (orig.document_file.name or "") != (self.document_file.name or "")
 
-    def compute_hash(self, data):
-        hasher = hashlib.sha256()
-        if isinstance(data, str):
-            data = data.encode('utf-8')
-        hasher.update(data)
-        return hasher.hexdigest()
+    def compute_hash(self, data: bytes | str) -> str:
+        return _sha256(data)
 
+    @property
+    def is_completed(self) -> bool:
+        return self.status == "completed"
+
+    @property
+    def completion_rate(self) -> float:
+        total = getattr(self, "recipients", None) and self.recipients.count() or 0
+        signed = (
+            getattr(self, "recipients", None)
+            and self.recipients.filter(signed=True).count()
+            or 0
+        )
+        return (signed / total * 100) if total > 0 else 0.0
+
+    # ---------- validation ----------
+    def clean(self):
+        if not self.document_file:
+            return
+
+        # PDF uniquement
+        ext = (
+            self.document_file.name.split(".")[-1].lower()
+            if "." in self.document_file.name
+            else ""
+        )
+        if ext != "pdf":
+            raise ValidationError(f"Type de fichier non autorisé: {ext} (PDF uniquement)")
+
+        if self.document_file.size > 10 * 1024 * 1024:
+            raise ValidationError("Fichier trop volumineux (max 10MB)")
+
+        if self.document_file.size == 0:
+            raise ValidationError("Le fichier est vide.")
+
+        try:
+            self.document_file.seek(0)
+            content = self.document_file.read()
+            self.document_file.seek(0)
+            if not content.startswith(b"%PDF-"):
+                raise ValidationError("Le fichier PDF est corrompu ou invalide.")
+            pdf = PdfReader(io.BytesIO(content))
+            if len(pdf.pages) == 0:
+                raise ValidationError("Le PDF est vide.")
+        except ValidationError:
+            raise
+        except Exception as e:
+            logger.error(f"PDF validation error (Envelope): {e}")
+            raise ValidationError("Le fichier PDF est corrompu ou invalide.")
+
+    # ---------- sauvegarde ----------
     def save(self, *args, **kwargs):
         is_new = self._state.adding
         old_status = None
@@ -98,10 +269,15 @@ class Envelope(models.Model):
                 pass
 
         if self.document_file and (is_new or self._file_changed()):
-            # Call clean before processing file
+            # Valide le fichier
             self.clean()
 
-            # Set file metadata
+            # Injection AAD = doc_uuid (immuable) pour chiffrement
+            f = getattr(self.document_file, "file", None)
+            if f is not None:
+                setattr(f, "_encryption_aad", uuid.UUID(str(self.doc_uuid)).bytes)
+
+            # Métadonnées fichier
             self.file_type = (
                 self.document_file.name.split(".")[-1].lower()
                 if "." in self.document_file.name
@@ -109,18 +285,17 @@ class Envelope(models.Model):
             )
             self.file_size = self.document_file.size
 
-            # Compute hash for PDF files
+            # Hash clair si PDF
             if self.file_type == "pdf":
                 try:
-                    # Read file content for hash computation
                     self.document_file.seek(0)
                     content = self.document_file.read()
                     self.hash_original = self.compute_hash(content)
-                    self.document_file.seek(0)  # Reset file pointer
+                    self.document_file.seek(0)
                 except Exception as e:
-                    logger.error(f"Error computing hash for envelope: {str(e)}")
+                    logger.error(f"Error computing hash for envelope: {e}")
 
-            # Increment version for updates
+            # Versioning
             if not is_new:
                 try:
                     orig = Envelope.objects.get(pk=self.pk)
@@ -129,148 +304,6 @@ class Envelope(models.Model):
                     pass
 
         super().save(*args, **kwargs)
-
-    
-
-    def clean(self):
-        if self.document_file:
-            # Check file extension
-            allowed = ['pdf', 'docx', 'doc']
-            ext = self.document_file.name.split('.')[-1].lower() if '.' in self.document_file.name else ''
-            if ext not in allowed:
-                raise ValidationError(f'Type de fichier non autorisé: {ext}')
-
-            # Check file size
-            if self.document_file.size > 10 * 1024 * 1024:
-                raise ValidationError('Fichier trop volumineux (max 10MB)')
-
-            if self.document_file.size == 0:
-                raise ValidationError('Le fichier est vide.')
-
-            # Validate PDF specifically
-            if ext == 'pdf':
-                try:
-                    # Read file content
-                    self.document_file.seek(0)
-                    content = self.document_file.read()
-                    self.document_file.seek(0)  # Reset file pointer
-
-                    # Check PDF header
-                    if not content.startswith(b'%PDF-'):
-                        raise ValidationError('Le fichier PDF est corrompu ou invalide.')
-
-                    # Try to parse PDF
-                    pdf = PdfReader(io.BytesIO(content))
-                    if len(pdf.pages) == 0:
-                        raise ValidationError('Le PDF est vide.')
-
-                except ValidationError:
-                    # Re-raise validation errors as-is
-                    raise
-                except Exception as e:
-                    logger.error(f"PDF validation error: {str(e)}")
-                    raise ValidationError('Le fichier PDF est corrompu ou invalide.')
-
-    @property
-    def is_completed(self):
-        return self.status == 'completed'
-
-    @property
-    def completion_rate(self):
-        total = self.recipients.count()
-        signed = self.recipients.filter(signed=True).count()
-        return (signed / total * 100) if total > 0 else 0
-
-    def __str__(self):
-        return f"{self.title} ({self.get_status_display()})"
-
-
-class EnvelopeDocument(models.Model):
-    envelope = models.ForeignKey(
-        Envelope, on_delete=models.CASCADE, related_name="documents"
-    )
-    file = models.FileField(
-        upload_to="signature/documents/", storage=encrypted_storage
-    )
-    name = models.CharField(max_length=255, blank=True)
-    file_type = models.CharField(max_length=50, blank=True)
-    file_size = models.PositiveIntegerField(null=True, blank=True)
-    hash_original = models.CharField(max_length=64, blank=True)
-    version = models.PositiveIntegerField(default=1)
-
-    def _file_changed(self):
-        if not self.pk:
-            return True
-        try:
-            orig = EnvelopeDocument.objects.get(pk=self.pk)
-        except EnvelopeDocument.DoesNotExist:
-            return True
-        return orig.file.name != self.file.name
-
-    def save(self, *args, **kwargs):
-        is_new = self._state.adding
-        if self.file and (is_new or self._file_changed()):
-            self.name = self.file.name
-            self.file_type = (
-                self.file.name.split(".")[-1].lower()
-                if "." in self.file.name
-                else ""
-            )
-            self.file_size = self.file.size
-            if self.file_type == "pdf":
-                try:
-                    self.file.seek(0)
-                    content = self.file.read()
-                    self.hash_original = hashlib.sha256(content).hexdigest()
-                    self.file.seek(0)
-                except Exception as e:
-                    logger.error(
-                        f"Error computing hash for envelope document: {str(e)}"
-                    )
-            if not is_new:
-                try:
-                    orig = EnvelopeDocument.objects.get(pk=self.pk)
-                    self.version = orig.version + 1
-                except EnvelopeDocument.DoesNotExist:
-                    pass
-        super().save(*args, **kwargs)
-
-    def clean(self):
-        if self.file:
-            allowed = ["pdf", "docx", "doc"]
-            ext = (
-                self.file.name.split(".")[-1].lower()
-                if "." in self.file.name
-                else ""
-            )
-            if ext not in allowed:
-                raise ValidationError(f"Type de fichier non autorisé: {ext}")
-            if self.file.size > 10 * 1024 * 1024:
-                raise ValidationError("Fichier trop volumineux (max 10MB)")
-            if self.file.size == 0:
-                raise ValidationError("Le fichier est vide.")
-            if ext == "pdf":
-                try:
-                    self.file.seek(0)
-                    content = self.file.read()
-                    self.file.seek(0)
-                    if not content.startswith(b"%PDF-"):
-                        raise ValidationError(
-                            "Le fichier PDF est corrompu ou invalide."
-                        )
-                    pdf = PdfReader(io.BytesIO(content))
-                    if len(pdf.pages) == 0:
-                        raise ValidationError("Le PDF est vide.")
-                except ValidationError:
-                    raise
-                except Exception as e:
-                    logger.error(f"PDF validation error: {str(e)}")
-                    raise ValidationError(
-                        "Le fichier PDF est corrompu ou invalide."
-                    )
-
-    def __str__(self):
-        return self.name or f"Document {self.pk}"
 
 
 class SavedSignature(models.Model):

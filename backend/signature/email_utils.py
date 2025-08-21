@@ -1,5 +1,6 @@
 # signature/email_utils.py
 import os
+import logging
 from typing import List, Tuple, Optional
 
 from django.core.mail import EmailMultiAlternatives
@@ -9,6 +10,7 @@ from django.contrib.auth import get_user_model
 from django.utils.html import strip_tags
 from django.utils import timezone
 
+logger = logging.getLogger(__name__)
 User = get_user_model()
 
 # Type alias: [(filename, content_bytes, mimetype), ...]
@@ -225,8 +227,9 @@ def send_signature_email_v2(envelope_id: int, recipient_id: int) -> None:
         from .models import Envelope, EnvelopeRecipient
         envelope = Envelope.objects.get(pk=envelope_id)
         recipient = EnvelopeRecipient.objects.get(pk=recipient_id, envelope=envelope, signed=False)
-    except Exception:
-        return
+    except Exception as e:
+        logger.exception(e)
+        raise
 
     if envelope.deadline_at and envelope.deadline_at <= timezone.now():
         # Ne pas notifier si l'échéance est dépassée
@@ -252,8 +255,9 @@ def send_reminder_email_v2(envelope_id: int, recipient_id: int) -> None:
         from .models import Envelope, EnvelopeRecipient
         envelope = Envelope.objects.get(pk=envelope_id)
         recipient = EnvelopeRecipient.objects.get(pk=recipient_id, envelope=envelope, signed=False)
-    except Exception:
-        return
+    except Exception as e:
+        logger.exception(e)
+        raise
 
     from .tasks import _build_sign_link
     link = _build_sign_link(envelope, recipient)

@@ -17,13 +17,10 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.utils import ImageReader
 from .crypto_utils import sign_pdf_bytes
 from .email_utils import EmailTemplates,send_templated_email
+
 logger = logging.getLogger(__name__)
 
 MAX_REMINDERS = getattr(settings, 'MAX_REMINDERS_SIGN', 3)
-
-
-
-logger = logging.getLogger(__name__)
 
 @shared_task
 def send_signed_pdf_to_all_signers(envelope_id: int):
@@ -31,15 +28,15 @@ def send_signed_pdf_to_all_signers(envelope_id: int):
     À appeler UNIQUEMENT quand l'enveloppe est complétée.
     Récupère le DERNIER PDF signé et l'envoie en PJ à tous les destinataires ayant signé.
     """
-    print(f"[TASK] send_signed_pdf_to_all_signers({envelope_id})")
+    logger.info("send_signed_pdf_to_all_signers called for envelope %s", envelope_id)
     try:
         env = Envelope.objects.get(pk=envelope_id)
     except Envelope.DoesNotExist:
-        print(f"[TASK][ERR] Envelope {envelope_id} introuvable")
+        logger.error("Envelope %s introuvable", envelope_id)
         return
 
     if env.status != 'completed':
-        print(f"[TASK] Envelope {envelope_id} status={env.status} ≠ completed → stop")
+        logger.info("Envelope %s status=%s ≠ completed → stop", envelope_id, env.status)
         return
 
     # Dernier PDF signé = version finale
@@ -50,15 +47,15 @@ def send_signed_pdf_to_all_signers(envelope_id: int):
         .first()
     )
     if not latest or not latest.signed_file:
-        print(f"[TASK][ERR] Aucun signed_file pour env {envelope_id}")
+        logger.error("Aucun signed_file pour env %s", envelope_id)
         return
 
     try:
         latest.signed_file.open('rb')
         pdf_bytes = latest.signed_file.read()
         latest.signed_file.close()
-    except Exception as e:
-        print(f"[TASK][ERR] Lecture PDF env {envelope_id}: {e}")
+    except Exception:
+        logger.exception("Lecture du PDF signé échouée pour l'enveloppe %s", envelope_id)
         return
 
     # Nom de la PJ + lien d’ouverture en ligne
@@ -68,13 +65,21 @@ def send_signed_pdf_to_all_signers(envelope_id: int):
     # Garde-fou taille (ex: 20 Mo)
     attachments = [(fname, pdf_bytes, 'application/pdf')]
     if len(pdf_bytes) > 20 * 1024 * 1024:
-        print(f"[TASK][WARN] PDF trop lourd ({len(pdf_bytes)} bytes) → envoi SANS PJ, bouton seulement")
+        logger.warning(
+            "PDF trop lourd (%s bytes) pour l'enveloppe %s → envoi sans pièce jointe",
+            len(pdf_bytes),
+            envelope_id,
+        )
         attachments = None
 
     # Envoi un email INDIVIDUEL à chaque signataire (signed=True)
     signed_recipients = env.recipients.filter(signed=True)
     total = signed_recipients.count()
-    print(f"[TASK] Envoi aux signataires ({total}) de l'enveloppe {envelope_id}")
+    logger.info(
+        "Envoi du PDF signé à %s signataire(s) de l'enveloppe %s",
+        total,
+        envelope_id,
+    )
 
     for r in signed_recipients:
         full_name = (r.full_name or r.email or "").strip() or "Signataire"
@@ -94,14 +99,14 @@ def send_signed_pdf_to_all_signers(envelope_id: int):
                 app_name=getattr(settings, "APP_NAME", "Signature Platform"),
                 attachments=attachments,  # 👈 PJ
             )
-            print(f"[TASK] ✅ Email envoyé à {r.email}")
-        except TypeError as te:
+            logger.info("Email final envoyé à %s", r.email)
+        except TypeError:
             # au cas où send_templated_email n'accepte pas encore 'attachments'
-            print(f"[TASK][ERR] TypeError send_templated_email pour {r.email}: {te}")
-            logger.exception(te)
-        except Exception as e:
-            print(f"[TASK][ERR] Envoi email à {r.email}: {e}")
-            logger.exception(e)
+            logger.exception(
+                "TypeError lors de l'envoi de l'email final à %s", r.email
+            )
+        except Exception:
+            logger.exception("Erreur lors de l'envoi de l'email final à %s", r.email)
 
 def _paste_signature_on_pdf(pdf_bytes: bytes, sig_img_bytes: bytes, placements: list):
     """

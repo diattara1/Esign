@@ -6,6 +6,7 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
+from cryptography.exceptions import InvalidTag
 import logging
 import io
 
@@ -13,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 class EncryptedFileSystemStorage(FileSystemStorage):
     """
-    Storage qui chiffre en AES-256-CFB tous les fichiers avant de les écrire,
+    Storage qui chiffre en AES-256-GCM tous les fichiers avant de les écrire,
     et les déchiffre à la lecture.
     """
     def __init__(self, *args, **kwargs):
@@ -46,14 +47,19 @@ class EncryptedFileSystemStorage(FileSystemStorage):
                 logger.error(f"File {name} is not a valid PDF")
                 raise ValidationError("Le fichier n'est pas un PDF valide.")
             
-            # Generate IV and encrypt
-            iv = os.urandom(16)
-            cipher = Cipher(algorithms.AES(self.key), modes.CFB(iv), backend=default_backend())
+            # Generate IV and encrypt (AES-GCM)
+            iv = os.urandom(12)
+            cipher = Cipher(
+                algorithms.AES(self.key),
+                modes.GCM(iv),
+                backend=default_backend(),
+            )
             encryptor = cipher.encryptor()
             encrypted = encryptor.update(data) + encryptor.finalize()
-            
-            # Save IV + encrypted data
-            encrypted_content = ContentFile(iv + encrypted)
+            tag = encryptor.tag
+
+            # Save IV + tag + encrypted data
+            encrypted_content = ContentFile(iv + tag + encrypted)
             encrypted_content.name = name
             saved_name = super()._save(name, encrypted_content)
             logger.info(f"File {saved_name} saved and encrypted successfully ({len(data)} bytes)")
@@ -67,18 +73,27 @@ class EncryptedFileSystemStorage(FileSystemStorage):
             # Read encrypted file
             with super().open(name, mode) as f:
                 data = f.read()
-            
-            if len(data) < 16:
-                logger.error(f"File {name} too short to contain IV (size: {len(data)})")
-                raise ValueError(f"File too short to contain IV (size: {len(data)})")
-            
-            # Split IV and ciphertext
-            iv = data[:16]
-            encrypted = data[16:]
-            logger.debug(f"Opening file {name}: total size={len(data)}, IV length={len(iv)}, encrypted length={len(encrypted)}")
-            
-            # Decrypt
-            cipher = Cipher(algorithms.AES(self.key), modes.CFB(iv), backend=default_backend())
+
+            if len(data) < 28:
+                logger.error(f"File {name} too short to contain IV and tag (size: {len(data)})")
+                raise ValueError(
+                    f"File too short to contain IV and tag (size: {len(data)})"
+                )
+
+            # Split IV, tag and ciphertext
+            iv = data[:12]
+            tag = data[12:28]
+            encrypted = data[28:]
+            logger.debug(
+                f"Opening file {name}: total size={len(data)}, IV length={len(iv)}, tag length={len(tag)}, encrypted length={len(encrypted)}"
+            )
+
+            # Decrypt and verify tag
+            cipher = Cipher(
+                algorithms.AES(self.key),
+                modes.GCM(iv, tag),
+                backend=default_backend(),
+            )
             decryptor = cipher.decryptor()
             decrypted = decryptor.update(encrypted) + decryptor.finalize()
             logger.debug(f"File {name} decrypted: {len(decrypted)} bytes")
@@ -93,6 +108,9 @@ class EncryptedFileSystemStorage(FileSystemStorage):
             decrypted_io.name = name
             decrypted_io.size = len(decrypted)
             return decrypted_io
+        except InvalidTag:
+            logger.error(f"Invalid authentication tag for file {name}")
+            raise ValueError("Le fichier chiffré est corrompu ou le tag est invalide.")
         except Exception as e:
             logger.error(f"Error opening file {name}: {str(e)}")
             raise
@@ -112,3 +130,4 @@ class EncryptedFileSystemStorage(FileSystemStorage):
     def url(self, name):
         # Return the standard URL - the decryption will be handled by the view
         return super().url(name)
+

@@ -22,26 +22,18 @@ from django.conf import settings
 from ..tasks import send_signature_email,send_document_completed_notification,send_signed_pdf_to_all_signers
 from ..otp import generate_otp, validate_otp, send_otp
 from ..hsm import hsm_sign
-
-from ..models import (
-    Envelope,
-    EnvelopeRecipient,
-    SignatureDocument,
-    PrintQRCode,
-    EnvelopeDocument,
-)
-from ..serializers import (
-    EnvelopeSerializer,
-    EnvelopeListSerializer,
-    SigningFieldSerializer,
-    SignatureDocumentSerializer,
-    PrintQRCodeSerializer,
-)
+import jwt
+from jwt import InvalidTokenError, ExpiredSignatureError
+from ..models import ( Envelope,EnvelopeRecipient,SignatureDocument,PrintQRCode,EnvelopeDocument,)
+from ..serializers import (EnvelopeSerializer,EnvelopeListSerializer,SigningFieldSerializer,SignatureDocumentSerializer,PrintQRCodeSerializer,)
 from signature.crypto_utils import sign_pdf_bytes,compute_hashes, extract_signer_certificate_info
 from reportlab.pdfgen import canvas
 from django.core.files.base import ContentFile
 from PyPDF2 import PdfReader, PdfWriter
 from reportlab.lib.utils import ImageReader
+from django.http import HttpResponse
+from rest_framework import status
+
 
 
 logger = logging.getLogger(__name__)
@@ -61,7 +53,69 @@ def _clean_b64(data: str | None) -> str | None:
         return data.split(',', 1)[1]
     return data
 
+def _verify_guest_token(envelope, token):
+    """
+    Retourne le payload (dict) si le token invité est valide et correspond à l'enveloppe,
+    sinon None.
+    """
+    if not token:
+        return None
+    secret = getattr(settings, "SIGNATURE_JWT_SECRET", settings.SECRET_KEY)
+    try:
+        payload = jwt.decode(token, secret, algorithms=["HS256"])
+        if payload.get("env_id") != envelope.id:
+            return None
+        return payload
+    except (ExpiredSignatureError, InvalidTokenError):
+        return None
 
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def guest_envelope_view(request, pk):
+    envelope = get_object_or_404(Envelope, pk=pk)
+
+    token = (
+        request.GET.get('token')
+        or request.POST.get('token')
+        or request.headers.get('X-Signature-Token')
+        or (request.headers.get('Authorization', '').replace('Bearer ', '')
+            if request.headers.get('Authorization') else '')
+    )
+
+    payload = _verify_guest_token(envelope, token)
+    if payload is None:
+        return Response({'error': 'Token invalide ou manquant'}, status=status.HTTP_403_FORBIDDEN)
+
+    # On récupère recipient_id depuis le payload retourné
+    recipient_id = payload.get('recipient_id')
+    try:
+        recipient = EnvelopeRecipient.objects.get(envelope=envelope, id=recipient_id)
+    except EnvelopeRecipient.DoesNotExist:
+        return Response({'error': 'Destinataire non valide'}, status=status.HTTP_403_FORBIDDEN)
+
+    data = EnvelopeSerializer(envelope).data
+    fields = EnvelopeViewSet()._build_fields_payload(envelope, current_recipient_id=recipient.id)
+
+    # Construire l’URL du PDF (adapte le name de route si besoin)
+    from django.urls import reverse
+    doc_path = reverse('signature-serve-decrypted-pdf', kwargs={'pk': envelope.id})
+    document_url = request.build_absolute_uri(f"{doc_path}?token={token}")
+
+    data.update({
+        'fields': fields,
+        'recipient_id': recipient.id,
+        'recipient_full_name': recipient.full_name,
+        'document_url': document_url,
+    })
+    return Response(data)
+
+def _safe_filename(name: str) -> str:
+    base = (name or "document").replace('"', "").strip() or "document"
+    if not base.lower().endswith(".pdf"):
+        base += ".pdf"
+    return base
+
+    
 class EnvelopeViewSet(viewsets.ModelViewSet):
     serializer_class = EnvelopeSerializer
     permission_classes = [IsAuthenticated]
@@ -154,36 +208,33 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
         if not doc:
             raise ValueError('Pas de document disponible')
         return doc, 'original'
-
-    def _serve_pdf(self, file_field, filename: str, *, frame_policy: str = 'allowall', check_header: bool = True) -> FileResponse:
-        """Servez un PDF avec en-têtes homogènes. frame_policy: 'allowall' ou 'sameorigin'."""
+ 
+    @staticmethod
+    def _serve_pdf(file_field, filename: str, inline: bool = True) -> HttpResponse:
         try:
-            fh = file_field.storage.open(file_field.name, 'rb')
-            # Vérif header si demandé
-            if check_header:
-                pos = fh.tell()
-                sig = fh.read(10)
-                fh.seek(pos)
-                if not sig.startswith(b'%PDF-'):
-                    raise ValueError('Document non valide')
-
-            resp = FileResponse(fh, content_type='application/pdf')
-            resp['Content-Disposition'] = f'inline; filename="{filename}"'
-
-            if frame_policy == 'allowall':
-                resp['X-Frame-Options'] = 'ALLOWALL'
-                resp['Content-Security-Policy'] = "frame-ancestors *"
-                resp['Access-Control-Allow-Origin'] = '*'
-            else:
-                resp['X-Frame-Options'] = 'SAMEORIGIN'
-                resp['Content-Security-Policy'] = "frame-ancestors 'self'"
-                # Autoriser l'origine appelante si fournie
-                resp['Access-Control-Allow-Origin'] = self.request.META.get('HTTP_ORIGIN', '*')
-
-            return resp
-        except Exception as e:
-            logger.exception('Erreur lors du service du PDF')
-            return Response({'error': f'Échec d\'ouverture du fichier : {e}'}, status=500)
+            fh = file_field.storage.open(file_field.name, "rb")
+            data = fh.read()
+            fh.close()
+        except Exception:
+            logger.exception("Erreur lors du service du PDF")
+            raise
+    
+        resp = HttpResponse(data, content_type="application/pdf")
+        disp = "inline" if inline else "attachment"
+        safe_name = _safe_filename(filename)
+        resp["Content-Disposition"] = f'{disp}; filename="{safe_name}"; filename*=UTF-8\'\'{safe_name}'
+    
+        # Iframe policy : SAMEORIGIN + CSP configurable
+        resp["X-Frame-Options"] = "SAMEORIGIN"
+        frame_ancestors = getattr(settings, "SIGNATURE_FRAME_ANCESTORS", "*")
+        resp["Content-Security-Policy"] = (
+            f"frame-ancestors {frame_ancestors}; sandbox allow-scripts allow-forms allow-same-origin"
+        )
+    
+        resp["Cache-Control"] = "no-store"
+        resp["Pragma"] = "no-cache"
+        resp["Expires"] = "0"
+        return resp
 
     def _build_fields_payload(self, envelope: Envelope, current_recipient_id: int | None = None):
         fields = []
@@ -319,38 +370,61 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
             recipient.save()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
+  # ... dans EnvelopeViewSet, action verify_otp ...
+
     @action(detail=True, methods=['post'], url_path='verify_otp', permission_classes=[permissions.AllowAny])
     def verify_otp(self, request, pk=None):
         token = self._get_token(request)
         if not token:
             return Response({'error': 'Token requis'}, status=status.HTTP_403_FORBIDDEN)
-
+    
         try:
             envelope = Envelope.objects.get(pk=pk)
         except Envelope.DoesNotExist:
             return Response({'error': 'Enveloppe non trouvée'}, status=404)
-
+    
         if self._refuse_if_deadline_passed(envelope):
             return Response({'error': 'Échéance dépassée. La signature est fermée.'}, status=400)
-
+    
         recipient = self._resolve_guest_recipient(envelope, token)
         if not recipient:
             return Response({'error': 'Destinataire non valide'}, status=status.HTTP_403_FORBIDDEN)
-
+    
         seq_err = self._enforce_sequential(envelope, recipient)
         if seq_err:
             return seq_err
-
-        otp = request.data.get('otp')
-        if not otp:
+    
+        # --- NORMALISATION OTP ---
+        raw_otp = request.data.get('otp')
+        otp = str(raw_otp).strip() if raw_otp is not None else ''
+        if not otp.isdigit():
+            # éviter les rejets “OTP invalide” ambigus quand l’input contient des espaces/caractères
             return Response({'error': 'OTP invalide'}, status=status.HTTP_400_BAD_REQUEST)
-        is_valid, blocked = validate_otp(recipient, otp)
+    
+        # --- VÉRIFICATION ---
+        try:
+            is_valid, blocked = validate_otp(recipient, otp)
+        except Exception as e:
+            # en cas d’implémentation OTP défaillante
+            import logging
+            logging.getLogger(__name__).exception("Erreur validate_otp")
+            return Response({'error': 'Erreur vérification OTP'}, status=500)
+    
         if blocked:
             return Response({'error': 'Trop de tentatives, OTP verrouillé'}, status=status.HTTP_429_TOO_MANY_REQUESTS)
+    
         if not is_valid:
+            # log utile pour diagnostiquer recipients/token
+            import logging
+            logging.getLogger(__name__).info(
+                "OTP invalid for recipient_id=%s envelope_id=%s",
+                recipient.id, envelope.id
+            )
             return Response({'error': 'OTP invalide'}, status=status.HTTP_400_BAD_REQUEST)
-
+    
+        # OK
         return Response({'status': 'otp_verified'}, status=status.HTTP_200_OK)
+    
 
     # ---------- Téléchargement / Visualisation ----------
     @action(detail=True, methods=['get'])
@@ -408,7 +482,7 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
             return Response({'error': 'Document introuvable'}, status=404)
 
         filename = doc.name or f"document_{doc.id}.pdf"
-        return self._serve_pdf(doc.file, filename, frame_policy='sameorigin', check_header=True)
+        return EnvelopeViewSet._serve_pdf(doc.file, filename)
 
     @action(detail=True, methods=['get'], url_path='original-document')
     @method_decorator(xframe_options_exempt, name='dispatch')
@@ -429,7 +503,7 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
             if not doc:
                 return Response({'error': 'Pas de document original'}, status=status.HTTP_404_NOT_FOUND)
             filename = f"{envelope.title}.pdf"
-            return self._serve_pdf(doc, filename, frame_policy='sameorigin', check_header=True)
+            return EnvelopeViewSet._serve_pdf(doc, filename, inline=True)
         except Exception as e:
             return Response({'error': f'Échec d\'ouverture du fichier : {e}'}, status=500)
 
@@ -452,37 +526,9 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
             return Response({'error': 'Pas de document signé'}, status=status.HTTP_404_NOT_FOUND)
 
         filename = f"{envelope.title}_signed.pdf"
-        return self._serve_pdf(sig_doc.signed_file, filename, frame_policy='sameorigin', check_header=True)
+        return EnvelopeViewSet._serve_pdf(sig_doc.signed_file, filename, inline=True)
 
-    @action(detail=True, methods=['get'], url_path='document', permission_classes=[permissions.AllowAny])
-    @xframe_options_exempt
-    def document(self, request, *args, **kwargs):
-        """Servez le PDF signé via un lien pérenne (uuid + hmac), sans JWT, et EMBEDDABLE."""
-        try:
-            qr = self.get_object()
-        except Exception:
-            return Response({'error': 'QR non trouvé'}, status=status.HTTP_404_NOT_FOUND)
     
-        sig = request.GET.get('sig')
-        if not sig or sig != qr.hmac:
-            return Response({'error': 'Signature HMAC manquante ou invalide'}, status=status.HTTP_403_FORBIDDEN)
-        if not qr.is_valid:
-            return Response({'error': 'QR révoqué'}, status=status.HTTP_403_FORBIDDEN)
-    
-        env = qr.envelope
-        last_sig = (
-            SignatureDocument.objects
-            .filter(envelope=env)
-            .order_by('-signed_at')
-            .first()
-        )
-        if not last_sig or not last_sig.signed_file:
-            return Response({'error': 'Aucun document signé'}, status=status.HTTP_404_NOT_FOUND)
-    
-        # ⚠️ Utilise le helper pour poser les bons headers (embed cross-origin)
-        ev = EnvelopeViewSet(); ev.request = request
-        return ev._serve_pdf(last_sig.signed_file, f"{env.title}.pdf", frame_policy='allowall', check_header=True)
-
     @action(detail=True, methods=['post'], permission_classes=[permissions.AllowAny])
     def sign(self, request, pk=None):
         
@@ -695,9 +741,11 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
                     if not qr:
                         qr = PrintQRCode.objects.create(envelope=envelope, qr_type='permanent')
     
-                    verify_url = self.request.build_absolute_uri(
-                         f"/verify/{qr.uuid}?sig={qr.hmac}"
-                    )
+                    
+                    front_base = getattr(settings, "FRONT_BASE_URL", "").rstrip("/")
+                    
+                    verify_url = f"{front_base}/verify/{qr.uuid}?sig={qr.hmac}"
+                    
     
                     # Relire le PDF signé que l'on vient de sauver
                     sig_doc.signed_file.open('rb')
@@ -897,96 +945,52 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
 
 # ==================== Vues supplémentaires (invités) ====================
 
-@api_view(['GET'])
-@permission_classes([AllowAny])
-def guest_envelope_view(request, pk):
-    # 1. Charger l'enveloppe ou 404
-    envelope = get_object_or_404(Envelope, pk=pk)
-
-    # 2. Récupérer et vérifier le token
-    token = (
-        request.GET.get('token')
-        or request.POST.get('token')
-        or request.headers.get('X-Signature-Token', '')
-        or request.headers.get('Authorization', '').replace('Bearer ', '')
-    )
-    if not token or not EnvelopeViewSet()._verify_token(envelope, token):
-        return Response({'error': 'Token invalide ou manquant'}, status=status.HTTP_403_FORBIDDEN)
-
-    # 3. Décoder le JWT pour récupérer le destinataire
-    try:
-        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=['HS256'])
-        recipient_id = payload.get('recipient_id')
-        recipient = EnvelopeRecipient.objects.get(envelope=envelope, id=recipient_id)
-    except (jwt.InvalidTokenError, EnvelopeRecipient.DoesNotExist):
-        return Response({'error': 'Destinataire non valide'}, status=status.HTTP_403_FORBIDDEN)
-
-    # 4. Sérialiser l’enveloppe de base
-    data = EnvelopeSerializer(envelope).data
-
-    # 5. Construire les champs signables via helper
-    fields = EnvelopeViewSet()._build_fields_payload(envelope, current_recipient_id=recipient.id)
-
-    # 6. Réponse
-    data.update({
-        'fields': fields,
-        'recipient_id': recipient.id,
-        'recipient_full_name': recipient.full_name,
-        'document_url': request.build_absolute_uri(
-            f'/api/signature/envelopes/{pk}/document/?token={token}'
-        )
-    })
-
-    return Response(data)
 
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
 @authentication_classes([])
 @xframe_options_exempt
-def serve_decrypted_pdf(request, pk):
+def serve_decrypted_pdf(request, pk: int):
     """
-    Sert le document PDF déchiffré :
-    - si l'enveloppe est 'completed', on sert le dernier signed_file
-    - sinon, on sert le document original
+    GET /api/signature/envelopes/<pk>/document/?token=...
+    - si status == 'completed' => renvoie le PDF signé le plus récent
+    - sinon => renvoie l'original (envelope.document_file ou premier sous-document .file)
     """
-    # 1. Charger l'enveloppe
-    try:
-        envelope = Envelope.objects.get(pk=pk)
-    except Envelope.DoesNotExist:
-        return Response({'error': 'Enveloppe non trouvée'}, status=404)
+    envelope = get_object_or_404(Envelope, pk=pk)
 
-    # 2. Choix du fichier à servir
-    try:
-        if envelope.status == 'completed':
-            sig = (
-                SignatureDocument.objects
-                .filter(envelope=envelope)
-                .order_by('-signed_at')
-                .first()
-            )
-            if not sig or not sig.signed_file:
-                return Response({'error': 'Pas de document signé'}, status=404)
-            file_field = sig.signed_file
-            filename_suffix = 'signed'
-        else:
-            doc = envelope.document_file or (
-                envelope.documents.first().file if envelope.documents.exists() else None
-            )
-            if not doc:
-                return Response({'error': 'Pas de document original'}, status=404)
-            file_field = doc
-            filename_suffix = 'original'
+    # token invité (query, header custom, bearer)
+    token = (
+        request.GET.get("token")
+        or request.headers.get("X-Signature-Token")
+        or (request.headers.get("Authorization", "").replace("Bearer ", "")
+            if request.headers.get("Authorization") else "")
+    )
 
-        filename = f"{envelope.title}_{filename_suffix}.pdf"
-        # Politique ouverte ici pour intégration éventuelle
-        ev = EnvelopeViewSet()
-        ev.request = request  # pour l'accès à META dans _serve_pdf
-        return ev._serve_pdf(file_field, filename, frame_policy='allowall', check_header=True)
-    except Exception as e:
-        return Response({'error': f'Échec d\'ouverture du fichier : {e}'}, status=500)
+    # utilise ton helper qui retourne le payload ou None
+    payload = _verify_guest_token(envelope, token)
+    if payload is None:
+        return Response({"error": "Token invalide ou manquant"}, status=status.HTTP_403_FORBIDDEN)
 
+    # 1) si complété, renvoyer le dernier PDF signé
+    if envelope.status == 'completed':
+        sig_doc = (
+            SignatureDocument.objects
+            .filter(envelope=envelope, signed_file__isnull=False)
+            .order_by('-signed_at')
+            .first()
+        )
+        if sig_doc and sig_doc.signed_file:
+            filename = _safe_filename(envelope.title or "document")
+            return EnvelopeViewSet._serve_pdf(sig_doc.signed_file, filename, inline=True)
 
+    # 2) sinon : original (global ou premier sous-document)
+    doc = envelope.document_file or (envelope.documents.first().file if envelope.documents.exists() else None)
+    if not doc:
+        return Response({"error": "Pas de document disponible"}, status=status.HTTP_404_NOT_FOUND)
+
+    filename = _safe_filename(envelope.title or "document")
+    return EnvelopeViewSet._serve_pdf(doc, filename, inline=True)
 
 class PrintQRCodeViewSet(viewsets.ModelViewSet):
     serializer_class = PrintQRCodeSerializer
@@ -1040,8 +1044,8 @@ class PrintQRCodeViewSet(viewsets.ModelViewSet):
             return Response({'error': 'Aucun document signé'}, status=status.HTTP_404_NOT_FOUND)
     
         # ⚠️ Utilise le helper pour poser les bons headers (embed cross-origin)
-        ev = EnvelopeViewSet(); ev.request = request
-        return ev._serve_pdf(last_sig.signed_file, f"{env.title}.pdf", frame_policy='allowall', check_header=True)
+        ev = EnvelopeViewSet(); ev.request = request 
+        return EnvelopeViewSet._serve_pdf(last_sig.signed_file, f"{env.title}.pdf", inline=True)
 
     @action(detail=True, methods=['get'], permission_classes=[permissions.AllowAny])
     def verify(self, request, *args, **kwargs):

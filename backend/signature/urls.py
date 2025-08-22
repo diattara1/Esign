@@ -26,6 +26,7 @@ urlpatterns = [
     path('password-reset/', password_reset_request, name='password-reset'),
     path('change-password/', change_password, name='change-password'),
     path('envelopes/<int:pk>/guest/', guest_envelope_view, name='guest-envelope'),
-    path('envelopes/<int:pk>/document/', serve_decrypted_pdf, name='serve-decrypted-pdf'),
+    path('envelopes/<int:pk>/document/', serve_decrypted_pdf, name='signature-serve-decrypted-pdf'),
+    
 ]
 

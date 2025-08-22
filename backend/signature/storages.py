@@ -1,9 +1,9 @@
 
 # ===============================================
-# signature/storages.py  (REMPLACEMENT COMPLET)
+# signature/storages.py  
 # Envelope encryption v2 : EG2 + KMS + AAD doc_uuid + size() sans déchiffrage
 # ===============================================
-import os, io, uuid, struct, logging
+import os, io, uuid, struct, logging,base64
 from typing import Optional
 from django.core.files.storage import FileSystemStorage
 from django.core.files.base import ContentFile, File

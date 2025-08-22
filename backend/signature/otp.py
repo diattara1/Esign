@@ -1,11 +1,13 @@
 # signature/otp.py (mis à jour)
+import math
 import pyotp
 from django.core.cache import cache
 from django.conf import settings
 from .email_utils import EmailTemplates
 
-OTP_TTL = 100  # secondes
+OTP_TTL_SECONDS = 120
 MAX_OTP_ATTEMPTS = 3
+expiry_minutes = math.ceil(OTP_TTL_SECONDS / 60)
 
 
 def _cache_key(recipient):
@@ -21,9 +23,9 @@ def generate_otp(recipient):
     Stocke le secret en cache pour la vérification ultérieure.
     """
     secret = pyotp.random_base32()
-    totp = pyotp.TOTP(secret, digits=6, interval=OTP_TTL)
+    totp = pyotp.TOTP(secret, digits=6, interval=OTP_TTL_SECONDS)
     token = totp.now()
-    cache.set(_cache_key(recipient), secret, timeout=OTP_TTL)
+    cache.set(_cache_key(recipient), secret, timeout=OTP_TTL_SECONDS)
     return token
 
 def validate_otp(recipient, token):
@@ -43,7 +45,7 @@ def validate_otp(recipient, token):
     if not secret:
         return False, False
 
-    totp = pyotp.TOTP(secret, digits=6, interval=OTP_TTL)
+    totp = pyotp.TOTP(secret, digits=6, interval=OTP_TTL_SECONDS)
     is_valid = totp.verify(token)
 
     if is_valid:
@@ -51,7 +53,7 @@ def validate_otp(recipient, token):
         cache.delete(attempts_key)
         return True, False
 
-    cache.set(attempts_key, attempts + 1, timeout=OTP_TTL)
+    cache.set(attempts_key, attempts + 1, timeout=OTP_TTL_SECONDS)
     return False, False
 
 def send_otp(recipient, otp):
@@ -59,7 +61,7 @@ def send_otp(recipient, otp):
     Envoie l'OTP par email en utilisant le template uniforme.
     """
     try:
-        EmailTemplates.otp_email(recipient, otp, OTP_TTL//60)
+        EmailTemplates.otp_email(recipient, otp, expiry_minutes)
     except Exception as e:
         # Log l'erreur mais ne pas faire échouer la fonction
         import logging

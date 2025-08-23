@@ -3,7 +3,7 @@ import axios from 'axios';
 import createAuthRefreshInterceptor from 'axios-auth-refresh';
 
 // URL de base de l'API Django
-export const API_BASE_URL = 'http://localhost:8000';
+export const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
 
 // Instance Axios principale
 export const api = axios.create({

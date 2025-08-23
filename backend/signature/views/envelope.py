@@ -22,7 +22,6 @@ from django.conf import settings
 from ..tasks import send_signature_email,send_document_completed_notification,send_signed_pdf_to_all_signers
 from ..otp import generate_otp, validate_otp, send_otp
 from ..hsm import hsm_sign
-import jwt
 from jwt import InvalidTokenError, ExpiredSignatureError
 from ..models import ( Envelope,EnvelopeRecipient,SignatureDocument,PrintQRCode,EnvelopeDocument,)
 from ..serializers import (EnvelopeSerializer,EnvelopeListSerializer,SigningFieldSerializer,SignatureDocumentSerializer,PrintQRCodeSerializer,)
@@ -307,11 +306,14 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
             return Response({'error': 'Seuls les brouillons peuvent être envoyés'}, status=400)
         if not envelope.recipients.exists():
             return Response({'error': 'Aucun destinataire configuré'}, status=400)
-
+        if 'include_qr_code' in request.data:
+            envelope.include_qr_code = bool(request.data.get('include_qr_code'))
+ 
         if not envelope.deadline_at:
             envelope.deadline_at = timezone.now() + timezone.timedelta(days=7)
         envelope.status = 'sent'
         envelope.save()
+        envelope.save(update_fields=['include_qr_code', 'deadline_at', 'status'])
 
         # Planification des rappels & envoi au(x) premier(s)
         if envelope.flow_type == 'sequential':
@@ -733,25 +735,27 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
             sig_doc.signed_file.save(file_name, AADContentFile(base_bytes, aad), save=True)
             logger.info(f"[SIGN] PDF signé sauvegardé → {sig_doc.signed_file.name}")
     
-            # 3bis) Si c'était le DERNIER signataire : apposer le QR + re-scellement
-            if not envelope.recipients.filter(signed=False).exists():
+             # 3bis) Si c'était le DERNIER signataire : apposer le QR + re-scellement
+            if envelope.include_qr_code and not envelope.recipients.filter(signed=False).exists():
                 try:
                     # Générer / réutiliser un QR permanent
                     qr = envelope.qr_codes.filter(qr_type='permanent').first()
                     if not qr:
                         qr = PrintQRCode.objects.create(envelope=envelope, qr_type='permanent')
-    
-                    
+            
+                    # Construire une URL FRONT propre (déploiement-friendly)
                     front_base = getattr(settings, "FRONT_BASE_URL", "").rstrip("/")
-                    
-                    verify_url = f"{front_base}/verify/{qr.uuid}?sig={qr.hmac}"
-                    
-    
+                    if front_base:
+                        verify_url = f"{front_base}/verify/{qr.uuid}?sig={qr.hmac}"
+                    else:
+                        # fallback: lien backend absolu si FRONT_BASE_URL non défini
+                        verify_url = self.request.build_absolute_uri(f"/verify/{qr.uuid}?sig={qr.hmac}")
+            
                     # Relire le PDF signé que l'on vient de sauver
                     sig_doc.signed_file.open('rb')
                     pdf_bytes = sig_doc.signed_file.read()
                     sig_doc.signed_file.close()
-    
+            
                     # Anti-doublon: si déjà posé/scellé, ne pas recommencer
                     already_qr = bool((sig_doc.certificate_data or {}).get("qr_embedded"))
                     if not already_qr:
@@ -760,20 +764,20 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
                         buf = io.BytesIO()
                         img.save(buf, format="PNG")
                         qr_png = buf.getvalue()
-    
+            
                         # Apposer le QR sur toutes les pages
                         stamped = self._add_qr_overlay_to_pdf(pdf_bytes, qr_png)
-    
+            
                         # Re-signer pour sceller l’overlay
                         final_signed = sign_pdf_bytes(stamped, field_name="FinalizeQR")
-    
+            
                         sig_doc.signed_file.save(file_name, ContentFile(final_signed), save=True)
                         sig_doc.certificate_data = sig_doc.certificate_data or {}
                         sig_doc.certificate_data["qr_embedded"] = True
                         sig_doc.save(update_fields=["signed_file", "certificate_data"])
                 except Exception as e:
                     logger.exception(f"QR overlay/scellage échoué: {e}")
-    
+
             # 4) Mettre à jour le statut de l'enveloppe
             unsigned_exists = envelope.recipients.filter(signed=False).exists()
             if unsigned_exists:
@@ -1049,64 +1053,51 @@ class PrintQRCodeViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['get'], permission_classes=[permissions.AllowAny])
     def verify(self, request, *args, **kwargs):
-        """Preuve publique pérenne (aucun token, aucun expiry)."""
+        """Preuve publique pérenne (aucun token, aucun expiry) + liste des signataires."""
         try:
             qr = self.get_object()
         except Exception:
             return Response({'error': 'QR non trouvé'}, status=status.HTTP_404_NOT_FOUND)
-
+    
         sig = request.GET.get('sig')
         if not sig or sig != qr.hmac:
             return Response({'error': 'Signature HMAC manquante ou invalide'}, status=status.HTTP_403_FORBIDDEN)
-
+    
         if not qr.is_valid:
             return Response({'error': 'QR révoqué'}, status=status.HTTP_403_FORBIDDEN)
-
+    
         env = qr.envelope
+        # Dernier document signé (si dispo)
         last_sig = (
             SignatureDocument.objects
             .filter(envelope=env)
             .order_by('-signed_at')
             .first()
         )
-        if not last_sig or not last_sig.signed_file:
-            return Response({'error': 'Aucun document signé'}, status=status.HTTP_404_NOT_FOUND)
-
-        # Lire le PDF signé
-        last_sig.signed_file.open('rb')
-        pdf_bytes = last_sig.signed_file.read()
-        last_sig.signed_file.close()
-
-        hashes = compute_hashes(pdf_bytes)
-        sha256_short = hashes["hash_sha256"][:8].upper()
-        cert = extract_signer_certificate_info()
-
-        signed_dt = last_sig.signed_at or env.created_at
-        timestamp_iso = signed_dt.isoformat()
-        timestamp_human = timezone.localtime(signed_dt).strftime("%d %B %Y %H:%M:%S %Z")
-
-        # 🔗 Lien pérenne direct vers le PDF (pas de JWT) :
-        document_url = request.build_absolute_uri(
-            f"/api/signature/prints/{qr.uuid}/document/?sig={qr.hmac}"
-        )
-        verification_url = request.build_absolute_uri(request.get_full_path())
-
-        return Response({
-            "file": f"{env.title}.pdf",
-            "hash_md5": hashes["hash_md5"],
-            "hash_sha256": hashes["hash_sha256"],
-            "sha256_short": sha256_short,
-            "signer": cert.get("common_name") or "Intellivibe Signing",
-            "timestamp": timestamp_iso,
-            "timestamp_human": timestamp_human,
-            "certificate": {
-                "common_name": cert.get("common_name"),
-                "organization": cert.get("organization"),
-                "country": cert.get("country"),
-                "serial_number": cert.get("serial_number"),
-            },
-            "document_url": document_url,           # ✅ permanent
-            "verification_url": verification_url,   # ✅ permanent
-        })
-
-
+    
+        # Construire la liste des signataires (nom + date)
+        signers = []
+        for r in env.recipients.order_by('order'):
+            signers.append({
+                'full_name': r.full_name,
+                'email': r.email,
+                'signed': bool(r.signed),
+                'signed_at': r.signed_at.isoformat() if r.signed_at else None,
+            })
+    
+        # URL absolue (PDF signé) pratique pour le front
+        # On renvoie aussi l'URL document publique (uuid+sig) pour intégration <embed>
+        base_api = (request.build_absolute_uri('/')[:-1]).rstrip('/')
+        doc_url = f"{base_api}/api/signature/prints/{qr.uuid}/document/?sig={sig}"
+    
+        payload = {
+            'qr_uuid': str(qr.uuid),
+            'envelope_id': env.id,
+            'title': env.title,
+            'status': env.status,
+            'completed': (env.status == 'completed'),
+            'completed_at': last_sig.signed_at.isoformat() if last_sig and last_sig.signed_file else None,
+            'signers': signers,
+            'document_url': doc_url,
+        }
+        return Response(payload)

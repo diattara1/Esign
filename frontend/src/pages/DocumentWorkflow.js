@@ -34,6 +34,7 @@ export default function DocumentWorkflow() {
   const [fields, setFields] = useState([]); // champs posés
   const [placing, setPlacing] = useState({ idx: null, type: 'signature' });
   const [isUploading, setIsUploading] = useState(false);
+const [includeQr, setIncludeQr] = useState(false);
 
   const pdfWrapper = useRef(null);
    const prevUrlRef = useRef(null);
@@ -305,16 +306,18 @@ const selectDocument = useCallback(async (doc) => {
       await signatureService.updateEnvelope(id, {
         recipients,
         fields,
-        flow_type: flowType
+        flow_type: flowType,
+        include_qr_code: includeQr,
       });
-      await signatureService.sendEnvelope(id);
+      await signatureService.sendEnvelope(id, { include_qr_code: includeQr });
+      
       toast.success('Enveloppe envoyée');
       navigate(`/signature/sent/${id}`);
     } catch (err) {
       console.error(err);
       toast.error("Échec de l'envoi");
     }
-  }, [id, recipients, fields, flowType, navigate]);
+  }, [id, recipients, fields, flowType, includeQr, navigate]);
 
   // ---- Rendu visuel d'un champ posé ----
   const renderFieldBox = (field, pageNumber) => {
@@ -547,6 +550,18 @@ const selectDocument = useCallback(async (doc) => {
               </div>
             </div>
           )}
+    <div className="mt-4 mb-2 flex items-center">
+  <input
+    id="includeQr"
+    type="checkbox"
+    className="h-4 w-4 mr-2"
+    checked={includeQr}
+    onChange={(e) => setIncludeQr(e.target.checked)}
+  />
+  <label htmlFor="includeQr" className="text-sm text-gray-700">
+    Intégrer un QR Code de vérification au PDF final
+  </label>
+</div>
 
           <button
             onClick={handleSubmit}

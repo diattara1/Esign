@@ -1,7 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.contrib.auth.tokens import default_token_generator
-from django.core.mail import send_mail
 from django.conf import settings
 from django.db import transaction
 from rest_framework.reverse import reverse
@@ -216,6 +215,7 @@ class EnvelopeSerializer(serializers.ModelSerializer):
         fields = [
             'id',
             'title',
+            'include_qr_code',
             'description',
             'files',
             'documents',

@@ -47,8 +47,8 @@ export default {
   cancelEnvelope: id =>
     api.post(`${BASE}/envelopes/${id}/cancel/`).then(res => res.data),
 
-  sendEnvelope: id =>
-    api.post(`${BASE}/envelopes/${id}/send/`).then(res => res.data),
+  sendEnvelope: (id, payload = {}) =>
+    api.post(`${BASE}/envelopes/${id}/send/`, payload).then(res => res.data),
 
   // ─── Guest signing (token / OTP) ────────────────────────────────────
   getGuestEnvelope: async (id, token) => {

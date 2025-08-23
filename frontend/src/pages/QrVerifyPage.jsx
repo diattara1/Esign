@@ -1,8 +1,8 @@
-// QrVerifyPage.jsx — front branché sur l'API réelle
+// QrVerifyPage.jsx
 import React, { useEffect, useState } from 'react';
 import {
   CheckCircle, AlertTriangle, FileText, Shield, Calendar,
-  User, Building, Hash, ExternalLink, Download, Clock, MapPin, Info
+  User, Hash, ExternalLink, Info, Mail
 } from 'lucide-react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import signatureService from '../services/signatureService';
@@ -13,7 +13,7 @@ const LoadingSpinner = () => (
   </div>
 );
 
-const Badge = ({ type, children, className = "" }) => {
+const Badge = ({ type, children }) => {
   const variants = {
     success: 'bg-green-50 text-green-700 border-green-200',
     warning: 'bg-amber-50 text-amber-700 border-amber-200',
@@ -21,7 +21,7 @@ const Badge = ({ type, children, className = "" }) => {
     danger: 'bg-red-50 text-red-700 border-red-200'
   };
   return (
-    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium border ${variants[type]} ${className}`}>
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium border ${variants[type]}`}>
       {children}
     </span>
   );
@@ -65,7 +65,7 @@ export default function QrVerifyPage() {
         const res = await signatureService.verifyQRCodeWithSig(uuid, sig);
         setData(res);
       } catch (e) {
-        setErr("Impossible de charger la preuve (QR non trouvé ou signature HMAC invalide).");
+        setErr("Impossible de charger la preuve (QR non trouvé ou signature invalide).");
       } finally {
         setLoading(false);
       }
@@ -99,124 +99,70 @@ export default function QrVerifyPage() {
     );
   }
 
-  const cert = data?.certificate || {};
   const pdfHref = data?.document_url || signatureService.getQRCodeDocumentAbsoluteUrl(uuid, sig);
+  const signerNames = Array.isArray(data?.signers)
+    ? data.signers.map(s => s.full_name).join(', ')
+    : '—';
 
   return (
     <div className="min-h-screen bg-gray-50 py-8 px-4">
       <div className="max-w-4xl mx-auto space-y-6">
+
         {/* Header */}
         <div className="flex items-start gap-4">
           <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center flex-shrink-0">
             <FileText className="w-6 h-6 text-purple-600" />
           </div>
           <div className="flex-1">
-            <h1 className="text-2xl font-bold text-gray-900">{data?.file}</h1>
+            <h1 className="text-2xl font-bold text-gray-900">
+              {data?.title || 'Document'}
+            </h1>
             <p className="text-sm text-gray-500 mt-1">
-              md5 : <code className="font-mono">{data?.hash_md5}</code>
+              Statut : <Badge type={data?.completed ? "success" : "warning"}>
+                {data?.status}
+              </Badge>
             </p>
           </div>
         </div>
 
-        {/* Signature */}
+        {/* Signatures */}
         <Card className="p-6">
-          <div className="flex items-start gap-4">
-            <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
-              <Shield className="w-5 h-5 text-blue-600" />
-            </div>
-            <div className="flex-1">
-            <h2 className="font-medium text-lg  mb-4 flex items-center gap-2">
-                    <Shield className="w-4 h-4" />
-                    Détails de la signature
-                    <Badge type="info">SHA-256</Badge>
-                  </h2>
-
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div>
-                  
-
-                  <dl className="space-y-0">
-                    <InfoItem label="Signataire" value={data?.signer} icon={User} />
-                    <InfoItem label="Fichier signé" value={`${data?.file || '—'} (rév. 1/1)`} icon={FileText} />
-                  </dl>
-                </div>
-
-                <div>
-                  <dl className="space-y-0">
-                    <InfoItem label="Timestamp" value={data?.timestamp_human} icon={Calendar} />
-                  </dl>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div className="mt-4">
-              <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+          <h2 className="font-medium text-lg mb-4 flex items-center gap-2">
             <Shield className="w-5 h-5" />
-            Certificat du signataire
-          </h3>
+            Détails de la signature
+          </h2>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <dl className="space-y-0">
-              <InfoItem label="Common name" value={cert.common_name} icon={User} />
-              <InfoItem label="Organisation" value={cert.organization} icon={Building} />
-              
-            </dl>
-            <dl className="space-y-0">
-              <InfoItem label="Numéro de série" value={cert.serial_number} icon={Hash} type="code" />
-              <InfoItem label="Pays" value={cert.country} icon={MapPin} />
-            </dl>
-          </div>
-
-          {/* Bannière d'état simple (si tu ajoutes un champ de validité plus tard) */}
-          <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-            <div className="flex items-center gap-2">
-              <Info className="w-5 h-5 text-blue-600" />
-              <span className="text-sm text-blue-800">
-                Les informations ci-dessus proviennent de la preuve retournée par l’API.
-              </span>
-            </div>
-          </div>
-          </div>
-        </Card>
-
-        {/* Certificat */}
-        <Card className="p-6">
-        
+          <dl className="space-y-0">
+            <InfoItem label="Signataire(s)" value={signerNames} icon={User} />
+            <InfoItem label="Emails" value={data?.signers?.map(s => s.email).join(', ')} icon={Mail} />
+            <InfoItem label="Signé le" value={data?.signers?.[0]?.signed_at ? new Date(data.signers[0].signed_at).toLocaleString() : '—'} icon={Calendar} />
+          </dl>
         </Card>
 
         {/* Hashs */}
         <Card className="p-6">
           <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-            
             Empreintes du document
           </h2>
 
           <dl className="space-y-0">
+            <InfoItem label="MD5" value={data?.hash_md5} icon={Hash} type="code" />
             <InfoItem label="SHA-256" value={data?.hash_sha256} icon={Hash} type="code" />
-            <InfoItem label="SHA-256 court" value={data?.sha256_short} icon={Hash} type="code" />
           </dl>
         </Card>
 
         {/* Document signé intégré */}
-{pdfHref ? (
-  <Card className="p-0 overflow-hidden">
-    <object
-      data={pdfHref}
-      type="application/pdf"
-      className="w-full h-[80vh]"
-    >
-      <iframe
-        src={pdfHref}
-        className="w-full h-[80vh] border-0"
-        title="Document signé"
-      />
-    </object>
-  </Card>
-) : (
-  <div className="text-sm text-gray-600 italic">
-    Le document signé n’a pas pu être chargé.
-  </div>
-)}
+        {pdfHref ? (
+          <Card className="p-0 overflow-hidden">
+            <object data={pdfHref} type="application/pdf" className="w-full h-[80vh]">
+              <iframe src={pdfHref} className="w-full h-[80vh] border-0" title="Document signé" />
+            </object>
+          </Card>
+        ) : (
+          <div className="text-sm text-gray-600 italic">
+            Le document signé n’a pas pu être chargé.
+          </div>
+        )}
 
       </div>
     </div>

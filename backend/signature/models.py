@@ -162,7 +162,7 @@ class Envelope(models.Model):
 
     title = models.CharField(max_length=255)
     description = models.TextField(blank=True)
-
+    include_qr_code = models.BooleanField(default=False)  
     document_file = models.FileField(
         upload_to="signature/documents/",
         storage=encrypted_storage,

@@ -168,7 +168,7 @@ selfSign: (formData, { sync = false } = {}) => {
   if (sync) config.responseType = 'blob';
   
   return api.post('api/signature/self-sign/', formData, config)
-    .then(res => sync ? res.data : res.data);
+    .then(res => (sync ? res : res.data));
 },
 
 // Batch sign (same spot ou var spots)

@@ -24,13 +24,94 @@ export default function SelfSignWizard() {
   const [sigFile, setSigFile] = useState(null);
   const [sigDataUrl, setSigDataUrl] = useState('');
   const [savedSignatures, setSavedSignatures] = useState([]);
-
-  const toAbsolute = (url) => {
-    if (!url) return url;
-    if (/^https?:\/\//i.test(url)) return url;
-    const base = (api.defaults.baseURL || '').replace(/\/$/, '');
-    return `${base}/${url.replace(/^\//, '')}`;
+  // Charge une image (même protégée par cookie) et la convertit en data-URL
+ const urlToDataURL = async (url) => {
+    const res = await fetch(url, { credentials: 'include' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const blob = await res.blob();
+    // createImageBitmap est rapide et évite les soucis cross-origin avec <img>
+    try {
+      const bmp = await createImageBitmap(blob);
+      const canvas = document.createElement('canvas');
+      canvas.width = bmp.width; canvas.height = bmp.height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(bmp, 0, 0);
+      return canvas.toDataURL('image/png');         // <- forcé en PNG
+    } catch {
+      // fallback via <img> si createImageBitmap indisponible
+      const urlObj = URL.createObjectURL(blob);
+      const dataUrl = await new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0);
+          try { resolve(canvas.toDataURL('image/png')); }
+          catch (e) { reject(e); }
+          URL.revokeObjectURL(urlObj);
+        };
+        img.onerror = reject;
+        img.src = urlObj;
+      });
+      return dataUrl;
+    }
   };
+  /** URL absolue de l'image d'une signature sauvegardée */
+const savedSignatureImageUrl = (id) => {
+  const base = (api?.defaults?.baseURL || '').replace(/\/$/, '');
+  return `${base}/api/signature/saved-signatures/${id}/image/`;
+};
+
+/** Rasterise n'importe quel blob image en data:image/png;base64,... */
+const blobToPngDataURL = async (blob) => {
+  try {
+    const bmp = await createImageBitmap(blob);
+    const canvas = document.createElement('canvas');
+    canvas.width = bmp.width; canvas.height = bmp.height;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(bmp, 0, 0);
+    return canvas.toDataURL('image/png');
+  } catch {
+    // fallback via <img>
+    const urlObj = URL.createObjectURL(blob);
+    const dataUrl = await new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        const c = document.createElement('canvas');
+        c.width = img.naturalWidth; c.height = img.naturalHeight;
+        c.getContext('2d').drawImage(img, 0, 0);
+        resolve(c.toDataURL('image/png'));
+        URL.revokeObjectURL(urlObj);
+      };
+      img.onerror = reject;
+      img.src = urlObj;
+    });
+    return dataUrl;
+  }
+};
+
+/** Récupère l'image d'une signature sauvegardée et renvoie une dataURL PNG */
+const fetchSavedSignatureAsDataURL = async (sig) => {
+  if (sig?.data_url) return sig.data_url; // déjà une dataURL
+  if (!sig?.id) throw new Error('signature id manquant');
+  const res = await fetch(savedSignatureImageUrl(sig.id), { credentials: 'include' });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  const blob = await res.blob();
+  return blobToPngDataURL(blob);
+};
+  // remplace la fonction existante
+const toAbsolute = (url) => {
+  if (!url) return url;
+  if (/^https?:\/\//i.test(url)) return url;     // déjà absolue
+  const base = (api.defaults.baseURL || '').replace(/\/$/, '');
+  // si l’API renvoie "signature/saved/…", on préfixe "/media/"
+  const path = url.startsWith('media/') || url.startsWith('/media/')
+    ? url.replace(/^\//, '')
+    : `media/${url.replace(/^\//, '')}`;
+  return `${base}/${path}`;
+};
+
   const [isProcessing, setIsProcessing] = useState(false);
 
   // --- layout / resize ---
@@ -103,8 +184,8 @@ export default function SelfSignWizard() {
     fd.append('sync', 'true');                                    // fast-path
 
     try {
-      const blob = await signatureService.selfSign(fd, { sync: true });
-      const url = URL.createObjectURL(blob);
+      const response = await signatureService.selfSign(fd, { sync: true });
+      const url = URL.createObjectURL(response.data);
       const base = (file.name || 'document').replace(/\.pdf$/i, '');
       const a = document.createElement('a');
       a.href = url;
@@ -199,18 +280,34 @@ export default function SelfSignWizard() {
           </div>
         )}
         {!sigFile && savedSignatures.length > 0 && (
-          <div className="mt-2 grid grid-cols-2 gap-2">
-            {savedSignatures.map(sig => (
-              <div
-                key={sig.id}
-                className="border p-1 cursor-pointer flex items-center justify-center"
-                onClick={() => { setSigDataUrl(sig.data_url || toAbsolute(sig.image)); setSigFile(null); }}
-              >
-                <img src={sig.data_url || toAbsolute(sig.image)} alt="saved" className="max-h-20" />
-              </div>
-            ))}
-          </div>
-        )}
+  <div className="mt-2 grid grid-cols-2 gap-2">
+    {savedSignatures.map(sig => {
+  const previewSrc = sig.data_url || savedSignatureImageUrl(sig.id); // toujours défini
+  return (
+    <div
+      key={sig.id}
+      className="border p-1 cursor-pointer flex items-center justify-center hover:ring-2 hover:ring-emerald-400 rounded"
+      onClick={async () => {
+        try {
+          setSigFile(null);
+          const dataUrl = await fetchSavedSignatureAsDataURL(sig); // <-- jamais "undefined"
+          setSigDataUrl(dataUrl);                                  // data:image/png;base64,...
+        } catch (e) {
+          console.error(e);
+          setSigDataUrl('');
+          // affiche ton toast si tu en utilises un :
+          // toast.error("Impossible de charger la signature enregistrée");
+        }
+      }}
+    >
+      <img src={previewSrc} alt="saved" className="max-h-20" />
+    </div>
+  );
+})}
+
+  </div>
+)}
+
       </div>
 
 
@@ -227,10 +324,10 @@ export default function SelfSignWizard() {
           {placement ? 'Redéfinir la zone' : 'Définir la zone'}
         </button>
         <button
-          onClick={submit}
-          disabled={isProcessing || !file || !placement || !sigFile}
-          className="w-full px-4 py-2 bg-gradient-to-r from-emerald-600 to-blue-600 text-white font-medium rounded-lg hover:from-emerald-700 hover:to-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-        >
+  onClick={submit}
+  disabled={isProcessing || !file || !placement || (!sigFile && !sigDataUrl)}
+  className="w-full px-4 py-2 bg-gradient-to-r from-emerald-600 to-blue-600 text-white font-medium rounded-lg hover:from-emerald-700 hover:to-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+>
           {isProcessing
             ? <div className="flex items-center justify-center space-x-2"><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div><span>Signature...</span></div>
             : <div className="flex items-center justify-center space-x-2"><FiEdit3 className="w-4 h-4" /><span>Signer et télécharger</span></div>}

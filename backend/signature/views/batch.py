@@ -13,12 +13,13 @@ from ..tasks import process_batch_sign_job
 from ..models import BatchSignJob, BatchSignItem, EnvelopeDocument, SavedSignature
 from ..serializers import BatchSignJobSerializer
 from ..crypto_utils import sign_pdf_bytes  # util commun
-
+from django.conf import settings
 # === Helpers d'implémentation exportés pour tasks.py =========================
 from PIL import Image
 from PyPDF2 import PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
 from reportlab.lib.utils import ImageReader
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 
 
 def _paste_signature_on_pdf(pdf_bytes: bytes, sig_img_bytes: bytes, placements: list) -> bytes:
@@ -87,11 +88,30 @@ def _crypto_sign_pdf(pdf_bytes: bytes, field_name: str | None = None) -> bytes:
     Implémentation réelle de la signature numérique PAdES (util commun).
     """
     return sign_pdf_bytes(pdf_bytes, field_name=field_name)
-# ============================================================================
 
 
-# en haut du fichier
-from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
+def _add_qr_overlay_all_pages(pdf_bytes: bytes, qr_png_bytes: bytes, size_pt=50, margin_pt=13, y_offset=-5) -> bytes:
+    from PyPDF2 import PdfReader, PdfWriter
+    from reportlab.pdfgen import canvas
+    from reportlab.lib.utils import ImageReader
+    import io
+    base_reader = PdfReader(io.BytesIO(pdf_bytes))
+    writer = PdfWriter()
+    for page in base_reader.pages:
+        w = float(page.mediabox.width); h = float(page.mediabox.height)
+        buf = io.BytesIO()
+        c = canvas.Canvas(buf, pagesize=(w, h))
+        x = w - margin_pt - size_pt
+        y = margin_pt + y_offset
+        c.drawImage(ImageReader(io.BytesIO(qr_png_bytes)), x, y, width=size_pt, height=size_pt, mask='auto')
+        c.showPage(); c.save(); buf.seek(0)
+        overlay_pdf = PdfReader(buf)
+        page.merge_page(overlay_pdf.pages[0])
+        writer.add_page(page)
+    out = io.BytesIO(); writer.write(out)
+    return out.getvalue()
+
+
 
 class SelfSignView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -163,6 +183,27 @@ class SelfSignView(APIView):
         # 4) apposer l'image puis signer (PAdES)
         stamped = _paste_signature_on_pdf(pdf_src, sig_img_bytes, placements)
         signed = _crypto_sign_pdf(stamped, field_name="SelfSign")
+        # Option: apposition d'un QR aussi pour l'auto-signature
+        include_qr = str(request.data.get("include_qr", "false")).lower() in ("1","true","yes","on")
+        
+        if include_qr:
+            from signature.crypto_utils import compute_hashes  # déjà présent côté enveloppe
+            import qrcode, io
+            hashes = compute_hashes(signed)  # -> {'hash_md5': '...', 'hash_sha256': '...'}
+            sha = hashes.get("hash_sha256")
+        
+            # Construire une cible de vérif "légère"
+            front_base = getattr(settings, "FRONT_BASE_URL", "").rstrip("/")
+            verify_url = f"{front_base}/verify/hash?sha256={sha}" if front_base else f"SHA256:{sha}"
+        
+            # Générer QR PNG
+            img = qrcode.make(verify_url)
+            buf = io.BytesIO(); img.save(buf, format="PNG"); qr_png = buf.getvalue()
+        
+            # Apposer le QR sur toutes les pages puis re-signer pour sceller l'overlay
+            with_qr = _add_qr_overlay_all_pages(signed, qr_png)
+            signed  = _crypto_sign_pdf(with_qr, field_name="FinalizeQR")
+        
 
         return FileResponse(io.BytesIO(signed), as_attachment=True, filename="signed.pdf", content_type="application/pdf")
 

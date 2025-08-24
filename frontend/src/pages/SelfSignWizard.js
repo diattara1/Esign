@@ -159,6 +159,8 @@ export default function SelfSignWizard() {
     fd.append('placements', JSON.stringify([placement]));
     fd.append('signature_image', sigDataUrl);
     fd.append('sync', 'true');
+    fd.append('include_qr', 'true');
+
 
     try {
       const response = await signatureService.selfSign(fd, { sync: true });

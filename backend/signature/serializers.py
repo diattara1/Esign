@@ -4,6 +4,7 @@ from django.contrib.auth.tokens import default_token_generator
 from django.conf import settings
 from django.db import transaction
 from rest_framework.reverse import reverse
+from .email_utils import EmailTemplates
 from .models import (SavedSignature, FieldTemplate, BatchSignJob, BatchSignItem,
     Envelope,EnvelopeRecipient,SigningField,SignatureDocument,PrintQRCode,
     NotificationPreference,EnvelopeDocument,

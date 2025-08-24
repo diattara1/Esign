@@ -114,9 +114,8 @@ getQRCodeDocumentAbsoluteUrl: (uuid, sig) => {
 // --- Ouvrir le PDF dans l'onglet courant (convenient) ---
 openQRCodeDocument: (uuid, sig) => {
   const base = (api.defaults.baseURL || '').replace(/\/$/, '');
-const url = `${base}/api/signature/prints/${uuid}/document/?sig=${encodeURIComponent(sig || '')}`;
-window.location.assign(url);
-
+  const url = `${base}/${BASE}/prints/${uuid}/document/?sig=${encodeURIComponent(sig || '')}`;
+  window.location.assign(url);
 },
 
   // Téléchargement d'un document précis (si tu ajoutes un endpoint côté vue)
@@ -166,21 +165,22 @@ remindNow: (id) =>
 selfSign: (formData, { sync = false } = {}) => {
   const config = {};
   if (sync) config.responseType = 'blob';
-  
-  return api.post('api/signature/self-sign/', formData, config)
+
+  return api.post(`${BASE}/self-sign/`, formData, config)
     .then(res => (sync ? res : res.data));
 },
 
 // Batch sign (same spot ou var spots)
-createBatchSign: (formData) =>
-  api.post('api/signature/batch-sign/', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
-    .then(res => res.data),
+createBatchSign: formData =>
+  api.post(`${BASE}/batch-sign/`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  }).then(res => res.data),
 
-getBatchJob: (id) =>
-  api.get(`api/signature/batch-jobs/${id}/`).then(res => res.data),
+getBatchJob: id =>
+  api.get(`${BASE}/batch-jobs/${id}/`).then(res => res.data),
 
-  downloadBatchZip: (id) =>
-    api.get(`api/signature/batch-jobs/${id}/download/`, { responseType: 'blob' })
+  downloadBatchZip: id =>
+    api.get(`${BASE}/batch-jobs/${id}/download/`, { responseType: 'blob' })
       .then(res => {
         const url = URL.createObjectURL(res.data);
         return { url };

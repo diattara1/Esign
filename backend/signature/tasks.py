@@ -1,26 +1,44 @@
-# signature/tasks.py (parties mises à jour)
+# signature/tasks.py
 
 from celery import shared_task
 from django.conf import settings
 from datetime import datetime, timedelta
-import jwt
-from django.utils.text import slugify
 import logging
-import base64  
-from .models import Envelope, EnvelopeRecipient, BatchSignJob, BatchSignItem,SignatureDocument
-import io, zipfile, os
+import base64
+import io
+import zipfile
+import os
+import jwt
+
 from django.core.files.base import ContentFile
 from django.utils import timezone
-from PIL import Image
+from django.utils.text import slugify, get_valid_filename
+
+from PIL import Image, UnidentifiedImageError
 from PyPDF2 import PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
 from reportlab.lib.utils import ImageReader
-from .crypto_utils import sign_pdf_bytes
-from .email_utils import EmailTemplates,send_templated_email
+
+from .models import (
+    Envelope,
+    EnvelopeRecipient,
+    BatchSignJob,
+    BatchSignItem,
+    SignatureDocument,
+    PrintQRCode,
+)
+from .crypto_utils import (
+    sign_pdf_bytes,
+    compute_hashes,
+    extract_signer_certificate_info,
+)
+from .email_utils import EmailTemplates, send_templated_email
+
+import qrcode
 
 logger = logging.getLogger(__name__)
+MAX_REMINDERS = getattr(settings, "MAX_REMINDERS_SIGN", 3)
 
-MAX_REMINDERS = getattr(settings, 'MAX_REMINDERS_SIGN', 3)
 
 @shared_task
 def send_signed_pdf_to_all_signers(envelope_id: int):
@@ -35,15 +53,14 @@ def send_signed_pdf_to_all_signers(envelope_id: int):
         logger.error("Envelope %s introuvable", envelope_id)
         return
 
-    if env.status != 'completed':
+    if env.status != "completed":
         logger.info("Envelope %s status=%s ≠ completed → stop", envelope_id, env.status)
         return
 
     # Dernier PDF signé = version finale
     latest = (
-        SignatureDocument.objects
-        .filter(envelope=env, signed_file__isnull=False)
-        .order_by('-signed_at')
+        SignatureDocument.objects.filter(envelope=env, signed_file__isnull=False)
+        .order_by("-signed_at")
         .first()
     )
     if not latest or not latest.signed_file:
@@ -51,7 +68,7 @@ def send_signed_pdf_to_all_signers(envelope_id: int):
         return
 
     try:
-        latest.signed_file.open('rb')
+        latest.signed_file.open("rb")
         pdf_bytes = latest.signed_file.read()
         latest.signed_file.close()
     except Exception:
@@ -63,7 +80,7 @@ def send_signed_pdf_to_all_signers(envelope_id: int):
     open_url = f"{settings.FRONT_BASE_URL}/signature/envelopes/{env.id}"
 
     # Garde-fou taille (ex: 20 Mo)
-    attachments = [(fname, pdf_bytes, 'application/pdf')]
+    attachments = [(fname, pdf_bytes, "application/pdf")]
     if len(pdf_bytes) > 20 * 1024 * 1024:
         logger.warning(
             "PDF trop lourd (%s bytes) pour l'enveloppe %s → envoi sans pièce jointe",
@@ -101,14 +118,12 @@ def send_signed_pdf_to_all_signers(envelope_id: int):
             )
             logger.info("Email final envoyé à %s", r.email)
         except TypeError:
-            # au cas où send_templated_email n'accepte pas encore 'attachments'
-            logger.exception(
-                "TypeError lors de l'envoi de l'email final à %s", r.email
-            )
+            logger.exception("TypeError lors de l'envoi de l'email final à %s", r.email)
         except Exception:
             logger.exception("Erreur lors de l'envoi de l'email final à %s", r.email)
 
-def _paste_signature_on_pdf(pdf_bytes: bytes, sig_img_bytes: bytes, placements: list):
+
+def _paste_signature_on_pdf(pdf_bytes: bytes, sig_img_bytes: bytes, placements: list) -> bytes:
     """
     Appose l'image de signature aux positions indiquées (page,x,y,width,height)
     - x,y,width,height : unités PDF (points) mesurées depuis le HAUT-GAUCHE de la CropBox dans le front.
@@ -124,15 +139,16 @@ def _paste_signature_on_pdf(pdf_bytes: bytes, sig_img_bytes: bytes, placements: 
 
     # indexer placements par page (1-based)
     by_page = {}
-    for p in placements:
-        # sécuriser les types
+    for p in placements or []:
         page_no = int(p["page"])
-        by_page.setdefault(page_no, []).append({
-            "x": float(p["x"]),
-            "y": float(p["y"]),
-            "width": float(p["width"]),
-            "height": float(p["height"]),
-        })
+        by_page.setdefault(page_no, []).append(
+            {
+                "x": float(p["x"]),
+                "y": float(p["y"]),
+                "width": float(p["width"]),
+                "height": float(p["height"]),
+            }
+        )
 
     for page_num in range(1, len(base_reader.pages) + 1):
         page = base_reader.pages[page_num - 1]
@@ -187,10 +203,42 @@ def _paste_signature_on_pdf(pdf_bytes: bytes, sig_img_bytes: bytes, placements: 
     return buf.getvalue()
 
 
+def _add_qr_overlay_all_pages(pdf_bytes: bytes, qr_png_bytes: bytes, size_pt=50, margin_pt=13, y_offset=-5) -> bytes:
+    """Appose un QR (PNG) en bas-droite sur *toutes* les pages."""
+    reader = PdfReader(io.BytesIO(pdf_bytes))
+    writer = PdfWriter()
+    for page in reader.pages:
+        w = float(page.mediabox.width)
+        h = float(page.mediabox.height)
+        buf = io.BytesIO()
+        c = canvas.Canvas(buf, pagesize=(w, h))
+        x = w - margin_pt - size_pt
+        y = margin_pt + y_offset
+        c.drawImage(ImageReader(io.BytesIO(qr_png_bytes)), x, y, width=size_pt, height=size_pt, mask="auto")
+        c.showPage()
+        c.save()
+        buf.seek(0)
+        overlay = PdfReader(buf)
+        page.merge_page(overlay.pages[0])
+        writer.add_page(page)
+    out = io.BytesIO()
+    writer.write(out)
+    return out.getvalue()
+
+
+def _normalize_signature_to_png_bytes(buf: bytes) -> bytes:
+    """Normalise n'importe quel format image en PNG (RGBA)."""
+    im = Image.open(io.BytesIO(buf)).convert("RGBA")
+    out = io.BytesIO()
+    im.save(out, format="PNG")
+    return out.getvalue()
+
+
 def _crypto_sign_pdf(pdf_bytes: bytes, field_name: str | None = None) -> bytes:
-    # Reload pour éviter les versions obsolètes en mémoire du worker
+    """Proxy vers sign_pdf_bytes en rechargeant le module (worker long-lived)."""
     from importlib import reload
     from . import crypto_utils as cu
+
     try:
         reload(cu)
     except Exception:
@@ -199,21 +247,33 @@ def _crypto_sign_pdf(pdf_bytes: bytes, field_name: str | None = None) -> bytes:
 
 
 @shared_task
-def process_batch_sign_job(job_id: int, use_saved_signature_id=None, signature_upload_path=None, use_hsm=False, pin=None):
+def process_batch_sign_job(
+    job_id: int,
+    use_saved_signature_id=None,
+    signature_upload_path=None,
+    use_hsm=False,
+    pin=None,
+    include_qr: bool = False,
+):
     """
-    Traite un BatchSignJob: appose l'image puis signe chaque PDF.
-    - use_saved_signature_id: ID d'une SavedSignature (prioritaire si fourni)
-    - signature_upload_path: path d'un fichier image uploadé (si pas de saved)
+    Traite un BatchSignJob: appose la signature visuelle puis signe chaque PDF.
+    Si include_qr=True :
+      - crée une enveloppe minimale "completed"
+      - enregistre un SignatureDocument (hashes + infos certificat)
+      - génère un QR standard /verify/{uuid}?sig=...
+      - appose le QR sur toutes les pages
+      - re-signe ("FinalizeQR") pour sceller l'overlay
     """
-    job = BatchSignJob.objects.get(pk=job_id)
+    job = BatchSignJob.objects.select_related("created_by").get(pk=job_id)
     job.status = "running"
     job.started_at = timezone.now()
     job.save(update_fields=["status", "started_at"])
 
-    # charge l'image de signature
+    # 1) Charger l'image de signature
     sig_bytes = None
     if use_saved_signature_id:
         from .models import SavedSignature
+
         ss = SavedSignature.objects.get(pk=use_saved_signature_id, user=job.created_by)
         if getattr(ss, "image", None):
             f = ss.image
@@ -223,7 +283,6 @@ def process_batch_sign_job(job_id: int, use_saved_signature_id=None, signature_u
         elif getattr(ss, "data_url", None):
             head, b64 = ss.data_url.split(",", 1) if "," in ss.data_url else ("", ss.data_url)
             sig_bytes = base64.b64decode(b64)
-
     elif signature_upload_path:
         with open(signature_upload_path, "rb") as f:
             sig_bytes = f.read()
@@ -234,19 +293,38 @@ def process_batch_sign_job(job_id: int, use_saved_signature_id=None, signature_u
         job.save(update_fields=["status", "finished_at"])
         return
 
-    # traite chaque item
-    for item in job.items.all():
+    # Normaliser en PNG (robuste)
+    try:
+        sig_bytes = _normalize_signature_to_png_bytes(sig_bytes)
+    except UnidentifiedImageError:
+        job.status = "failed"
+        job.finished_at = timezone.now()
+        job.save(update_fields=["status", "finished_at"])
+        return
+
+    # 2) Traiter chaque item
+    done = failed = 0
+    # on écrit directement les PDFs finaux dans les items, puis on zipp à la fin
+    for item in job.items.all().select_related("envelope_document"):
         try:
             item.status = "running"
             item.save(update_fields=["status"])
 
-            # récupère le PDF source
+            # PDF source
+            pdf_src = None
+            name = "document.pdf"
             if item.envelope_document and item.envelope_document.file:
                 srcf = item.envelope_document.file
-                srcf.open("rb"); pdf_src = srcf.read(); srcf.close()
+                srcf.open("rb")
+                pdf_src = srcf.read()
+                srcf.close()
+                name = os.path.basename(getattr(item.envelope_document.file, "name", name)) or name
             elif item.source_file:
                 srcf = item.source_file
-                srcf.open("rb"); pdf_src = srcf.read(); srcf.close()
+                srcf.open("rb")
+                pdf_src = srcf.read()
+                srcf.close()
+                name = os.path.basename(getattr(item.source_file, "name", name)) or name
             else:
                 raise Exception("Aucun fichier source")
 
@@ -255,37 +333,109 @@ def process_batch_sign_job(job_id: int, use_saved_signature_id=None, signature_u
             if not placements:
                 raise Exception("Aucun placement fourni")
 
-            # appose l'image
+            # Apposer la signature visuelle
             stamped = _paste_signature_on_pdf(pdf_src, sig_bytes, placements)
 
-            # signature numérique (branche ici ton pyHanko/HSM)
+            # Signature numérique PAdES (scellé 1)
             signed_bytes = _crypto_sign_pdf(stamped, field_name=f"Batch_{item.id}")
 
-            base_name = None
-            if item.envelope_document and item.envelope_document.name:
-                base_name = item.envelope_document.name.rsplit(".", 1)[0]
-            elif item.source_file and item.source_file.name:
-                base_name = item.source_file.name.rsplit("/", 1)[-1].rsplit(".", 1)[0]
-            else:
-                base_name = f"doc_{item.id}"
-            fname = f"{base_name}_signed.pdf"
-            item.signed_file.save(fname, ContentFile(signed_bytes), save=False)
+            final_bytes = signed_bytes
+            base_name = (name.rsplit(".", 1)[0] or "document")
+            out_name = f"{base_name}_signed.pdf"
+
+            if include_qr:
+                # a) Créer une enveloppe minimale "terminée"
+                title = name
+                env = Envelope.objects.create(
+                    title=title,
+                    status="completed",
+                    include_qr_code=True,
+                    created_by=job.created_by,
+                )
+
+                # b) Destinataire = auteur du job (déjà signé)
+                full_name = (
+                    job.created_by.get_full_name()
+                    or job.created_by.username
+                    or (job.created_by.email or "Vous")
+                )
+                rcpt = EnvelopeRecipient.objects.create(
+                    envelope=env,
+                    user=job.created_by,
+                    email=job.created_by.email or f"user{job.created_by.id}@example.com",
+                    full_name=full_name,
+                    order=1,
+                    signed=True,
+                    signed_at=timezone.now(),
+                )
+
+                # c) SignatureDocument (trace & fichier)
+                sigdoc = SignatureDocument.objects.create(
+                    envelope=env,
+                    recipient=rcpt,
+                    signer=job.created_by,
+                    is_guest=False,
+                    signature_data="batch-self-sign",
+                    signed_fields={"placements": placements},
+                )
+                file_name = get_valid_filename((title or "document").replace("/", "_"))
+                if not file_name.lower().endswith(".pdf"):
+                    file_name += ".pdf"
+                sigdoc.signed_file.save(file_name, ContentFile(signed_bytes), save=True)
+
+                # d) Empreintes + infos certificat
+                hashes = compute_hashes(signed_bytes)
+                cert_info = extract_signer_certificate_info()
+                cert_data = sigdoc.certificate_data or {}
+                if hashes:
+                    cert_data.update(hashes)
+                cert_data["certificate"] = cert_info
+                sigdoc.certificate_data = cert_data
+                sigdoc.save(update_fields=["signed_file", "certificate_data"])
+
+                # e) QR permanent + URL de vérif standard
+                qr = PrintQRCode.objects.create(envelope=env, qr_type="permanent")
+                front_base = getattr(settings, "FRONT_BASE_URL", "").rstrip("/")
+                if front_base:
+                    verify_url = f"{front_base}/verify/{qr.uuid}?sig={qr.hmac}"
+                else:
+                    # fallback relatif (peut être résolu par ton front/nginx)
+                    verify_url = f"/verify/{qr.uuid}?sig={qr.hmac}"
+
+                # f) Générer le PNG, apposer, re-signer (scellé 2)
+                buf = io.BytesIO()
+                qrcode.make(verify_url).save(buf, format="PNG")
+                with_qr = _add_qr_overlay_all_pages(signed_bytes, buf.getvalue())
+                final_bytes = _crypto_sign_pdf(with_qr, field_name="FinalizeQR")
+
+                # g) Remplacer le fichier & marquer qr_embedded
+                sigdoc.signed_file.save(file_name, ContentFile(final_bytes), save=True)
+                sigdoc.certificate_data = {
+                    **(sigdoc.certificate_data or {}),
+                    "qr_embedded": True,
+                }
+                sigdoc.save(update_fields=["signed_file", "certificate_data"])
+
+            # Écrire le PDF final dans l'item
+            item.signed_file.save(out_name, ContentFile(final_bytes), save=False)
             item.status = "completed"
             item.error = ""
             item.save(update_fields=["signed_file", "status", "error"])
 
-            job.done += 1
+            done += 1
+            job.done = done
             job.save(update_fields=["done"])
+
         except Exception as e:
             item.status = "failed"
             item.error = str(e)
             item.save(update_fields=["status", "error"])
-            job.failed += 1
+            failed += 1
+            job.failed = failed
             job.save(update_fields=["failed"])
 
-    # ZIP des résultats
+    # 3) ZIP des résultats
     try:
-        # créer un zip en mémoire
         memzip = io.BytesIO()
         with zipfile.ZipFile(memzip, "w", zipfile.ZIP_DEFLATED) as zf:
             for it in job.items.filter(status="completed"):
@@ -295,14 +445,14 @@ def process_batch_sign_job(job_id: int, use_saved_signature_id=None, signature_u
                     it.signed_file.close()
         memzip.seek(0)
         job.result_zip.save(f"batch_{job.id}.zip", ContentFile(memzip.read()), save=False)
-    except Exception as zerr:
-        # pas bloquant
+    except Exception:
+        # pas bloquant pour le statut
         pass
 
-    # statut final
-    if job.failed == 0 and job.done == job.total:
+    # 4) Statut final
+    if failed == 0 and done == job.total:
         job.status = "completed"
-    elif job.done > 0:
+    elif done > 0:
         job.status = "partial"
     else:
         job.status = "failed"
@@ -317,12 +467,12 @@ def _build_sign_link(envelope, recipient):
         return f"{settings.FRONT_BASE_URL}/signature/envelopes/{envelope.id}/sign"
 
     payload = {
-        'env_id': envelope.id,
-        'recipient_id': recipient.id,
-        'iat': int(datetime.utcnow().timestamp()),
-        'exp': int(expire_at.timestamp())
+        "env_id": envelope.id,
+        "recipient_id": recipient.id,
+        "iat": int(datetime.utcnow().timestamp()),
+        "exp": int(expire_at.timestamp()),
     }
-    token = jwt.encode(payload, settings.SECRET_KEY, algorithm='HS256')
+    token = jwt.encode(payload, settings.SECRET_KEY, algorithm="HS256")
     return f"{settings.FRONT_BASE_URL}/sign/{envelope.id}?token={token}"
 
 
@@ -339,7 +489,7 @@ def send_signature_email(envelope_id, recipient_id):
         return  # déjà expiré
 
     link = _build_sign_link(envelope, recipient)
-    
+
     # Utiliser le template d'email
     try:
         EmailTemplates.signature_request_email(recipient, envelope, link)
@@ -373,7 +523,7 @@ def send_reminder_email(envelope_id, recipient_id):
         return
 
     link = _build_sign_link(envelope, recipient)
-    
+
     # Utiliser le template d'email
     try:
         EmailTemplates.signature_reminder_email(recipient, envelope, link)
@@ -394,15 +544,12 @@ def process_signature_reminders():
     now = timezone.now()
 
     # Enveloppes encore actives
-    envelopes = Envelope.objects.filter(
-        status__in=['sent', 'pending'],
-        deadline_at__gt=now
-    )
+    envelopes = Envelope.objects.filter(status__in=["sent", "pending"], deadline_at__gt=now)
 
     for env in envelopes:
-        if env.flow_type == 'sequential':
+        if env.flow_type == "sequential":
             # ne relancer que le "courant"
-            rec = env.recipients.filter(signed=False).order_by('order').first()
+            rec = env.recipients.filter(signed=False).order_by("order").first()
             if not rec:
                 continue
             if rec.next_reminder_at and rec.next_reminder_at <= now and rec.reminder_count < MAX_REMINDERS:
@@ -431,7 +578,6 @@ def send_deadline_email(envelope_id):
     # Email aux destinataires non-signés
     for rec in env.recipients.filter(signed=False):
         try:
-            
             send_templated_email(
                 recipient_email=rec.email,
                 subject=f"Échéance dépassée : {env.title}",
@@ -439,7 +585,7 @@ def send_deadline_email(envelope_id):
                 user_name=rec.full_name,
                 email_type="Échéance dépassée",
                 info_message="Si vous devez toujours signer ce document, contactez la personne qui vous l'a envoyé pour obtenir un nouveau lien.",
-                info_type="warning"
+                info_type="warning",
             )
         except Exception as e:
             logger.error(f"Erreur envoi email deadline destinataire {rec.id}: {e}")
@@ -449,14 +595,11 @@ def send_deadline_email(envelope_id):
 def process_deadlines():
     """Job périodique : marque 'expired' les enveloppes non complétées dont la deadline est passée."""
     now = timezone.now()
-    to_expire = Envelope.objects.filter(
-        status__in=['sent', 'pending'],
-        deadline_at__lte=now
-    )
+    to_expire = Envelope.objects.filter(status__in=["sent", "pending"], deadline_at__lte=now)
 
     for env in to_expire:
-        env.status = 'expired'
-        env.save(update_fields=['status'])
+        env.status = "expired"
+        env.save(update_fields=["status"])
         send_deadline_email.delay(env.id)
         env.recipients.filter(signed=False).update(next_reminder_at=None)
 
@@ -471,11 +614,10 @@ def send_document_completed_notification(envelope_id):
         logger.error(f"Erreur notification document complété: {e}")
 
 
-@shared_task 
+@shared_task
 def send_otp_email(recipient_id, otp_code, expiry_minutes=5):
     """Envoie un code OTP avec template."""
     try:
-        from .models import EnvelopeRecipient
         recipient = EnvelopeRecipient.objects.get(pk=recipient_id)
         EmailTemplates.otp_email(recipient, otp_code, expiry_minutes)
     except Exception as e:

@@ -294,7 +294,6 @@ export default function QrVerifyPage() {
                 {(data?.signers || []).map((s, idx) => (
                   <li key={idx} className="py-3">
                     <div className="text-sm font-medium text-gray-900">{s.full_name}</div>
-                    <div className="text-xs text-gray-600">{s.email}</div>
                     <div className="text-xs mt-1">
                       {s.signed ? (
                         <span className="text-green-700">Signé le {s.signed_at ? new Date(s.signed_at).toLocaleString() : '—'}</span>

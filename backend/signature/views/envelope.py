@@ -227,7 +227,7 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
     
         # Iframe policy : SAMEORIGIN + CSP configurable
         resp["X-Frame-Options"] = "SAMEORIGIN"
-        frame_ancestors = getattr(settings, "SIGNATURE_FRAME_ANCESTORS", "*")
+        frame_ancestors = getattr(settings, "SIGNATURE_FRAME_ANCESTORS", "'self'")
         resp["Content-Security-Policy"] = (
             f"frame-ancestors {frame_ancestors}; sandbox allow-scripts allow-forms allow-same-origin"
         )

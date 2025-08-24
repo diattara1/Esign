@@ -99,10 +99,9 @@ class EnvelopeDocument(models.Model):
             # Hash clair (pour traçabilité) si PDF
             if self.file_type == "pdf":
                 try:
-                    self.file.seek(0)
-                    content = self.file.read()
+                    with self.file.open("rb") as f:
+                        content = f.read()
                     self.hash_original = _sha256(content)
-                    self.file.seek(0)
                 except Exception as e:
                     logger.error(f"Error computing hash for envelope document: {e}")
 
@@ -235,10 +234,9 @@ class Envelope(models.Model):
             # Hash clair si PDF
             if self.file_type == "pdf":
                 try:
-                    self.document_file.seek(0)
-                    content = self.document_file.read()
+                    with self.document_file.open("rb") as f:
+                        content = f.read()
                     self.hash_original = self.compute_hash(content)
-                    self.document_file.seek(0)
                 except Exception as e:
                     logger.error(f"Error computing hash for envelope: {e}")
 

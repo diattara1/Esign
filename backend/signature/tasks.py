@@ -51,9 +51,8 @@ def send_signed_pdf_to_all_signers(envelope_id: int):
         return
 
     try:
-        latest.signed_file.open('rb')
-        pdf_bytes = latest.signed_file.read()
-        latest.signed_file.close()
+        with latest.signed_file.open('rb') as f:
+            pdf_bytes = f.read()
     except Exception:
         logger.exception("Lecture du PDF signé échouée pour l'enveloppe %s", envelope_id)
         return
@@ -216,10 +215,9 @@ def process_batch_sign_job(job_id: int, use_saved_signature_id=None, signature_u
         from .models import SavedSignature
         ss = SavedSignature.objects.get(pk=use_saved_signature_id, user=job.created_by)
         if getattr(ss, "image", None):
-            f = ss.image
-            f.open("rb")
-            sig_bytes = f.read()
-            f.close()
+            img_file = ss.image
+            with img_file.open("rb") as f:
+                sig_bytes = f.read()
         elif getattr(ss, "data_url", None):
             head, b64 = ss.data_url.split(",", 1) if "," in ss.data_url else ("", ss.data_url)
             sig_bytes = base64.b64decode(b64)
@@ -243,12 +241,13 @@ def process_batch_sign_job(job_id: int, use_saved_signature_id=None, signature_u
             # récupère le PDF source
             if item.envelope_document and item.envelope_document.file:
                 srcf = item.envelope_document.file
-                srcf.open("rb"); pdf_src = srcf.read(); srcf.close()
             elif item.source_file:
                 srcf = item.source_file
-                srcf.open("rb"); pdf_src = srcf.read(); srcf.close()
             else:
                 raise Exception("Aucun fichier source")
+
+            with srcf.open("rb") as f:
+                pdf_src = f.read()
 
             # placements
             placements = item.placements or []
@@ -290,9 +289,8 @@ def process_batch_sign_job(job_id: int, use_saved_signature_id=None, signature_u
         with zipfile.ZipFile(memzip, "w", zipfile.ZIP_DEFLATED) as zf:
             for it in job.items.filter(status="completed"):
                 if it.signed_file:
-                    it.signed_file.open("rb")
-                    zf.writestr(os.path.basename(it.signed_file.name), it.signed_file.read())
-                    it.signed_file.close()
+                    with it.signed_file.open("rb") as f:
+                        zf.writestr(os.path.basename(it.signed_file.name), f.read())
         memzip.seek(0)
         job.result_zip.save(f"batch_{job.id}.zip", ContentFile(memzip.read()), save=False)
     except Exception as zerr:

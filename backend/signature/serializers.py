@@ -498,6 +498,7 @@ class BatchSignJobSerializer(serializers.ModelSerializer):
 class EnvelopeListSerializer(serializers.ModelSerializer):
     recipients_count = serializers.IntegerField(source='recipients.count', read_only=True)
     completion_rate = serializers.ReadOnlyField()
+    created_by_name = serializers.SerializerMethodField()
 
     class Meta:
         model = Envelope
@@ -505,13 +506,18 @@ class EnvelopeListSerializer(serializers.ModelSerializer):
             'id',
             'title',
             'status',
-            'initiateur',
+            'created_by',
+            'created_by_name',
             'created_at',
             'deadline_at',
             'recipients_count',
             'completion_rate',
             'flow_type',
         ]
+
+    def get_created_by_name(self, obj):
+        name = obj.created_by.get_full_name().strip()
+        return name or obj.created_by.username
 
 
 class SignatureDocumentSerializer(serializers.ModelSerializer):

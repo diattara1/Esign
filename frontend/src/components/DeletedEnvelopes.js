@@ -25,7 +25,7 @@ const DeletedEnvelopes = () => {
   const DocumentCell = ({ row }) => (
     <div>
       <div className="text-base font-medium text-gray-900">{row.title}</div>
-      <div className="text-xs text-gray-500 mt-1">Initiateur: {row.created_by?.full_name || 'Non spécifié'}</div>
+      <div className="text-xs text-gray-500 mt-1">Initiateur: {row.created_by_name || 'Non spécifié'}</div>
     </div>
   );
 

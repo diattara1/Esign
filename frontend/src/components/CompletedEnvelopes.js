@@ -49,7 +49,7 @@ const navigate = useNavigate();
         <div className="text-sm font-semibold text-gray-900 truncate">{row.title}</div>
         <div className="flex items-center text-xs text-gray-500 mt-1">
           <User className="w-3 h-3 mr-1" />
-          <span>Initiateur: {row.created_by_name || row.created_by || 'Non spécifié'}</span>
+          <span>Initiateur: {row.created_by_name || 'Non spécifié'}</span>
         </div>
       </div>
     </div>

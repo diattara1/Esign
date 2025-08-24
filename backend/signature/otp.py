@@ -59,12 +59,12 @@ def validate_otp(recipient, token):
 def send_otp(recipient, otp):
     """
     Envoie l'OTP par email en utilisant le template uniforme.
+    En cas d'échec, l'erreur est loggée sans être propagée.
     """
     try:
         EmailTemplates.otp_email(recipient, otp, expiry_minutes)
     except Exception as e:
-        # Log l'erreur mais ne pas faire échouer la fonction
+        # Log l'erreur sans interrompre le flux
         import logging
         logger = logging.getLogger(__name__)
         logger.error(f"Erreur envoi OTP pour recipient {recipient.id}: {e}")
-        raise  # Re-lever l'exception pour signaler l'échec

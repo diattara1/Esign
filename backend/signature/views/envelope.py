@@ -25,7 +25,7 @@ from ..hsm import hsm_sign
 from jwt import InvalidTokenError, ExpiredSignatureError
 from ..models import ( Envelope,EnvelopeRecipient,SignatureDocument,PrintQRCode,EnvelopeDocument,)
 from ..serializers import (EnvelopeSerializer,EnvelopeListSerializer,SigningFieldSerializer,SignatureDocumentSerializer,PrintQRCodeSerializer,)
-from signature.crypto_utils import sign_pdf_bytes,compute_hashes, extract_signer_certificate_info
+from signature.crypto_utils import sign_pdf_bytes, extract_signer_certificate_info
 from reportlab.pdfgen import canvas
 from django.core.files.base import ContentFile
 from PyPDF2 import PdfReader, PdfWriter

@@ -44,8 +44,12 @@ def extract_signer_certificate_info():
         "serial_number": str(cert.serial_number),
     }
 def compute_hashes(pdf_bytes: bytes):
+    """Compute cryptographic hashes for a PDF.
+
+    Only SHA-256 is returned since MD5 is considered insecure due to
+    widespread collision attacks.
+    """
     return {
-        "hash_md5": hashlib.md5(pdf_bytes).hexdigest(),
         "hash_sha256": hashlib.sha256(pdf_bytes).hexdigest(),
     }
 

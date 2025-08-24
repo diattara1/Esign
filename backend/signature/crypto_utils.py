@@ -1,6 +1,7 @@
 # signature/crypto_utils.py 
 
 from pathlib import Path
+import io, hashlib, logging
 from django.conf import settings
 from asn1crypto import pem, x509 as asn1x509  # pour ValidationContext pyHanko
 from pyhanko.sign import signers
@@ -9,10 +10,12 @@ from pyhanko.pdf_utils.incremental_writer import IncrementalPdfFileWriter
 from pyhanko.sign.timestamps.requests_client import HTTPTimeStamper
 from pyhanko.sign.validation import ValidationContext
 from pyhanko.sign.fields import SigFieldSpec
-import io, hashlib
+from pyhanko.sign.general import SigningError
 from cryptography import x509 as cx509
 from cryptography.hazmat.backends import default_backend
 from cryptography.x509.oid import NameOID
+
+logger = logging.getLogger(__name__)
 
 
 def extract_signer_certificate_info():
@@ -34,7 +37,7 @@ def extract_signer_certificate_info():
     def _get(oid, default=""):
         try:
             return subj.get_attributes_for_oid(oid)[0].value
-        except Exception:
+        except IndexError:
             return default
 
     return {
@@ -66,12 +69,12 @@ def get_validation_context() -> ValidationContext:
     for p in getattr(settings, "SELF_SIGN_CA_CHAIN", []):
         try:
             trust_roots.append(_load_x509_cert(p))
-        except Exception:
-            pass
+        except (OSError, ValueError) as e:
+            logger.warning("Certificat CA invalide %s: %s", p, e)
     try:
         trust_roots.append(_load_x509_cert(settings.FREETSA_CACERT))
-    except Exception:
-        pass
+    except (OSError, ValueError) as e:
+        logger.warning("Certificat FREETSA invalide %s: %s", settings.FREETSA_CACERT, e)
     return ValidationContext(trust_roots=trust_roots)
 
 
@@ -110,20 +113,21 @@ def sign_pdf_bytes(
     stamp_style = None
     if appearance_image_b64:
         try:
-            from PIL import Image
+            from PIL import Image, UnidentifiedImageError
             from pyhanko import stamp
             from pyhanko.pdf_utils import images
+            import binascii
             b64 = appearance_image_b64.split(",", 1)[1] if appearance_image_b64.startswith("data:") else appearance_image_b64
             pil = Image.open(io.BytesIO(base64.b64decode(b64))).convert("RGBA")
             stamp_style = stamp.TextStampStyle(stamp_text="", background=images.PdfImage(pil))
             logger.info(f"stamp_style créé pour {field_name}")
-        except Exception as e:
-            logger.warning(f"Impossible de créer stamp_style pour {field_name}: {e}")
+        except (binascii.Error, UnidentifiedImageError, ValueError) as e:
+            logger.warning("Impossible de créer stamp_style pour %s: %s", field_name, e)
             stamp_style = None  # on n'empêche pas la signature si l'image est invalide
 
     try:
         from pyhanko.sign.fields import SigFieldSpec as _SigFieldSpec
-    except Exception:
+    except ImportError:
         _SigFieldSpec = None
 
     vc   = get_validation_context()
@@ -182,8 +186,8 @@ def sign_pdf_bytes(
             logger.info("Signature avec API classique PyHanko")
             pdf_signer.sign_pdf(out, output=output_buf)
             
-    except Exception as e:
-        logger.error(f"Erreur lors de la signature de {unique_field_name}: {e}")
+    except SigningError as e:
+        logger.error("Erreur lors de la signature de %s: %s", unique_field_name, e)
         raise
 
     result = output_buf.getvalue()

@@ -3,6 +3,7 @@ import math
 import pyotp
 from django.core.cache import cache
 from django.conf import settings
+from smtplib import SMTPException
 from .email_utils import EmailTemplates
 
 OTP_TTL_SECONDS = 120
@@ -59,12 +60,12 @@ def validate_otp(recipient, token):
 def send_otp(recipient, otp):
     """
     Envoie l'OTP par email en utilisant le template uniforme.
-    En cas d'échec, l'erreur est loggée sans être propagée.
+    En cas d'échec, l'erreur est journalisée de manière détaillée.
     """
     try:
         EmailTemplates.otp_email(recipient, otp, expiry_minutes)
-    except Exception as e:
+    except (SMTPException, ValueError) as e:
         # Log l'erreur sans interrompre le flux
         import logging
         logger = logging.getLogger(__name__)
-        logger.error(f"Erreur envoi OTP pour recipient {recipient.id}: {e}")
+        logger.exception("Erreur envoi OTP pour recipient %s", recipient.id)

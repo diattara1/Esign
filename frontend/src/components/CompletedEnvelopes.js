@@ -14,11 +14,15 @@ const CompletedEnvelopes = () => {
   const [loading, setLoading] = useState(true);
   const [menuOpenId, setMenuOpenId] = useState(null);
 
+  const navigate = useNavigate();
+
   useEffect(() => {
     const loadEnvelopes = async () => {
       try {
         const data = await signatureService.getEnvelopes({ status: 'completed' });
-        console.log('Envelopes data:', data); // Debug pour voir la structure
+        if (process.env.NODE_ENV === 'development') {
+          console.log('Envelopes data:', data);
+        }
         setEnvelopes(data);
       } catch (err) {
         toast.error('Échec du chargement des enveloppes');
@@ -29,7 +33,6 @@ const CompletedEnvelopes = () => {
     };
     loadEnvelopes();
   }, []);
-const navigate = useNavigate();
   // Fermer le menu quand on clique ailleurs
   useEffect(() => {
     const handleClickOutside = () => setMenuOpenId(null);
@@ -37,23 +40,27 @@ const navigate = useNavigate();
     return () => document.removeEventListener('click', handleClickOutside);
   }, []);
 
-  const DocumentCell = ({ row }) => (
-    console.log('Envelopes datas:', row),
-    <div className="flex items-start space-x-3">
-      <div className="flex-shrink-0">
-        <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
-          <FileText className="w-5 h-5 text-green-600" />
+  const DocumentCell = ({ row }) => {
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Envelopes datas:', row);
+    }
+    return (
+      <div className="flex items-start space-x-3">
+        <div className="flex-shrink-0">
+          <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
+            <FileText className="w-5 h-5 text-green-600" />
+          </div>
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-semibold text-gray-900 truncate">{row.title}</div>
+          <div className="flex items-center text-xs text-gray-500 mt-1">
+            <User className="w-3 h-3 mr-1" />
+            <span>Initiateur: {row.created_by_name || row.created_by || 'Non spécifié'}</span>
+          </div>
         </div>
       </div>
-      <div className="flex-1 min-w-0">
-        <div className="text-sm font-semibold text-gray-900 truncate">{row.title}</div>
-        <div className="flex items-center text-xs text-gray-500 mt-1">
-          <User className="w-3 h-3 mr-1" />
-          <span>Initiateur: {row.created_by_name || row.created_by || 'Non spécifié'}</span>
-        </div>
-      </div>
-    </div>
-  );
+    );
+  };
 
   const StatusCell = ({ value, row }) => (
     <div className="flex items-center space-x-2">

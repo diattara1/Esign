@@ -223,12 +223,12 @@ def send_signature_email_v2(envelope_id: int, recipient_id: int) -> None:
     Version mise à jour avec template.
     NOTE: import de timezone placé en haut du fichier pour éviter l'usage avant import.
     """
+    from .models import Envelope, EnvelopeRecipient
     try:
-        from .models import Envelope, EnvelopeRecipient
         envelope = Envelope.objects.get(pk=envelope_id)
         recipient = EnvelopeRecipient.objects.get(pk=recipient_id, envelope=envelope, signed=False)
-    except Exception as e:
-        logger.exception(e)
+    except (Envelope.DoesNotExist, EnvelopeRecipient.DoesNotExist):
+        logger.exception("Objet introuvable lors de l'envoi de l'email de signature")
         raise
 
     if envelope.deadline_at and envelope.deadline_at <= timezone.now():
@@ -251,12 +251,12 @@ def send_signature_email_v2(envelope_id: int, recipient_id: int) -> None:
 
 def send_reminder_email_v2(envelope_id: int, recipient_id: int) -> None:
     """Version mise à jour avec template."""
+    from .models import Envelope, EnvelopeRecipient
     try:
-        from .models import Envelope, EnvelopeRecipient
         envelope = Envelope.objects.get(pk=envelope_id)
         recipient = EnvelopeRecipient.objects.get(pk=recipient_id, envelope=envelope, signed=False)
-    except Exception as e:
-        logger.exception(e)
+    except (Envelope.DoesNotExist, EnvelopeRecipient.DoesNotExist):
+        logger.exception("Objet introuvable lors de l'envoi de l'email de relance")
         raise
 
     from .tasks import _build_sign_link

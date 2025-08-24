@@ -1,10 +1,13 @@
 // QrVerifyPage.jsx
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useLayoutEffect, useRef } from 'react';
 import {
   CheckCircle, AlertTriangle, FileText, Shield, Calendar,
   User, Hash, ExternalLink, Info, Mail
 } from 'lucide-react';
 import { useParams, useSearchParams } from 'react-router-dom';
+import { Document, Page } from 'react-pdf';
+import 'react-pdf/dist/Page/AnnotationLayer.css';
+import 'react-pdf/dist/Page/TextLayer.css';
 import signatureService from '../services/signatureService';
 
 const LoadingSpinner = () => (
@@ -54,6 +57,44 @@ export default function QrVerifyPage() {
   const [err, setErr] = useState('');
   const [loading, setLoading] = useState(true);
 
+  // PDF viewer state (react-pdf)
+  const [pdfUrl, setPdfUrl] = useState(null);
+  const [loadingPdf, setLoadingPdf] = useState(false);
+  const [numPages, setNumPages] = useState(0);
+  const viewerRef = useRef(null);
+  const [contentWidth, setContentWidth] = useState(0);
+  // Mesure responsive du conteneur PDF
+  useLayoutEffect(() => {
+  const el = viewerRef.current;
+  if (!el) return;
+  const measure = () => {
+    const cs = window.getComputedStyle(el);
+    const paddingX =
+      parseFloat(cs.paddingLeft || '0') + parseFloat(cs.paddingRight || '0');
+    // clientWidth inclut le padding : on le retire
+    const inner = Math.max(0, (el.clientWidth || 0) - paddingX);
+    setContentWidth(inner);
+  };
+  measure();
+  let ro;
+  if (window.ResizeObserver) {
+    ro = new ResizeObserver(measure);
+    ro.observe(el);
+  }
+  window.addEventListener('resize', measure);
+  return () => {
+    window.removeEventListener('resize', measure);
+    if (ro) ro.disconnect();
+  };
+}, []);
+
+
+  // Clean object URL
+  useEffect(() => () => {
+    if (pdfUrl && pdfUrl.startsWith('blob:')) URL.revokeObjectURL(pdfUrl);
+  }, [pdfUrl]);
+
+  // Charger la preuve
   useEffect(() => {
     if (!uuid || !sig) {
       setErr("Lien invalide : paramètres manquants.");
@@ -65,6 +106,7 @@ export default function QrVerifyPage() {
         const res = await signatureService.verifyQRCodeWithSig(uuid, sig);
         setData(res);
       } catch (e) {
+        console.error(e);
         setErr("Impossible de charger la preuve (QR non trouvé ou signature invalide).");
       } finally {
         setLoading(false);
@@ -72,12 +114,36 @@ export default function QrVerifyPage() {
     })();
   }, [uuid, sig]);
 
+  // Télécharger le PDF signé (blob) et créer une object URL pour react-pdf
+  useEffect(() => {
+    const loadPdf = async () => {
+      if (!data?.document_url) { setPdfUrl(null); return; }
+      setLoadingPdf(true);
+      try {
+        const res = await fetch(data.document_url, { credentials: 'include' });
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        setPdfUrl(prev => {
+          if (prev && prev.startsWith('blob:')) URL.revokeObjectURL(prev);
+          return url;
+        });
+        setNumPages(0);
+      } catch (e) {
+        console.error('PDF fetch error:', e);
+        setPdfUrl(null);
+      } finally {
+        setLoadingPdf(false);
+      }
+    };
+    loadPdf();
+  }, [data?.document_url]);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
         <Card className="p-8 w-full max-w-md text-center">
           <LoadingSpinner />
-          <p className="mt-4 text-gray-600 font-medium">Vérification en cours...</p>
+          <p className="mt-4 text-gray-600 font-medium">Vérification en cours.</p>
         </Card>
       </div>
     );
@@ -104,10 +170,15 @@ export default function QrVerifyPage() {
     ? data.signers.map(s => s.full_name).join(', ')
     : '—';
 
+  const cert = data?.certificate || {};
+  const subject = cert.subject || cert; // accepte {subject:{...}} ou {common_name:...}
+  const cn = subject.CN || cert.common_name;
+  const org = subject.O || cert.organization;
+  const country = subject.C || cert.country;
+
   return (
     <div className="min-h-screen bg-gray-50 py-8 px-4">
-      <div className="max-w-4xl mx-auto space-y-6">
-
+      <div className="max-w-6xl mx-auto space-y-6">
         {/* Header */}
         <div className="flex items-start gap-4">
           <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center flex-shrink-0">
@@ -118,52 +189,170 @@ export default function QrVerifyPage() {
               {data?.title || 'Document'}
             </h1>
             <p className="text-sm text-gray-500 mt-1">
-              Statut : <Badge type={data?.completed ? "success" : "warning"}>
-                {data?.status}
+              Statut : <Badge type={data?.completed ? 'success' : 'warning'}>
+                {data?.completed ? 'Signé' : 'En cours'}
               </Badge>
+              <span className="ml-2">•</span>{' '}
+              Signataires : <span className="font-medium">{signerNames}</span>
             </p>
           </div>
+          <a
+            href={pdfHref}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+          >
+            <ExternalLink className="w-4 h-4" /> Ouvrir dans un onglet
+          </a>
         </div>
 
-        {/* Signatures */}
-        <Card className="p-6">
-          <h2 className="font-medium text-lg mb-4 flex items-center gap-2">
-            <Shield className="w-5 h-5" />
-            Détails de la signature
-          </h2>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Colonne infos */}
+          <div className="space-y-6">
+            {/* Signature */}
+            <Card className="p-6">
+              <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                <Shield className="w-5 h-5" /> Signature
+              </h2>
+              <dl>
+                <InfoItem
+                  label="Statut"
+                  value={data?.completed ? 'Signé' : 'En cours'}
+                  icon={data?.completed ? CheckCircle : AlertTriangle}
+                />
+                <InfoItem
+                  label="Heure déclarée de dépôt"
+                  value={data?.completed_at ? new Date(data.completed_at).toLocaleString() : '—'}
+                  icon={Calendar}
+                />
+                <InfoItem
+                  label="Document"
+                  value={data?.title || '—'}
+                  icon={FileText}
+                />
+              </dl>
+            </Card>
 
-          <dl className="space-y-0">
-            <InfoItem label="Signataire(s)" value={signerNames} icon={User} />
-            <InfoItem label="Emails" value={data?.signers?.map(s => s.email).join(', ')} icon={Mail} />
-            <InfoItem label="Signé le" value={data?.signers?.[0]?.signed_at ? new Date(data.signers[0].signed_at).toLocaleString() : '—'} icon={Calendar} />
-          </dl>
-        </Card>
+            {/* Empreintes */}
+            <Card className="p-6">
+              <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                <Hash className="w-5 h-5" /> Empreintes du document
+              </h2>
+              <dl>
+                <InfoItem label="SHA-256" value={data?.hash_sha256} icon={Hash} type="code" />
+                <InfoItem label="MD5" value={data?.hash_md5} icon={Hash} type="code" />
+              </dl>
+            </Card>
 
-        {/* Hashs */}
-        <Card className="p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-            Empreintes du document
-          </h2>
+            {/* Certificat du signataire */}
+            <Card className="p-6">
+              <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                <Shield className="w-5 h-5" /> Certificat du signataire
+              </h2>
+              <dl>
+                <InfoItem label="Nom commun (CN)" value={cn} icon={User} />
+                <InfoItem label="Organisation (O)" value={org} icon={Info} />
+                <InfoItem label="Pays (C)" value={country} icon={Info} />
+                <InfoItem label="N° de série" value={cert.serial_number} icon={Hash} type="code" />
+                <InfoItem label="Valide à partir de" value={cert.valid_from && new Date(cert.valid_from).toLocaleString()} icon={Calendar} />
+                <InfoItem label="Valide jusqu’à" value={cert.valid_to && new Date(cert.valid_to).toLocaleString()} icon={Calendar} />
+              </dl>
 
-          <dl className="space-y-0">
-            <InfoItem label="MD5" value={data?.hash_md5} icon={Hash} type="code" />
-            <InfoItem label="SHA-256" value={data?.hash_sha256} icon={Hash} type="code" />
-          </dl>
-        </Card>
+              {/* Révocation si dispo */}
+              {(cert.revocation?.ocsp_status || cert.revocation?.crl_status) && (
+                <div className="mt-3 text-xs text-gray-700">
+                  <div className="mb-1">
+                    OCSP : <strong>{cert.revocation.ocsp_status || '—'}</strong>{' '}
+                    {cert.revocation.ocsp_url && (
+                      <a className="underline ml-2" href={cert.revocation.ocsp_url} target="_blank" rel="noreferrer">lien</a>
+                    )}
+                  </div>
+                  <div>
+                    CRL : <strong>{cert.revocation.crl_status || '—'}</strong>{' '}
+                    {cert.revocation.crl_url && (
+                      <a className="underline ml-2" href={cert.revocation.crl_url} target="_blank" rel="noreferrer">lien</a>
+                    )}
+                  </div>
+                </div>
+              )}
 
-        {/* Document signé intégré */}
-        {pdfHref ? (
-          <Card className="p-0 overflow-hidden">
-            <object data={pdfHref} type="application/pdf" className="w-full h-[80vh]">
-              <iframe src={pdfHref} className="w-full h-[80vh] border-0" title="Document signé" />
-            </object>
-          </Card>
-        ) : (
-          <div className="text-sm text-gray-600 italic">
-            Le document signé n’a pas pu être chargé.
+              {/* Horodatage si dispo */}
+              {cert.timestamp?.time && (
+                <div className="mt-3 text-xs text-gray-700">
+                  Horodatage : <strong>{new Date(cert.timestamp.time).toLocaleString()}</strong>{' '}
+                  {cert.timestamp.tsa && <>par <em>{cert.timestamp.tsa}</em></>}
+                </div>
+              )}
+            </Card>
+
+            {/* Signataires */}
+            <Card className="p-6">
+              <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                <Mail className="w-5 h-5" /> Signataires
+              </h2>
+              <ul className="divide-y divide-gray-100">
+                {(data?.signers || []).map((s, idx) => (
+                  <li key={idx} className="py-3">
+                    <div className="text-sm font-medium text-gray-900">{s.full_name}</div>
+                    <div className="text-xs text-gray-600">{s.email}</div>
+                    <div className="text-xs mt-1">
+                      {s.signed ? (
+                        <span className="text-green-700">Signé le {s.signed_at ? new Date(s.signed_at).toLocaleString() : '—'}</span>
+                      ) : (
+                        <span className="text-amber-700">En attente</span>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </Card>
           </div>
-        )}
 
+          {/* Colonne viewer PDF */}
+          <div className="lg:col-span-2">
+            <Card className="p-3">
+              <div ref={viewerRef} className="min-h-[60vh] p-2 overflow-auto">
+                {loadingPdf ? (
+                  <div className="flex justify-center items-center h-64">
+                    <LoadingSpinner />
+                  </div>
+                ) : !pdfUrl ? (
+                  <div className="p-6 text-sm text-gray-600">Le document signé n’a pas pu être chargé.</div>
+                ) : (
+                  <Document
+                    key={uuid}
+                    file={pdfUrl}
+                    onLoadSuccess={({ numPages }) => setNumPages(numPages)}
+                    onLoadError={(err) => console.error('PDF error:', err)}
+                    loading={<div className="p-6">Chargement PDF…</div>}
+                  >
+                    {Array.from({ length: numPages }, (_, i) => (
+                      <div key={i} className="relative mb-6">
+  <Page
+    pageNumber={i + 1}
+    width={contentWidth || 800}
+    renderTextLayer={false}
+    className="mx-auto rounded border border-gray-200 shadow-sm bg-white"
+  />
+</div>
+
+                    ))}
+                  </Document>
+                )}
+              </div>
+              <div className="px-2 pb-2">
+                <a
+                  href={pdfHref}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1.5 text-sm text-blue-700 underline"
+                >
+                  <ExternalLink className="w-4 h-4" /> Ouvrir le PDF dans un nouvel onglet
+                </a>
+              </div>
+            </Card>
+          </div>
+        </div>
       </div>
     </div>
   );

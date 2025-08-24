@@ -6,6 +6,8 @@ from rest_framework.decorators import (
     authentication_classes,
     parser_classes,
 )
+from django.utils.text import get_valid_filename
+
 from signature.storages import AADContentFile
 from django.utils.decorators import method_decorator
 from rest_framework.response import Response
@@ -509,26 +511,37 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
         except Exception as e:
             return Response({'error': f'Échec d\'ouverture du fichier : {e}'}, status=500)
 
+    
     @action(detail=True, methods=['get'], url_path='signed-document')
     @method_decorator(xframe_options_exempt, name='dispatch')
     def signed_document(self, request, pk=None):
-        """Fournit le DERNIER PDF signé (auth requis : créateur ou destinataire)."""
-        try:
-            envelope = Envelope.objects.get(pk=pk)
-        except Envelope.DoesNotExist:
-            return Response({'error': 'Enveloppe non trouvée'}, status=status.HTTP_404_NOT_FOUND)
-
-        is_owner = (envelope.created_by == request.user)
-        is_recipient = envelope.recipients.filter(user=request.user).exists()
-        if not (is_owner or is_recipient):
-            return Response({'error': 'Non autorisé'}, status=status.HTTP_403_FORBIDDEN)
-
-        sig_doc = SignatureDocument.objects.filter(envelope=envelope).order_by('-signed_at').first()
-        if not sig_doc or not sig_doc.signed_file:
-            return Response({'error': 'Pas de document signé'}, status=status.HTTP_404_NOT_FOUND)
-
-        filename = f"{envelope.title}_signed.pdf"
-        return EnvelopeViewSet._serve_pdf(sig_doc.signed_file, filename, inline=True)
+        env = self.get_object()
+    
+        last_sig = (SignatureDocument.objects
+                    .filter(envelope=env)
+                    .order_by('-signed_at')
+                    .first())
+    
+        if not last_sig or not last_sig.signed_file:
+            return Response({'error': 'Pas de fichier signé'}, status=404)
+    
+        # Nom de fichier propre et sûr
+        default_name = f"envelope-{env.id or 'document'}.pdf"
+        file_name = (last_sig.signed_file.name.split('/')[-1] or default_name)
+        file_name = get_valid_filename(file_name)
+        if not file_name.lower().endswith('.pdf'):
+            file_name += '.pdf'
+    
+        # IMPORTANT : ne pas définir Content-Disposition à la main ici.
+        file_obj = last_sig.signed_file.open('rb')  # FieldFile.open()
+        return FileResponse(
+            file_obj,
+            as_attachment=True,            # téléchargement
+            filename=file_name,            # => Django génère exactement 1 seul Content-Disposition
+            content_type='application/pdf'
+        )
+    
+    
 
     
     @action(detail=True, methods=['post'], permission_classes=[permissions.AllowAny])
@@ -733,6 +746,32 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
             # IMPORTANT : AAD = doc_uuid de l'enveloppe (immutabilité de l'identité)
             aad = envelope.doc_uuid.bytes
             sig_doc.signed_file.save(file_name, AADContentFile(base_bytes, aad), save=True)
+                        # === Ajouter les empreintes + infos certificat dans certificate_data ===
+            try:
+                # Relire les bytes du PDF signé que l'on vient d'écrire
+                sig_doc.signed_file.open('rb')
+                final_pdf_bytes = sig_doc.signed_file.read()
+                sig_doc.signed_file.close()
+            
+                # 1) Empreintes
+                from signature.crypto_utils import compute_hashes, extract_signer_certificate_info
+                hashes = compute_hashes(final_pdf_bytes)  # -> {'hash_md5': '...', 'hash_sha256': '...'}
+            
+                # 2) Infos certificat (v1: depuis le cert de signature configuré)
+                #    -> tu pourras plus tard enrichir pour lire OCSP/CRL/TSA depuis le PDF
+                cert_info = extract_signer_certificate_info()
+            
+                # 3) Poser dans certificate_data
+                sig_doc.certificate_data = {
+                    **(sig_doc.certificate_data or {}),
+                    **hashes,                          # hash_md5 / hash_sha256
+                    "certificate": cert_info,          # {common_name, organization, country, serial_number}
+                    "qr_embedded": bool(getattr(sig_doc.certificate_data or {}, "qr_embedded", False)),
+                }
+                sig_doc.save(update_fields=["certificate_data"])
+            except Exception:
+                logger.exception("Impossible de calculer les empreintes / infos cert")
+            
             logger.info(f"[SIGN] PDF signé sauvegardé → {sig_doc.signed_file.name}")
     
              # 3bis) Si c'était le DERNIER signataire : apposer le QR + re-scellement
@@ -743,22 +782,26 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
                     if not qr:
                         qr = PrintQRCode.objects.create(envelope=envelope, qr_type='permanent')
             
-                    # Construire une URL FRONT propre (déploiement-friendly)
+                    # Construire URL FRONT propre
                     front_base = getattr(settings, "FRONT_BASE_URL", "").rstrip("/")
                     if front_base:
                         verify_url = f"{front_base}/verify/{qr.uuid}?sig={qr.hmac}"
                     else:
-                        # fallback: lien backend absolu si FRONT_BASE_URL non défini
                         verify_url = self.request.build_absolute_uri(f"/verify/{qr.uuid}?sig={qr.hmac}")
-            
-                    # Relire le PDF signé que l'on vient de sauver
-                    sig_doc.signed_file.open('rb')
-                    pdf_bytes = sig_doc.signed_file.read()
-                    sig_doc.signed_file.close()
             
                     # Anti-doublon: si déjà posé/scellé, ne pas recommencer
                     already_qr = bool((sig_doc.certificate_data or {}).get("qr_embedded"))
                     if not already_qr:
+                        # On a déjà les octets signés en mémoire si tu suis l’étape 1 (ex: `base_bytes` ou `final_pdf_bytes`)
+                        # Si tu as `final_pdf_bytes` (le PDF signé juste avant overlay), utilise-le :
+                        # sinon retombe sur une lecture propre depuis le storage.
+                        try:
+                            pdf_bytes_for_overlay = final_pdf_bytes  # variable que tu as juste après la 1ère signature
+                        except NameError:
+                            # fallback: relire depuis le storage
+                            with sig_doc.signed_file.open('rb') as f:
+                                pdf_bytes_for_overlay = f.read()
+            
                         # Générer le PNG du QR
                         img = qrcode.make(verify_url)
                         buf = io.BytesIO()
@@ -766,17 +809,31 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
                         qr_png = buf.getvalue()
             
                         # Apposer le QR sur toutes les pages
-                        stamped = self._add_qr_overlay_to_pdf(pdf_bytes, qr_png)
+                        stamped = self._add_qr_overlay_to_pdf(pdf_bytes_for_overlay, qr_png)
             
                         # Re-signer pour sceller l’overlay
                         final_signed = sign_pdf_bytes(stamped, field_name="FinalizeQR")
             
+                        # Sauvegarder le PDF final (toujours via ContentFile)
                         sig_doc.signed_file.save(file_name, ContentFile(final_signed), save=True)
-                        sig_doc.certificate_data = sig_doc.certificate_data or {}
-                        sig_doc.certificate_data["qr_embedded"] = True
+            
+                        # Calculer empreintes + infos certificat
+                        from signature.crypto_utils import compute_hashes, extract_signer_certificate_info
+                        hashes = compute_hashes(final_signed)
+                        cert_info = extract_signer_certificate_info()
+            
+                        sig_doc.certificate_data = {
+                            **(sig_doc.certificate_data or {}),
+                            **hashes,               # 'hash_md5' & 'hash_sha256'
+                            "certificate": cert_info,
+                            "qr_embedded": True,
+                        }
                         sig_doc.save(update_fields=["signed_file", "certificate_data"])
+            
                 except Exception as e:
                     logger.exception(f"QR overlay/scellage échoué: {e}")
+                
+
 
             # 4) Mettre à jour le statut de l'enveloppe
             unsigned_exists = envelope.recipients.filter(signed=False).exists()
@@ -1038,16 +1095,11 @@ class PrintQRCodeViewSet(viewsets.ModelViewSet):
             return Response({'error': 'QR révoqué'}, status=status.HTTP_403_FORBIDDEN)
     
         env = qr.envelope
-        last_sig = (
-            SignatureDocument.objects
-            .filter(envelope=env)
-            .order_by('-signed_at')
-            .first()
-        )
+        last_sig = SignatureDocument.objects.filter(envelope=env).order_by("-signed_at").first()
+
         if not last_sig or not last_sig.signed_file:
             return Response({'error': 'Aucun document signé'}, status=status.HTTP_404_NOT_FOUND)
     
-        # ⚠️ Utilise le helper pour poser les bons headers (embed cross-origin)
         ev = EnvelopeViewSet(); ev.request = request 
         return EnvelopeViewSet._serve_pdf(last_sig.signed_file, f"{env.title}.pdf", inline=True)
 
@@ -1086,10 +1138,10 @@ class PrintQRCodeViewSet(viewsets.ModelViewSet):
             })
     
         # URL absolue (PDF signé) pratique pour le front
-        # On renvoie aussi l'URL document publique (uuid+sig) pour intégration <embed>
         base_api = (request.build_absolute_uri('/')[:-1]).rstrip('/')
         doc_url = f"{base_api}/api/signature/prints/{qr.uuid}/document/?sig={sig}"
     
+        # Payload de base
         payload = {
             'qr_uuid': str(qr.uuid),
             'envelope_id': env.id,
@@ -1100,4 +1152,19 @@ class PrintQRCodeViewSet(viewsets.ModelViewSet):
             'signers': signers,
             'document_url': doc_url,
         }
+    
+        # Ajouter empreintes + infos certificat
+        cert_data = (last_sig.certificate_data or {}) if last_sig else {}
+        payload.update({
+            "hash_md5": cert_data.get("hash_md5"),
+            "hash_sha256": cert_data.get("hash_sha256"),
+            "certificate": {
+                "common_name":  (cert_data.get("certificate") or {}).get("common_name"),
+                "organization": (cert_data.get("certificate") or {}).get("organization"),
+                "country":      (cert_data.get("certificate") or {}).get("country"),
+                "serial_number":(cert_data.get("certificate") or {}).get("serial_number"),
+            },
+        })
+    
         return Response(payload)
+    

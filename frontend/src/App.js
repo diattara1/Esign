@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 
 import DashboardSignature from './pages/DashboardSignature';
@@ -26,7 +26,6 @@ import DeletedEnvelopes from './components/DeletedEnvelopes';
 import MainLayout from './layouts/MainLayout';
 import QrVerifyPage from './pages/QrVerifyPage';
 import { useAuth } from './AuthContext';
-import { setLogoutCallback } from './services/apiUtils';
 
 const ProtectedRoute = () => {
   const { isAuthenticated } = useAuth();
@@ -40,12 +39,7 @@ const LoadingSpinner = () => (
 );
 
 const App = () => {
-  const { isLoading, handleTokenExpiry } = useAuth();
-
-  // Configurer le callback de déconnexion pour apiUtils
-  useEffect(() => {
-    setLogoutCallback(handleTokenExpiry);
-  }, [handleTokenExpiry]);
+  const { isLoading } = useAuth();
 
   // Afficher le spinner pendant le chargement de l'authentification
   if (isLoading) {

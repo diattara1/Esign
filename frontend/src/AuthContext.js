@@ -37,9 +37,15 @@ export const AuthProvider = ({ children }) => {
     navigate('/login');
   };
 
+  // Gère l'expiration de session côté client
+  const handleTokenExpiry = () => {
+    toast.error('Votre session a expiré. Veuillez vous reconnecter.');
+    logout();
+  };
+
   useEffect(() => {
-    // permet à axios-auth-refresh de déconnecter si refresh échoue
-    setLogoutCallback(logout);
+    // permet à axios-auth-refresh de déconnecter si le refresh échoue
+    setLogoutCallback(handleTokenExpiry);
 
     const init = async () => {
       try {
@@ -61,7 +67,8 @@ export const AuthProvider = ({ children }) => {
       isAuthenticated: !!user,
       isLoading,
       login,
-      logout
+      logout,
+      handleTokenExpiry
     }}>
       {children}
     </AuthContext.Provider>

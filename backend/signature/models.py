@@ -8,10 +8,10 @@ from django.contrib.auth.models import AbstractUser
 import uuid
 import hashlib
 import hmac
-from .storages import EncryptedFileSystemStorage
 import logging
-from PyPDF2 import PdfReader
-import io
+
+from .storages import EncryptedFileSystemStorage
+from .utils import validate_pdf
 
 logger = logging.getLogger(__name__)
 
@@ -74,32 +74,7 @@ class EnvelopeDocument(models.Model):
         if not self.file:
             return
 
-        # PDF uniquement
-        ext = self.file.name.split(".")[-1].lower() if "." in self.file.name else ""
-        if ext != "pdf":
-            raise ValidationError(f"Type de fichier non autorisé: {ext} (PDF uniquement)")
-
-        if self.file.size > 10 * 1024 * 1024:
-            raise ValidationError("Fichier trop volumineux (max 10MB)")
-
-        if self.file.size == 0:
-            raise ValidationError("Le fichier est vide.")
-
-        # Validations PDF : header + parse
-        try:
-            self.file.seek(0)
-            content = self.file.read()
-            self.file.seek(0)
-            if not content.startswith(b"%PDF-"):
-                raise ValidationError("Le fichier PDF est corrompu ou invalide.")
-            pdf = PdfReader(io.BytesIO(content))
-            if len(pdf.pages) == 0:
-                raise ValidationError("Le PDF est vide.")
-        except ValidationError:
-            raise
-        except Exception as e:
-            logger.error(f"PDF validation error (EnvelopeDocument): {e}")
-            raise ValidationError("Le fichier PDF est corrompu ou invalide.")
+        validate_pdf(self.file)
 
     # ---------- sauvegarde ----------
     def save(self, *args, **kwargs):
@@ -227,35 +202,7 @@ class Envelope(models.Model):
         if not self.document_file:
             return
 
-        # PDF uniquement
-        ext = (
-            self.document_file.name.split(".")[-1].lower()
-            if "." in self.document_file.name
-            else ""
-        )
-        if ext != "pdf":
-            raise ValidationError(f"Type de fichier non autorisé: {ext} (PDF uniquement)")
-
-        if self.document_file.size > 10 * 1024 * 1024:
-            raise ValidationError("Fichier trop volumineux (max 10MB)")
-
-        if self.document_file.size == 0:
-            raise ValidationError("Le fichier est vide.")
-
-        try:
-            self.document_file.seek(0)
-            content = self.document_file.read()
-            self.document_file.seek(0)
-            if not content.startswith(b"%PDF-"):
-                raise ValidationError("Le fichier PDF est corrompu ou invalide.")
-            pdf = PdfReader(io.BytesIO(content))
-            if len(pdf.pages) == 0:
-                raise ValidationError("Le PDF est vide.")
-        except ValidationError:
-            raise
-        except Exception as e:
-            logger.error(f"PDF validation error (Envelope): {e}")
-            raise ValidationError("Le fichier PDF est corrompu ou invalide.")
+        validate_pdf(self.document_file)
 
     # ---------- sauvegarde ----------
     def save(self, *args, **kwargs):

@@ -1,10 +1,8 @@
 
 from pathlib import Path
-import base64
 import os,json
 import environ
 from datetime import timedelta
-from django.core.exceptions import ImproperlyConfigured
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -142,7 +140,6 @@ CELERY_BROKER_URL = env.str('CELERY_BROKER_URL', 'redis://localhost:6379/0')
 # Nombre max de rappels par destinataire
 MAX_REMINDERS_SIGN = 5
 
-from celery.schedules import crontab
 
 CELERY_BEAT_SCHEDULE = {
     "signature-reminders-every-10min": {

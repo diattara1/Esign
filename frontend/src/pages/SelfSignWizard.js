@@ -10,7 +10,7 @@ import 'react-pdf/dist/Page/TextLayer.css';
 
 /* -------------------------- helpers compacts -------------------------- */
 
-// URL absolue de l’image d’une signature enregistrée (évite “undefined”)
+// URL absolue de l’image d’une signature enregistrée
 const savedSignatureImageUrl = (id) =>
   `${(api?.defaults?.baseURL || '').replace(/\/$/, '')}/api/signature/saved-signatures/${id}/image/`;
 
@@ -39,11 +39,11 @@ const blobToPngDataURL = async (blob) => {
     return dataUrl;
   }
 };
-// Convertit un File d'image en data:image/png;base64 (robuste: webp, heic convertis via canvas)
+
+// Convertit un File d'image en data:image/png;base64
 const fileToPngDataURL = async (file) => {
-  const blob = file; // File est un Blob
   try {
-    const bmp = await createImageBitmap(blob);
+    const bmp = await createImageBitmap(file);
     const c = document.createElement('canvas');
     c.width = bmp.width; c.height = bmp.height;
     c.getContext('2d').drawImage(bmp, 0, 0);
@@ -97,10 +97,12 @@ export default function SelfSignWizard() {
   const [selectedSigId, setSelectedSigId] = useState(null);
 
   // Signatures
-  const [sigFile, setSigFile] = useState(null);
   const [sigDataUrl, setSigDataUrl] = useState('');
   const [savedSignatures, setSavedSignatures] = useState([]);
   const [isProcessing, setIsProcessing] = useState(false);
+
+  // Option QR (checkbox)
+  const [includeQr, setIncludeQr] = useState(true);
 
   /* layout + responsive width (mesure unique) */
   useLayoutEffect(() => {
@@ -147,22 +149,23 @@ export default function SelfSignWizard() {
     if (isMobile) setSidebarOpen(false);
   };
 
-  // envoi (sync) — garde la logique de ta version
+  // envoi (sync)
   const submit = async () => {
     if (!file) return toast.error('Ajoute un PDF');
     if (!placement) return toast.error('Définis la zone de signature');
-    if (!sigFile && !sigDataUrl) return toast.error('Ajoute une image de signature');
+    if (!sigDataUrl) return toast.error('Ajoute une image de signature');
 
     setIsProcessing(true);
     const fd = new FormData();
     fd.append('files[]', file);
     fd.append('placements', JSON.stringify([placement]));
-    fd.append('signature_image', sigDataUrl);
+    fd.append('signature_image', sigDataUrl);        // data:image/png;base64,...
     fd.append('sync', 'true');
+    fd.append('include_qr', includeQr ? 'true' : 'false');
 
     try {
       const response = await signatureService.selfSign(fd, { sync: true });
-      const url = URL.createObjectURL(response.data);                          // ✔ même pattern que ta version
+      const url = URL.createObjectURL(response.data);
       const name = (file.name || 'document').replace(/\.pdf$/i, '');
       const a = document.createElement('a'); a.href = url; a.download = `${name}_signed.pdf`; a.click();
       URL.revokeObjectURL(url);
@@ -214,65 +217,84 @@ export default function SelfSignWizard() {
       {/* Signature (upload OU enregistrée) */}
       <div className="p-4 md:p-6 border-b border-gray-200">
         <label className="block text-sm font-medium text-gray-700 mb-2">Signature</label>
-       <input
-  type="file"
-  accept="image/*"
-  onChange={async (e) => {
-    const f = e.target.files?.[0] || null;
-    if (!f) { setSigDataUrl(''); return; }
-    try {
-      const dataUrl = await fileToPngDataURL(f); // => data:image/png;base64,...
-      setSigDataUrl(dataUrl);
-      setSelectedSigId('upload'); // l’upload est la signature sélectionnée
-    } catch {
-      setSigDataUrl('');
-      toast.error("Impossible de lire l'image de signature");
-    }
-  }}
-  className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100"
-/>
-{sigDataUrl && (
-  <div className="mt-2 p-2 border rounded bg-gray-50 flex items-center gap-3 h-24">
-    <img
-      src={sigDataUrl}
-      alt="signature sélectionnée"
-      className={`h-20 w-auto object-contain bg-white border rounded ${selectedSigId === 'upload' ? 'ring-2 ring-emerald-500' : ''}`}
-      width={140}
-      height={80}
-    />
-    <div className="text-sm text-gray-700">Signature sélectionnée</div>
-    <button
-      type="button"
-      onClick={() => { setSigDataUrl(''); setSelectedSigId(null); }}
-      className="ml-auto px-2 py-1 text-xs bg-red-50 text-red-700 rounded hover:bg-red-100"
-    >
-      Effacer
-    </button>
-  </div>
-)}
+        <input
+          type="file"
+          accept="image/*"
+          onChange={async (e) => {
+            const f = e.target.files?.[0] || null;
+            if (!f) { setSigDataUrl(''); return; }
+            try {
+              const dataUrl = await fileToPngDataURL(f); // => data:image/png;base64,...
+              setSigDataUrl(dataUrl);
+              setSelectedSigId('upload'); // l’upload est la signature sélectionnée
+            } catch {
+              setSigDataUrl('');
+              toast.error("Impossible de lire l'image de signature");
+            }
+          }}
+          className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100"
+        />
+        {sigDataUrl && (
+          <div className="mt-2 p-2 border rounded bg-gray-50 flex items-center gap-3 h-24">
+            <img
+              src={sigDataUrl}
+              alt="signature sélectionnée"
+              className={`h-20 w-auto object-contain bg-white border rounded ${selectedSigId === 'upload' ? 'ring-2 ring-emerald-500' : ''}`}
+              width={140}
+              height={80}
+            />
+            <div className="text-sm text-gray-700">Signature sélectionnée</div>
+            <button
+              type="button"
+              onClick={() => { setSigDataUrl(''); setSelectedSigId(null); }}
+              className="ml-auto px-2 py-1 text-xs bg-red-50 text-red-700 rounded hover:bg-red-100"
+            >
+              Effacer
+            </button>
+          </div>
+        )}
 
-{sigFile && <div className="mt-2 flex items-center gap-2"><FiCheck className="w-4 h-4 text-green-500" /><span className="text-sm text-green-600">{sigFile.name}</span></div>}
-
-        {!sigFile && !!savedSignatures.length && (
-          <div className="mt-2 grid grid-cols-2 gap-2">
+        {/* Signatures enregistrées */}
+        {!!savedSignatures.length && (
+          <div className="mt-3 grid grid-cols-2 gap-2">
             {savedSignatures.map((sig) => {
               const previewSrc = sig.data_url || savedSignatureImageUrl(sig.id);
               return (
-                 <button key={sig.id} type="button"
-           className={`border rounded flex items-center justify-center h-24 p-1 
-                      ${selectedSigId === sig.id ? 'ring-2 ring-emerald-500' : 'hover:ring-2 hover:ring-emerald-400'}`}
-            onClick={async () => {
-                          try { setSigFile(null); const dataUrl = await fetchSavedSignatureAsDataURL(sig);
-               setSigDataUrl(dataUrl);
-               setSelectedSigId(sig.id); }
-                          catch { setSigDataUrl(''); toast.error("Impossible de charger la signature enregistrée"); }
-                        }}>
+                <button
+                  key={sig.id}
+                  type="button"
+                  className={`border rounded flex items-center justify-center h-24 p-1 
+                             ${selectedSigId === sig.id ? 'ring-2 ring-emerald-500' : 'hover:ring-2 hover:ring-emerald-400'}`}
+                  onClick={async () => {
+                    try {
+                      const dataUrl = await fetchSavedSignatureAsDataURL(sig);
+                      setSigDataUrl(dataUrl);
+                      setSelectedSigId(sig.id);
+                    } catch {
+                      setSigDataUrl('');
+                      toast.error("Impossible de charger la signature enregistrée");
+                    }
+                  }}
+                >
                   <img src={previewSrc} alt="saved" className="max-h-20 w-full object-contain" />
                 </button>
               );
             })}
           </div>
         )}
+      </div>
+
+      {/* Options */}
+      <div className="p-4 md:p-6 border-b border-gray-200">
+        <label className="inline-flex items-center gap-2 text-sm text-gray-700">
+          <input
+            type="checkbox"
+            checked={includeQr}
+            onChange={(e) => setIncludeQr(e.target.checked)}
+            className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+          />
+          Apposer un code QR (recommandé)
+        </label>
       </div>
 
       {/* Actions */}
@@ -283,7 +305,7 @@ export default function SelfSignWizard() {
           {placement ? 'Redéfinir la zone' : 'Définir la zone'}
         </button>
         <button onClick={submit}
-                disabled={isProcessing || !file || !placement || (!sigFile && !sigDataUrl)}
+                disabled={isProcessing || !file || !placement || !sigDataUrl}
                 className="w-full px-4 py-2 bg-gradient-to-r from-emerald-600 to-blue-600 text-white font-medium rounded-lg hover:from-emerald-700 hover:to-blue-700 disabled:opacity-50">
           {isProcessing ? 'Signature…' : 'Signer et télécharger'}
         </button>
@@ -333,7 +355,6 @@ export default function SelfSignWizard() {
                 {Array.from({ length: numPages }, (_, i) => {
                   const pageWidth = Math.min(viewerWidth - (isMobile ? 24 : 48), isMobile ? 350 : 800);
                   const scale = pageWidth / (pageDims[i + 1]?.width || 1);
-               
 
                   return (
                     <div key={i} className="relative mb-6 bg-white shadow-lg rounded-lg overflow-hidden">
@@ -358,18 +379,17 @@ export default function SelfSignWizard() {
               </Document>
             </div>
           )}
- 
-
         </div>
-                 {isProcessing && (
-  <div className="fixed inset-0 z-[1000] bg-black/50 backdrop-blur-sm flex items-center justify-center">
-    <div className="bg-white rounded-xl shadow-xl p-6 w-80 text-center">
-      <div className="mx-auto mb-4 w-10 h-10 border-4 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
-      <h3 className="text-lg font-semibold text-gray-900">Signature en cours…</h3>
-      <p className="text-sm text-gray-600 mt-1">Merci de patienter quelques secondes.</p>
-    </div>
-  </div>
-)}
+
+        {isProcessing && (
+          <div className="fixed inset-0 z-[1000] bg-black/50 backdrop-blur-sm flex items-center justify-center">
+            <div className="bg-white rounded-xl shadow-xl p-6 w-80 text-center">
+              <div className="mx-auto mb-4 w-10 h-10 border-4 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
+              <h3 className="text-lg font-semibold text-gray-900">Signature en cours…</h3>
+              <p className="text-sm text-gray-600 mt-1">Merci de patienter quelques secondes.</p>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

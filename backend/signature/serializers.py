@@ -557,8 +557,6 @@ class PrintQRCodeSerializer(serializers.ModelSerializer):
             'qr_type',
             'state',
             'created_at',
-            'scanned_at',
-            'expires_at',
             'is_valid',
         ]
-        read_only_fields = ['uuid', 'hmac', 'state', 'created_at', 'scanned_at']
+        read_only_fields = ['uuid', 'hmac', 'state', 'created_at']

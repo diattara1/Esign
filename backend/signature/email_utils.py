@@ -216,37 +216,6 @@ class EmailTemplates:
         )
 
 
-# --- Versions v2 conservées, avec correctifs mineurs ---
-
-def send_signature_email_v2(envelope_id: int, recipient_id: int) -> None:
-    """
-    Version mise à jour avec template.
-    NOTE: import de timezone placé en haut du fichier pour éviter l'usage avant import.
-    """
-    from .models import Envelope, EnvelopeRecipient
-    try:
-        envelope = Envelope.objects.get(pk=envelope_id)
-        recipient = EnvelopeRecipient.objects.get(pk=recipient_id, envelope=envelope, signed=False)
-    except (Envelope.DoesNotExist, EnvelopeRecipient.DoesNotExist):
-        logger.exception("Objet introuvable lors de l'envoi de l'email de signature")
-        raise
-
-    if envelope.deadline_at and envelope.deadline_at <= timezone.now():
-        # Ne pas notifier si l'échéance est dépassée
-        return
-
-    from .tasks import _build_sign_link
-    link = _build_sign_link(envelope, recipient)
-    EmailTemplates.signature_request_email(recipient, envelope, link)
-
-    # Mise à jour du recipient
-    from datetime import timedelta
-    recipient.reminder_count += 1
-    now = timezone.now()
-    recipient.notified_at = now
-    recipient.last_reminder_at = now
-    recipient.next_reminder_at = now + timedelta(days=envelope.reminder_days or 0)
-    recipient.save(update_fields=["reminder_count", "notified_at", "last_reminder_at", "next_reminder_at"])
 
 
 def send_reminder_email_v2(envelope_id: int, recipient_id: int) -> None:

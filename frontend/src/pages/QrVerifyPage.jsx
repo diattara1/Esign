@@ -146,7 +146,6 @@ export default function QrVerifyPage() {
           </h2>
 
           <dl className="space-y-0">
-            <InfoItem label="MD5" value={data?.hash_md5} icon={Hash} type="code" />
             <InfoItem label="SHA-256" value={data?.hash_sha256} icon={Hash} type="code" />
           </dl>
         </Card>

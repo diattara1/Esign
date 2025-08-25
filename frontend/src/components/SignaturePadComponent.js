@@ -1,15 +1,25 @@
-import React, { useRef,useEffect } from 'react';
+import React, { useRef, useEffect } from 'react';
 import SignatureCanvas from 'react-signature-canvas';
 
 const SignaturePadComponent = ({ onEnd, onChange, initialValue, canvasProps }) => {
    
   const sigRef = useRef();
+
+  // Nettoyer le canvas si la valeur initiale change ou lors du démontage
+  useEffect(() => {
+    return () => {
+      sigRef.current?.clear();
+    };
+  }, [initialValue]);
+
   // Charger une valeur initiale (dataURL) si fournie
   useEffect(() => {
     if (!sigRef.current || !initialValue) return;
     try {
       sigRef.current.fromDataURL(initialValue);
-    } catch {}
+    } catch (error) {
+      console.error('Erreur lors du chargement de la signature :', error);
+    }
   }, [initialValue]);
 
   return (

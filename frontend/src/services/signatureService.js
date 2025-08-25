@@ -2,68 +2,63 @@ import { api } from './apiUtils';
 
 const BASE = 'api/signature';
 
-async function tryGet(url, config = {}) {
-  try {
-    const res = await api.get(url, config);
-    return res.data;
-  } catch (e) {
-    throw e;
-  }
-}
+const apiRequest = (method, url, data, config) => {
+  const m = method.toLowerCase();
+  const args = m === 'get' || m === 'delete' ? [url, config] : [url, data, config];
+  return api[m](...args).then(res => res.data);
+};
 
 export default {
   // ─── Envelopes listing / CRUD ──────────────────────────────────────────
   getEnvelopes: (params = {}) =>
-    api.get(`${BASE}/envelopes/`, { params }).then(res => res.data),
-
-  
+    apiRequest('get', `${BASE}/envelopes/`, null, { params }),
 
   getReceivedEnvelopes: () =>
-    api.get(`${BASE}/envelopes/`, { params: { status: 'action_required' } })
-       .then(res => res.data),
+    apiRequest('get', `${BASE}/envelopes/`, null, { params: { status: 'action_required' } }),
 
   getCompletedEnvelopes: () =>
-    api.get(`${BASE}/envelopes/`, { params: { status: 'completed' } })
-       .then(res => res.data),
+    apiRequest('get', `${BASE}/envelopes/`, null, { params: { status: 'completed' } }),
 
   getEnvelope: (id, config = {}) =>
-    api.get(`${BASE}/envelopes/${id}/`, config).then(res => res.data),
+    apiRequest('get', `${BASE}/envelopes/${id}/`, null, config),
 
   createEnvelope: data =>
-    api.post(`${BASE}/envelopes/`, data).then(res => res.data),
+    apiRequest('post', `${BASE}/envelopes/`, data),
 
   updateEnvelope: (id, payload) =>
-    api.patch(`${BASE}/envelopes/${id}/`, payload).then(res => res.data),
+    apiRequest('patch', `${BASE}/envelopes/${id}/`, payload),
 
   // NEW: PATCH multipart pour ajouter plusieurs fichiers (champ 'files' répété)
   updateEnvelopeFiles: (id, files) => {
     const form = new FormData();
     files.forEach(f => form.append('files', f));
-    return api.patch(`${BASE}/envelopes/${id}/`, form, {
+    return apiRequest('patch', `${BASE}/envelopes/${id}/`, form, {
       headers: { 'Content-Type': 'multipart/form-data' }
-    }).then(res => res.data);
+    });
   },
 
   cancelEnvelope: id =>
-    api.post(`${BASE}/envelopes/${id}/cancel/`).then(res => res.data),
+    apiRequest('post', `${BASE}/envelopes/${id}/cancel/`),
 
   sendEnvelope: (id, payload = {}) =>
-    api.post(`${BASE}/envelopes/${id}/send/`, payload).then(res => res.data),
+    apiRequest('post', `${BASE}/envelopes/${id}/send/`, payload),
 
   // ─── Guest signing (token / OTP) ────────────────────────────────────
-  getGuestEnvelope: async (id, token) => {
+  getGuestEnvelope: (id, token) => {
     const headers = token ? { 'X-Signature-Token': token } : {};
-    return await tryGet(`${BASE}/envelopes/${id}/guest/`, { headers });
+    return apiRequest('get', `${BASE}/envelopes/${id}/guest/`, null, { headers });
   },
   sendOtp: (id, token) =>
-    api.post(
+    apiRequest(
+      'post',
       `${BASE}/envelopes/${id}/send_otp/`,
       {},
       token ? { headers: { 'X-Signature-Token': token } } : undefined
     ),
 
   verifyOtp: (id, otp, token) =>
-    api.post(
+    apiRequest(
+      'post',
       `${BASE}/envelopes/${id}/verify_otp/`,
       { otp },
       token ? { headers: { 'X-Signature-Token': token } } : undefined
@@ -73,36 +68,33 @@ export default {
   signGuest: (id, body, token) => {
     const cfg = token ? { headers: { 'X-Signature-Token': token } } : undefined;
     // backend renvoie du JSON -> pas de responseType: 'blob'
-    return api.post(`${BASE}/envelopes/${id}/sign/`, body, cfg).then(res => res.data);
+    return apiRequest('post', `${BASE}/envelopes/${id}/sign/`, body, cfg);
   },
 
   signAuthenticated: (id, body) =>
-    api.post(`${BASE}/envelopes/${id}/sign_authenticated/`, body).then(res => res.data),
+    apiRequest('post', `${BASE}/envelopes/${id}/sign_authenticated/`, body),
 
   sign(id, body, token) {
     return token ? this.signGuest(id, body, token) : this.signAuthenticated(id, body);
   },
 
   getAuthenticatedEnvelope: id =>
-    api.get(`${BASE}/envelopes/${id}/sign-page/`).then(res => res.data),
+    apiRequest('get', `${BASE}/envelopes/${id}/sign-page/`),
 
   // ─── HSM signing ─────────────────────────────────────────────────────
   hsmSign: (envelopeId, payload) =>
-    api.post(`${BASE}/envelopes/${envelopeId}/hsm_sign/`, payload).then(res => res.data),
+    apiRequest('post', `${BASE}/envelopes/${envelopeId}/hsm_sign/`, payload),
 
   // ─── Download helpers ────────────────────────────────────────────────
   // Téléchargement "global" : renvoie l'URL qui pointe vers le signé si dispo, sinon original.
   downloadEnvelope: async envelopeId => {
-    const { download_url } = await api
-      .get(`${BASE}/envelopes/${envelopeId}/download/`)
-      .then(res => res.data);
-    const pdfResp = await api.get(download_url, { responseType: 'blob' });
-    return { download_url: URL.createObjectURL(pdfResp.data) };
+    const { download_url } = await apiRequest('get', `${BASE}/envelopes/${envelopeId}/download/`);
+    const pdfBlob = await apiRequest('get', download_url, null, { responseType: 'blob' });
+    return { download_url: URL.createObjectURL(pdfBlob) };
   },
 // --- Vérification QR publique (uuid + sig) ---
 verifyQRCodeWithSig: (uuid, sig) =>
-  api.get(`${BASE}/prints/${uuid}/verify/`, { params: { sig } })
-     .then(res => res.data),
+  apiRequest('get', `${BASE}/prints/${uuid}/verify/`, null, { params: { sig } }),
 
 // --- URL absolue vers le PDF signé via uuid+sig (sans JWT, pérenne) ---
 getQRCodeDocumentAbsoluteUrl: (uuid, sig) => {
@@ -118,20 +110,20 @@ openQRCodeDocument: (uuid, sig) => {
   window.location.assign(url);
 },
 
-  // Téléchargement d'un document précis (si tu ajoutes un endpoint côté vue)
+// Téléchargement d'un document précis (si tu ajoutes un endpoint côté vue)
   // Sinon, utilise simplement doc.file_url côté front.
-  
+
 fetchDocumentBlob: async (envelopeId, documentId) => {
   const url = `${BASE}/envelopes/${envelopeId}/documents/${documentId}/file/`;
-  const resp = await api.get(url, { responseType: 'blob' });
+  const blob = await apiRequest('get', url, null, { responseType: 'blob' });
   // Sanity check (optionnel) : vérifier le type
-  if (!resp?.data) throw new Error('Fichier introuvable');
-  return URL.createObjectURL(resp.data);
+  if (!blob) throw new Error('Fichier introuvable');
+  return URL.createObjectURL(blob);
 },
 
 // Relance manuelle par le créateur
 remindNow: (id) =>
-  api.post(`${BASE}/envelopes/${id}/remind/`).then(res => res.data),
+  apiRequest('post', `${BASE}/envelopes/${id}/remind/`),
 
   // URLs directes "brutes"
   getOriginalDocumentUrl: envelopeId =>
@@ -151,16 +143,14 @@ remindNow: (id) =>
 
   // ─── Signatures / QR codes  ───────────────────────────────
   getSignatures: envelopeId =>
-    api.get(`${BASE}/signatures/`, { params: { envelope: envelopeId } })
-       .then(res => res.data),
+    apiRequest('get', `${BASE}/signatures/`, null, { params: { envelope: envelopeId } }),
 
   generateQRCode: (envelopeId, type) =>
-    api.post(`${BASE}/prints/generate/`, { envelope: envelopeId, qr_type: type })
-       .then(res => res.data),
+    apiRequest('post', `${BASE}/prints/generate/`, { envelope: envelopeId, qr_type: type }),
 
-  getQRCodes: () => api.get(`${BASE}/prints/`).then(res => res.data),
+  getQRCodes: () => apiRequest('get', `${BASE}/prints/`),
 
-  verifyQRCode: uuid => api.get(`${BASE}/prints/${uuid}/verify/`).then(res => res.data),
+  verifyQRCode: uuid => apiRequest('get', `${BASE}/prints/${uuid}/verify/`),
 // Self-sign (un ou plusieurs docs, même endroit)
 selfSign: (formData, { sync = false } = {}) => {
   const config = {};
@@ -172,33 +162,33 @@ selfSign: (formData, { sync = false } = {}) => {
 
 // Batch sign (same spot ou var spots)
 createBatchSign: formData =>
-  api.post(`${BASE}/batch-sign/`, formData, {
+  apiRequest('post', `${BASE}/batch-sign/`, formData, {
     headers: { 'Content-Type': 'multipart/form-data' }
-  }).then(res => res.data),
+  }),
 
 getBatchJob: id =>
-  api.get(`${BASE}/batch-jobs/${id}/`).then(res => res.data),
+  apiRequest('get', `${BASE}/batch-jobs/${id}/`),
 
   downloadBatchZip: id =>
-    api.get(`${BASE}/batch-jobs/${id}/download/`, { responseType: 'blob' })
-      .then(res => {
-        const url = URL.createObjectURL(res.data);
+    apiRequest('get', `${BASE}/batch-jobs/${id}/download/`, null, { responseType: 'blob' })
+      .then(data => {
+        const url = URL.createObjectURL(data);
         return { url };
       }),
 
   // ─── Saved signatures ───────────────────────────────────────────────
   listSavedSignatures: () =>
-    api.get(`${BASE}/saved-signatures/`).then(res => res.data),
+    apiRequest('get', `${BASE}/saved-signatures/`),
 
   createSavedSignature: (payload) => {
     const config = payload instanceof FormData ? {
       headers: { 'Content-Type': 'multipart/form-data' }
     } : {};
-    return api.post(`${BASE}/saved-signatures/`, payload, config).then(res => res.data);
+    return apiRequest('post', `${BASE}/saved-signatures/`, payload, config);
   },
 
   deleteSavedSignature: (id) =>
-    api.delete(`${BASE}/saved-signatures/${id}/`).then(res => res.data),
+    apiRequest('delete', `${BASE}/saved-signatures/${id}/`),
 
 
 };

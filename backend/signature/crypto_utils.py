@@ -1,7 +1,7 @@
 # signature/crypto_utils.py 
 
 from pathlib import Path
-import io, hashlib, logging
+import hashlib, logging,base64,hashlib,inspect,io,time,uuid
 from django.conf import settings
 from asn1crypto import pem, x509 as asn1x509  # pour ValidationContext pyHanko
 from pyhanko.sign import signers
@@ -9,11 +9,14 @@ from pyhanko.sign.signers import PdfSigner, PdfSignatureMetadata
 from pyhanko.pdf_utils.incremental_writer import IncrementalPdfFileWriter
 from pyhanko.sign.timestamps.requests_client import HTTPTimeStamper
 from pyhanko.sign.validation import ValidationContext
-from pyhanko.sign.fields import SigFieldSpec
 from pyhanko.sign.general import SigningError
 from cryptography import x509 as cx509
 from cryptography.hazmat.backends import default_backend
 from cryptography.x509.oid import NameOID
+try:
+    from pyhanko.sign.fields import SigFieldSpec as _SigFieldSpec
+except ImportError:
+    _SigFieldSpec = None
 
 logger = logging.getLogger(__name__)
 
@@ -98,15 +101,7 @@ def sign_pdf_bytes(
     page_ix: int | None = None,  # 0-based
     appearance_image_b64: str | None = None,
 ) -> bytes:
-    """
-    ✅ Version corrigée qui préserve TOUTES les signatures existantes
-    et ajoute une nouvelle signature de manière incrémentale.
-    """
-    import io, inspect, base64, logging
-    from pyhanko.sign.signers import PdfSigner, PdfSignatureMetadata
-    from pyhanko.pdf_utils.incremental_writer import IncrementalPdfFileWriter
     
-    logger = logging.getLogger(__name__)
     logger.info(f"sign_pdf_bytes: Signature du champ '{field_name}' avec rect={rect}")
 
     # optionnel: apparence avec image
@@ -125,17 +120,14 @@ def sign_pdf_bytes(
             logger.warning("Impossible de créer stamp_style pour %s: %s", field_name, e)
             stamp_style = None  # on n'empêche pas la signature si l'image est invalide
 
-    try:
-        from pyhanko.sign.fields import SigFieldSpec as _SigFieldSpec
-    except ImportError:
-        _SigFieldSpec = None
+    
 
     vc   = get_validation_context()
     tsa  = get_timestamper()
     sign = load_simple_signer()
 
     # ✅ CRUCIAL : Générer un nom de champ vraiment unique avec timestamp
-    import time, uuid
+    
     if not field_name:
         field_name = f"Sig_{int(time.time())}_{str(uuid.uuid4())[:8]}"
     

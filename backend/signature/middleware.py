@@ -128,16 +128,20 @@ class AllowIframeForPDFOnlyMiddleware:
         if request.path.startswith("/api/signature/envelopes/") and request.path.endswith(
             "/signed-document/"
         ):
-            response.headers["X-Frame-Options"] = self.x_frame_options
+            content_type = response.headers.get("Content-Type", "").split(";")[0].strip().lower()
+            if content_type == "application/pdf":
+                response.headers["X-Frame-Options"] = self.x_frame_options
 
-            csp = response.headers.get("Content-Security-Policy", "")
-            directives = [d.strip() for d in csp.split(";") if d.strip()]
-            replaced = False
-            for i, directive in enumerate(directives):
-                if directive.startswith("frame-ancestors"):
-                    directives[i] = f"frame-ancestors {self.frame_ancestors}"
-                    replaced = True
-            if not replaced:
-                directives.append(f"frame-ancestors {self.frame_ancestors}")
-            response.headers["Content-Security-Policy"] = "; ".join(directives)
+                csp = response.headers.get("Content-Security-Policy", "")
+                directives = [d.strip() for d in csp.split(";") if d.strip()]
+                replaced = False
+                for i, directive in enumerate(directives):
+                    if directive.startswith("frame-ancestors"):
+                        directives[i] = f"frame-ancestors {self.frame_ancestors}"
+                        replaced = True
+                if not replaced:
+                    directives.append(f"frame-ancestors {self.frame_ancestors}")
+                response.headers["Content-Security-Policy"] = "; ".join(directives)
+            else:
+                response.headers["X-Frame-Options"] = "SAMEORIGIN"
         return response

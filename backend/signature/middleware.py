@@ -15,6 +15,7 @@ class ClamAVMiddleware(MiddlewareMixin):
         super().__init__(get_response)
         self.use_clamd = False
         self.cd = None
+        self.scan_disabled = False
 
         try:
             import clamd
@@ -52,6 +53,12 @@ class ClamAVMiddleware(MiddlewareMixin):
                             raise SuspiciousFileOperation(f"Virus détecté : {virus}")
                     else:
                         # Fallback : écrire dans un tmp, puis appeler clamscan
+                        if self.scan_disabled:
+                            logger.warning(
+                                "ClamAVMiddleware: antivirus scan disabled; skipping file scan."
+                            )
+                            continue
+
                         tmp_path = None
                         try:
                             with tempfile.NamedTemporaryFile(delete=False) as tmp:  # delete=True si la plateforme le permet
@@ -59,14 +66,29 @@ class ClamAVMiddleware(MiddlewareMixin):
                                     tmp.write(chunk)
                                 tmp.flush()
                                 tmp_path = tmp.name
-                            proc = subprocess.run(
-                                ['clamscan', '--infected', '--stdout', tmp_path],
-                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
-                            )
+                            try:
+                                proc = subprocess.run(
+                                    ['clamscan', '--infected', '--stdout', tmp_path],
+                                    stdout=subprocess.PIPE,
+                                    stderr=subprocess.PIPE,
+                                    text=True,
+                                )
+                            except FileNotFoundError:
+                                logger.error(
+                                    "ClamAVMiddleware: 'clamscan' command not found. Antivirus scanning is disabled."
+                                )
+                                self.scan_disabled = True
+                                break
                         finally:
                             if tmp_path and os.path.exists(tmp_path):
                                 os.unlink(tmp_path)
+                        if self.scan_disabled:
+                            continue
                         output = proc.stdout + proc.stderr
+                        if proc.returncode not in (0, 1):
+                            logger.warning(
+                                "ClamAVMiddleware: 'clamscan' exited with code %s", proc.returncode
+                            )
                         if 'FOUND' in output:
                             # Format : C:\path\to\tmpfile: Eicar-Test-Signature FOUND
                             virus = output.split(':', 1)[1].strip().split()[0]

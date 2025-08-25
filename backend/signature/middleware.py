@@ -4,6 +4,7 @@ import os
 import tempfile
 import subprocess
 import logging
+import threading
 
 from django.core.exceptions import SuspiciousFileOperation
 from django.utils.deprecation import MiddlewareMixin
@@ -16,6 +17,7 @@ class ClamAVMiddleware(MiddlewareMixin):
         self.use_clamd = False
         self.cd = None
         self.scan_disabled = False
+        self.async_scan = bool(int(os.getenv("CLAMAV_ASYNC", "0")))
 
         try:
             import clamd
@@ -38,68 +40,77 @@ class ClamAVMiddleware(MiddlewareMixin):
             self.use_clamd = False
             logger.warning(f"ClamAVMiddleware: cannot connect to clamd ({e}), will use 'clamscan' subprocess.")
 
+    def _scan_uploaded(self, uploaded):
+        """Scan a single UploadedFile instance.
+
+        The file content is kept in memory using a ``SpooledTemporaryFile`` to
+        avoid unnecessary disk writes. If ``clamd`` is unavailable we fall back
+        to invoking ``clamscan`` and pipe the file through stdin.
+        """
+
+        # On récupère l'UploadedFile et son flux
+        try:
+            with tempfile.SpooledTemporaryFile() as tmp:
+                for chunk in uploaded.chunks():
+                    tmp.write(chunk)
+                tmp.seek(0)
+
+                if self.use_clamd and self.cd:
+                    # Scan via démon ClamAV
+                    result = self.cd.instream(tmp)
+                    status, virus = result.get('stream', (None, None))
+                    if status == 'FOUND':
+                        raise SuspiciousFileOperation(f"Virus détecté : {virus}")
+                else:
+                    # Fallback : envoyer le flux en stdin à clamscan
+                    if self.scan_disabled:
+                        logger.warning(
+                            "ClamAVMiddleware: antivirus scan disabled; skipping file scan."
+                        )
+                        return
+
+                    tmp.seek(0)
+                    try:
+                        proc = subprocess.run(
+                            ['clamscan', '--infected', '--stdout', '-'],
+                            stdin=tmp,
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE,
+                            text=True,
+                        )
+                    except FileNotFoundError:
+                        logger.error(
+                            "ClamAVMiddleware: 'clamscan' command not found. Antivirus scanning is disabled."
+                        )
+                        self.scan_disabled = True
+                        return
+
+                    output = proc.stdout + proc.stderr
+                    if proc.returncode not in (0, 1):
+                        logger.warning(
+                            "ClamAVMiddleware: 'clamscan' exited with code %s", proc.returncode
+                        )
+                    if 'FOUND' in output:
+                        # Format : stdin: Eicar-Test-Signature FOUND
+                        virus = output.split(':', 1)[1].strip().split()[0]
+                        raise SuspiciousFileOperation(f"Virus détecté : {virus}")
+        except SuspiciousFileOperation:
+            # On remonte l'exception pour Django
+            raise
+        except Exception as e:
+            # On logue l'erreur de scan, mais on ne bloque pas la requête
+            logger.error(f"ClamAVMiddleware: erreur durant le scan : {e}")
+
     def process_request(self, request):
         # Ne scanner que les uploads de fichiers
         if request.method == 'POST' and request.FILES:
             for uploaded in request.FILES.values():
-                # On récupère l'UploadedFile et son flux
-                stream = uploaded.file
-                try:
-                    if self.use_clamd and self.cd:
-                        # Scan via démon ClamAV
-                        result = self.cd.instream(stream)
-                        status, virus = result.get('stream', (None, None))
-                        if status == 'FOUND':
-                            raise SuspiciousFileOperation(f"Virus détecté : {virus}")
-                    else:
-                        # Fallback : écrire dans un tmp, puis appeler clamscan
-                        if self.scan_disabled:
-                            logger.warning(
-                                "ClamAVMiddleware: antivirus scan disabled; skipping file scan."
-                            )
-                            continue
-
-                        tmp_path = None
-                        try:
-                            with tempfile.NamedTemporaryFile(delete=False) as tmp:  # delete=True si la plateforme le permet
-                                for chunk in uploaded.chunks():
-                                    tmp.write(chunk)
-                                tmp.flush()
-                                tmp_path = tmp.name
-                            try:
-                                proc = subprocess.run(
-                                    ['clamscan', '--infected', '--stdout', tmp_path],
-                                    stdout=subprocess.PIPE,
-                                    stderr=subprocess.PIPE,
-                                    text=True,
-                                )
-                            except FileNotFoundError:
-                                logger.error(
-                                    "ClamAVMiddleware: 'clamscan' command not found. Antivirus scanning is disabled."
-                                )
-                                self.scan_disabled = True
-                                break
-                        finally:
-                            if tmp_path and os.path.exists(tmp_path):
-                                os.unlink(tmp_path)
-                        if self.scan_disabled:
-                            continue
-                        output = proc.stdout + proc.stderr
-                        if proc.returncode not in (0, 1):
-                            logger.warning(
-                                "ClamAVMiddleware: 'clamscan' exited with code %s", proc.returncode
-                            )
-                        if 'FOUND' in output:
-                            # Format : C:\path\to\tmpfile: Eicar-Test-Signature FOUND
-                            virus = output.split(':', 1)[1].strip().split()[0]
-                            raise SuspiciousFileOperation(f"Virus détecté : {virus}")
-                except SuspiciousFileOperation:
-                    # On remonte l'exception pour Django
-                    raise
-                except Exception as e:
-                    # On logue l'erreur de scan, mais on ne bloque pas la requête
-                    logger.error(f"ClamAVMiddleware: erreur durant le scan : {e}")
-
+                if self.async_scan:
+                    threading.Thread(
+                        target=self._scan_uploaded, args=(uploaded,), daemon=True
+                    ).start()
+                else:
+                    self._scan_uploaded(uploaded)
         return None
 
 from django.conf import settings

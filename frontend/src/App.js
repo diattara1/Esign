@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 
 import DashboardSignature from './pages/DashboardSignature';
@@ -27,6 +27,7 @@ import MainLayout from './layouts/MainLayout';
 import QrVerifyPage from './pages/QrVerifyPage';
 import NotFound from './pages/NotFound';
 import { useAuth } from './AuthContext';
+import { toast } from 'react-toastify';
 
 const ProtectedRoute = () => {
   const { isAuthenticated } = useAuth();
@@ -41,6 +42,9 @@ const LoadingSpinner = () => (
 
 const App = () => {
   const { isLoading } = useAuth();
+  useEffect(() => {
+    toast.success('Toast de test');
+  }, []);
 
   // Afficher le spinner pendant le chargement de l'authentification
   if (isLoading) {

@@ -18,10 +18,7 @@ const SignatureLayout = () => {
       <div className="flex flex-1">
         {/* Sidebar */}
         <div className="w-64 bg-gray-50 p-4 space-y-8">
- {/* Section Envoyer une enveloppe */}
-          <div >
-           
-          </div>
+
           {/* Section Environnement avec vos liens exacts */}
           <div>
             <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-3">Environnement</h2>

@@ -25,6 +25,7 @@ import DraftEnvelopes from './components/DraftEnvelopes';
 import DeletedEnvelopes from './components/DeletedEnvelopes';
 import MainLayout from './layouts/MainLayout';
 import QrVerifyPage from './pages/QrVerifyPage';
+import NotFound from './pages/NotFound';
 import { useAuth } from './AuthContext';
 
 const ProtectedRoute = () => {
@@ -84,6 +85,7 @@ const App = () => {
           
           {/* SignatureLayout et ses sous-pages */}
           <Route path="signature" element={<SignatureLayout />}>
+          <Route index element={<Navigate to="envelopes/sent" replace />} />
             <Route path="envelopes/sent" element={<SentEnvelopes />} />
             <Route path="envelopes/completed" element={<CompletedEnvelopes />} />
             <Route path="envelopes/action-required" element={<ActionRequiredEnvelopes />} />
@@ -94,8 +96,8 @@ const App = () => {
       </Route>
 
       {/* Redirection par défaut - À PLACER EN DERNIER */}
-      <Route path="/" element={<Navigate to="/signature" replace />} />
-      <Route path="*" element={<Navigate to="/signature" replace />} />
+      <Route path="/" element={<Navigate to="/dashboard" replace />} />
+       <Route path="*" element={<NotFound />} />
     </Routes>
   );
 };

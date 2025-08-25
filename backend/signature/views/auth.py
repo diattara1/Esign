@@ -13,6 +13,7 @@ from django.utils.encoding import force_bytes, force_str
 from django.contrib.auth.tokens import default_token_generator
 from django.contrib.auth import get_user_model
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
+import logging
 
 from ..serializers import (
     UserRegistrationSerializer,
@@ -23,6 +24,7 @@ from ..serializers import (
 from ..email_utils import EmailTemplates
 
 User = get_user_model()
+logger = logging.getLogger(__name__)
 
 
 class CookieTokenObtainPairView(TokenObtainPairView):
@@ -89,6 +91,7 @@ def register(request):
                 status=status.HTTP_201_CREATED,
             )
         except Exception as e:
+            logger.exception("Erreur lors de l'envoi de l'email d'activation")
             # Fallback en cas d'erreur d'envoi d'email
             return Response(
                 {'detail': 'Inscription réussie mais erreur d\'envoi d\'email. Contactez le support.'},

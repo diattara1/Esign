@@ -3,6 +3,7 @@ import os
 import logging
 from typing import List, Tuple, Optional
 
+from celery import shared_task
 from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
 from django.conf import settings
@@ -15,6 +16,37 @@ User = get_user_model()
 
 # Type alias: [(filename, content_bytes, mimetype), ...]
 AttachmentList = List[Tuple[str, bytes, str]]
+
+
+@shared_task
+def send_email_task(
+    *,
+    subject: str,
+    text_content: str,
+    html_content: str | None,
+    from_email: str | None,
+    recipient_email: str,
+    attachments: AttachmentList | None = None,
+) -> None:
+    """Tâche Celery envoyant réellement l'email."""
+    email = EmailMultiAlternatives(
+        subject=subject,
+        body=text_content,
+        from_email=from_email,
+        to=[recipient_email],
+    )
+    if html_content:
+        email.attach_alternative(html_content, "text/html")
+
+    if attachments:
+        for filename, content, mimetype in attachments:
+            email.attach(
+                filename or "attachment",
+                content,
+                mimetype or "application/octet-stream",
+            )
+
+    email.send()
 
 
 def send_templated_email(
@@ -62,19 +94,14 @@ def send_templated_email(
     html_content = render_to_string('emails/base_template.html', context)
     text_content = strip_tags(html_content) or strip_tags(message_content)
 
-    email = EmailMultiAlternatives(
+    send_email_task.delay(
         subject=subject,
-        body=text_content,
+        text_content=text_content,
+        html_content=html_content,
         from_email=from_email,
-        to=[recipient_email],
+        recipient_email=recipient_email,
+        attachments=attachments,
     )
-    email.attach_alternative(html_content, "text/html")
-
-    if attachments:
-        for filename, content, mimetype in attachments:
-            email.attach(filename or "attachment", content, mimetype or "application/octet-stream")
-
-    email.send()
 
 
 class EmailTemplates:

@@ -246,6 +246,130 @@ def _crypto_sign_pdf(pdf_bytes: bytes, field_name: str | None = None) -> bytes:
     return cu.sign_pdf_bytes(pdf_bytes, field_name=field_name)
 
 
+def _load_signature(job, use_saved_signature_id=None, signature_upload_path=None) -> bytes:
+    """Récupère et normalise l'image de signature pour le job."""
+    sig_bytes = None
+    if use_saved_signature_id:
+        from .models import SavedSignature
+
+        ss = SavedSignature.objects.get(pk=use_saved_signature_id, user=job.created_by)
+        if getattr(ss, "image", None):
+            f = ss.image
+            f.open("rb")
+            sig_bytes = f.read()
+            f.close()
+        elif getattr(ss, "data_url", None):
+            head, b64 = ss.data_url.split(",", 1) if "," in ss.data_url else ("", ss.data_url)
+            sig_bytes = base64.b64decode(b64)
+    elif signature_upload_path:
+        with open(signature_upload_path, "rb") as f:
+            sig_bytes = f.read()
+
+    if not sig_bytes:
+        raise ValueError("Aucune signature fournie")
+
+    try:
+        return _normalize_signature_to_png_bytes(sig_bytes)
+    except UnidentifiedImageError as e:
+        raise ValueError("Signature invalide") from e
+
+
+def _apply_visual_signature(pdf_src: bytes, sig_bytes: bytes, placements: list) -> bytes:
+    """Appose l'image de signature sur le PDF."""
+    return _paste_signature_on_pdf(pdf_src, sig_bytes, placements)
+
+
+def _apply_digital_signature(pdf_bytes: bytes, field_name: str) -> bytes:
+    """Signe numériquement le PDF."""
+    return _crypto_sign_pdf(pdf_bytes, field_name=field_name)
+
+
+def _generate_qr(job, name: str, placements: list, signed_bytes: bytes) -> bytes:
+    """Génère l'enveloppe, le QR et retourne le PDF final signé."""
+    title = name
+    env = Envelope.objects.create(
+        title=title,
+        status="completed",
+        include_qr_code=True,
+        created_by=job.created_by,
+    )
+
+    full_name = (
+        job.created_by.get_full_name()
+        or job.created_by.username
+        or (job.created_by.email or "Vous")
+    )
+    rcpt = EnvelopeRecipient.objects.create(
+        envelope=env,
+        user=job.created_by,
+        email=job.created_by.email or f"user{job.created_by.id}@example.com",
+        full_name=full_name,
+        order=1,
+        signed=True,
+        signed_at=timezone.now(),
+    )
+
+    sigdoc = SignatureDocument.objects.create(
+        envelope=env,
+        recipient=rcpt,
+        signer=job.created_by,
+        is_guest=False,
+        signature_data="batch-self-sign",
+        signed_fields={"placements": placements},
+    )
+    file_name = get_valid_filename((title or "document").replace("/", "_"))
+    if not file_name.lower().endswith(".pdf"):
+        file_name += ".pdf"
+    sigdoc.signed_file.save(file_name, ContentFile(signed_bytes), save=True)
+
+    hashes = compute_hashes(signed_bytes)
+    cert_info = extract_signer_certificate_info()
+    cert_data = sigdoc.certificate_data or {}
+    if hashes:
+        cert_data.update(hashes)
+    cert_data["certificate"] = cert_info
+    sigdoc.certificate_data = cert_data
+    sigdoc.save(update_fields=["signed_file", "certificate_data"])
+
+    qr = PrintQRCode.objects.create(envelope=env, qr_type="permanent")
+    front_base = getattr(settings, "FRONT_BASE_URL", "").rstrip("/")
+    if front_base:
+        verify_url = f"{front_base}/verify/{qr.uuid}?sig={qr.hmac}"
+    else:
+        verify_url = f"/verify/{qr.uuid}?sig={qr.hmac}"
+
+    buf = io.BytesIO()
+    qrcode.make(verify_url).save(buf, format="PNG")
+    with_qr = _add_qr_overlay_all_pages(signed_bytes, buf.getvalue())
+    final_bytes = _crypto_sign_pdf(with_qr, field_name="FinalizeQR")
+
+    sigdoc.signed_file.save(file_name, ContentFile(final_bytes), save=True)
+    sigdoc.certificate_data = {
+        **(sigdoc.certificate_data or {}),
+        "qr_embedded": True,
+    }
+    sigdoc.save(update_fields=["signed_file", "certificate_data"])
+
+    return final_bytes
+
+
+def _zip_results(job):
+    """Crée l'archive ZIP des PDF signés."""
+    try:
+        memzip = io.BytesIO()
+        with zipfile.ZipFile(memzip, "w", zipfile.ZIP_DEFLATED) as zf:
+            for it in job.items.filter(status="completed"):
+                if it.signed_file:
+                    it.signed_file.open("rb")
+                    zf.writestr(os.path.basename(it.signed_file.name), it.signed_file.read())
+                    it.signed_file.close()
+        memzip.seek(0)
+        job.result_zip.save(f"batch_{job.id}.zip", ContentFile(memzip.read()), save=False)
+    except Exception:
+        # pas bloquant pour le statut
+        pass
+
+
 @shared_task
 def process_batch_sign_job(
     job_id: int,
@@ -270,33 +394,13 @@ def process_batch_sign_job(
     job.save(update_fields=["status", "started_at"])
 
     # 1) Charger l'image de signature
-    sig_bytes = None
-    if use_saved_signature_id:
-        from .models import SavedSignature
-
-        ss = SavedSignature.objects.get(pk=use_saved_signature_id, user=job.created_by)
-        if getattr(ss, "image", None):
-            f = ss.image
-            f.open("rb")
-            sig_bytes = f.read()
-            f.close()
-        elif getattr(ss, "data_url", None):
-            head, b64 = ss.data_url.split(",", 1) if "," in ss.data_url else ("", ss.data_url)
-            sig_bytes = base64.b64decode(b64)
-    elif signature_upload_path:
-        with open(signature_upload_path, "rb") as f:
-            sig_bytes = f.read()
-
-    if not sig_bytes:
-        job.status = "failed"
-        job.finished_at = timezone.now()
-        job.save(update_fields=["status", "finished_at"])
-        return
-
-    # Normaliser en PNG (robuste)
     try:
-        sig_bytes = _normalize_signature_to_png_bytes(sig_bytes)
-    except UnidentifiedImageError:
+        sig_bytes = _load_signature(
+            job,
+            use_saved_signature_id=use_saved_signature_id,
+            signature_upload_path=signature_upload_path,
+        )
+    except Exception:
         job.status = "failed"
         job.finished_at = timezone.now()
         job.save(update_fields=["status", "finished_at"])
@@ -334,87 +438,17 @@ def process_batch_sign_job(
                 raise Exception("Aucun placement fourni")
 
             # Apposer la signature visuelle
-            stamped = _paste_signature_on_pdf(pdf_src, sig_bytes, placements)
+            stamped = _apply_visual_signature(pdf_src, sig_bytes, placements)
 
             # Signature numérique PAdES (scellé 1)
-            signed_bytes = _crypto_sign_pdf(stamped, field_name=f"Batch_{item.id}")
+            signed_bytes = _apply_digital_signature(stamped, field_name=f"Batch_{item.id}")
 
             final_bytes = signed_bytes
             base_name = (name.rsplit(".", 1)[0] or "document")
             out_name = f"{base_name}_signed.pdf"
 
             if include_qr:
-                # a) Créer une enveloppe minimale "terminée"
-                title = name
-                env = Envelope.objects.create(
-                    title=title,
-                    status="completed",
-                    include_qr_code=True,
-                    created_by=job.created_by,
-                )
-
-                # b) Destinataire = auteur du job (déjà signé)
-                full_name = (
-                    job.created_by.get_full_name()
-                    or job.created_by.username
-                    or (job.created_by.email or "Vous")
-                )
-                rcpt = EnvelopeRecipient.objects.create(
-                    envelope=env,
-                    user=job.created_by,
-                    email=job.created_by.email or f"user{job.created_by.id}@example.com",
-                    full_name=full_name,
-                    order=1,
-                    signed=True,
-                    signed_at=timezone.now(),
-                )
-
-                # c) SignatureDocument (trace & fichier)
-                sigdoc = SignatureDocument.objects.create(
-                    envelope=env,
-                    recipient=rcpt,
-                    signer=job.created_by,
-                    is_guest=False,
-                    signature_data="batch-self-sign",
-                    signed_fields={"placements": placements},
-                )
-                file_name = get_valid_filename((title or "document").replace("/", "_"))
-                if not file_name.lower().endswith(".pdf"):
-                    file_name += ".pdf"
-                sigdoc.signed_file.save(file_name, ContentFile(signed_bytes), save=True)
-
-                # d) Empreintes + infos certificat
-                hashes = compute_hashes(signed_bytes)
-                cert_info = extract_signer_certificate_info()
-                cert_data = sigdoc.certificate_data or {}
-                if hashes:
-                    cert_data.update(hashes)
-                cert_data["certificate"] = cert_info
-                sigdoc.certificate_data = cert_data
-                sigdoc.save(update_fields=["signed_file", "certificate_data"])
-
-                # e) QR permanent + URL de vérif standard
-                qr = PrintQRCode.objects.create(envelope=env, qr_type="permanent")
-                front_base = getattr(settings, "FRONT_BASE_URL", "").rstrip("/")
-                if front_base:
-                    verify_url = f"{front_base}/verify/{qr.uuid}?sig={qr.hmac}"
-                else:
-                    # fallback relatif (peut être résolu par ton front/nginx)
-                    verify_url = f"/verify/{qr.uuid}?sig={qr.hmac}"
-
-                # f) Générer le PNG, apposer, re-signer (scellé 2)
-                buf = io.BytesIO()
-                qrcode.make(verify_url).save(buf, format="PNG")
-                with_qr = _add_qr_overlay_all_pages(signed_bytes, buf.getvalue())
-                final_bytes = _crypto_sign_pdf(with_qr, field_name="FinalizeQR")
-
-                # g) Remplacer le fichier & marquer qr_embedded
-                sigdoc.signed_file.save(file_name, ContentFile(final_bytes), save=True)
-                sigdoc.certificate_data = {
-                    **(sigdoc.certificate_data or {}),
-                    "qr_embedded": True,
-                }
-                sigdoc.save(update_fields=["signed_file", "certificate_data"])
+                final_bytes = _generate_qr(job, name, placements, signed_bytes)
 
             # Écrire le PDF final dans l'item
             item.signed_file.save(out_name, ContentFile(final_bytes), save=False)
@@ -435,19 +469,7 @@ def process_batch_sign_job(
             job.save(update_fields=["failed"])
 
     # 3) ZIP des résultats
-    try:
-        memzip = io.BytesIO()
-        with zipfile.ZipFile(memzip, "w", zipfile.ZIP_DEFLATED) as zf:
-            for it in job.items.filter(status="completed"):
-                if it.signed_file:
-                    it.signed_file.open("rb")
-                    zf.writestr(os.path.basename(it.signed_file.name), it.signed_file.read())
-                    it.signed_file.close()
-        memzip.seek(0)
-        job.result_zip.save(f"batch_{job.id}.zip", ContentFile(memzip.read()), save=False)
-    except Exception:
-        # pas bloquant pour le statut
-        pass
+    _zip_results(job)
 
     # 4) Statut final
     if failed == 0 and done == job.total:

@@ -97,16 +97,12 @@ class EncryptedFileSystemStorage(FileSystemStorage):
         valid_name = self.get_valid_name(name)
         final_name = self.get_available_name(valid_name)
 
-        # Charger les données (pour l'instant en mémoire ; passage en streaming possible via update())
-        if hasattr(content, 'seek'):
+        # Lecture/validation en flux pour éviter de charger tout le fichier en mémoire
+        if hasattr(content, "seek"):
             content.seek(0)
-        data = content.read() if hasattr(content, 'read') else bytes(content)
-        if not data:
-            raise ValidationError("Le fichier est vide.")
-
-        # Validation basique PDF si extension .pdf
-        if final_name.lower().endswith('.pdf') and not data.startswith(b'%PDF-'):
-            raise ValidationError("Le fichier n'est pas un PDF valide.")
+        chunk_size = 1024 * 1024  # 1 Mo
+        first_chunk = True
+        ciphertext = bytearray()
 
         # Générer DEK & IV
         dek = os.urandom(32)
@@ -118,8 +114,24 @@ class EncryptedFileSystemStorage(FileSystemStorage):
         aad_type, aad_value = _get_aad_from_content(content, final_name)
         enc.authenticate_additional_data(aad_value)
 
-        ciphertext = enc.update(data) + enc.finalize()
+        while True:
+            chunk = content.read(chunk_size)
+            if not chunk:
+                break
+            if first_chunk:
+                # Validation basique PDF si extension .pdf
+                if final_name.lower().endswith('.pdf') and not chunk.startswith(b'%PDF-'):
+                    raise ValidationError("Le fichier n'est pas un PDF valide.")
+                first_chunk = False
+            ciphertext.extend(enc.update(chunk))
+
+        if first_chunk:
+            raise ValidationError("Le fichier est vide.")
+
+        ciphertext.extend(enc.finalize())
         tag = enc.tag
+
+        ciphertext = bytes(ciphertext)
 
         # Wrap DEK avec KMS
         key_id, wrapped = kms.wrap_key(dek)

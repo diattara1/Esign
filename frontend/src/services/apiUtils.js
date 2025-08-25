@@ -1,7 +1,7 @@
-// src/apiUtils.js
+// src/servics/apiUtils.js
 import axios from 'axios';
 import createAuthRefreshInterceptor from 'axios-auth-refresh';
-
+import { toast } from 'react-toastify';
 // URL de base de l'API Django
 export const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
 
@@ -62,6 +62,7 @@ api.interceptors.response.use(
   response => response,
   error => {
     if (!error.response) {
+        toast.error('Erreur réseau ou serveur injoignable');
       console.error('Network error or backend unreachable');
     } else if (error.response.status === 403) {
       console.warn('Access denied (403).');

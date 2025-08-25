@@ -4,11 +4,12 @@
 
 import io
 import logging
-
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from PyPDF2 import PdfReader
 
 logger = logging.getLogger(__name__)
+MAX_PDF_SIZE = getattr(settings, "MAX_PDF_SIZE", 10 * 1024 * 1024)
 
 
 def validate_pdf(file) -> None:
@@ -27,8 +28,11 @@ def validate_pdf(file) -> None:
         raise ValidationError(f"Type de fichier non autorisé: {ext} (PDF uniquement)")
 
     # Size
-    if file.size > 10 * 1024 * 1024:
-        raise ValidationError("Fichier trop volumineux (max 10MB)")
+    
+    if file.size > MAX_PDF_SIZE:
+        raise ValidationError(
+            f"Fichier trop volumineux (max {MAX_PDF_SIZE // (1024 * 1024)}MB)"
+        )
 
     if file.size == 0:
         raise ValidationError("Le fichier est vide.")

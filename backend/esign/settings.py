@@ -139,6 +139,8 @@ REST_FRAMEWORK = {
 CELERY_BROKER_URL = env.str('CELERY_BROKER_URL', 'redis://localhost:6379/0')
 # Nombre max de rappels par destinataire
 MAX_REMINDERS_SIGN = 5
+# Taille maximale d'un fichier PDF uploadé (10MB par défaut)
+MAX_PDF_SIZE = env.int('MAX_PDF_SIZE', default=10 * 1024 * 1024)
 
 # --- Paramètres OTP ---
 # Durée de validité d'un code OTP (en secondes)

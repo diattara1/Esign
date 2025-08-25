@@ -74,7 +74,11 @@ def send_templated_email(
         for filename, content, mimetype in attachments:
             email.attach(filename or "attachment", content, mimetype or "application/octet-stream")
 
-    email.send()
+    
+    try:
+        email.send()
+    except Exception:
+        logger.exception("Erreur lors de l'envoi de l'email")
 
 
 class EmailTemplates:

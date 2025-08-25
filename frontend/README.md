@@ -2,6 +2,24 @@
 
 This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
 
+## Environment Variables
+
+The frontend expects `REACT_APP_API_BASE_URL` to point to the backend API. Create the following files in this directory:
+
+- `.env.development` and `.env.test`:
+
+  ```
+  REACT_APP_API_BASE_URL=http://localhost:8000
+  ```
+
+- `.env.production`:
+
+  ```
+  REACT_APP_API_BASE_URL=https://api.example.com
+  ```
+
+The application will throw an error at startup if this variable is not defined.
+
 ## Available Scripts
 
 In the project directory, you can run:

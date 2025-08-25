@@ -3,7 +3,11 @@ import axios from 'axios';
 import createAuthRefreshInterceptor from 'axios-auth-refresh';
 import { toast } from 'react-toastify';
 // URL de base de l'API Django
-export const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
+export const API_BASE_URL = process.env.REACT_APP_API_BASE_URL;
+
+if (!API_BASE_URL) {
+  throw new Error('REACT_APP_API_BASE_URL is not defined');
+}
 
 // Instance Axios principale
 export const api = axios.create({

@@ -148,28 +148,22 @@ def change_password(request):
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 @api_view(['GET'])
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated])
 def verify_token(request):
     """Endpoint pour vérifier la validité du token JWT"""
-    try:
-        user = request.user
-        return Response({
-            'valid': True,
-            'user': {
-                'id': user.id,
-                'username': user.username,
-                'email': user.email,
-                'first_name': user.first_name,
-                'last_name': user.last_name,
-                'birth_date': user.birth_date,
-                'phone_number': user.phone_number,
-                'gender': user.gender,
-                'address': user.address,
-                'avatar': user.avatar.url if user.avatar else None,
-            }
-        }, status=status.HTTP_200_OK)
-    except Exception as e:
-        return Response({
-            'valid': False,
-            'error': str(e)
-        }, status=status.HTTP_401_UNAUTHORIZED)
+    user = request.user
+    return Response({
+        'valid': True,
+        'user': {
+            'id': user.id,
+            'username': user.username,
+            'email': user.email,
+            'first_name': user.first_name,
+            'last_name': user.last_name,
+            'birth_date': user.birth_date,
+            'phone_number': user.phone_number,
+            'gender': user.gender,
+            'address': user.address,
+            'avatar': user.avatar.url if user.avatar else None,
+        }
+    }, status=status.HTTP_200_OK)

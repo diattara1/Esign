@@ -8,6 +8,11 @@ class AuthTests(APITestCase):
         response = self.client.post(url, {})
         self.assertEqual(response.status_code, 400)
 
+    def test_verify_token_unauthenticated(self):
+        url = reverse('verify_token')
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 401)
+
 class EnvelopeTests(APITestCase):
     def test_guest_envelope_not_found(self):
         url = reverse('guest-envelope', kwargs={'pk': 999})

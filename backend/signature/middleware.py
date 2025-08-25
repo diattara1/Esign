@@ -78,12 +78,42 @@ class ClamAVMiddleware(MiddlewareMixin):
 
         return None
 
+from django.conf import settings
+
+
 class AllowIframeForPDFOnlyMiddleware:
+    """Limit iframe embedding of signed documents.
+
+    For the route serving the signed document PDF we keep ``X-Frame-Options``
+    configurable (defaulting to ``SAMEORIGIN``) and restrict the allowed frame
+    ancestors via ``Content-Security-Policy``. This prevents the previous
+    behaviour where the document could be embedded from any origin.
+    """
+
     def __init__(self, get_response):
         self.get_response = get_response
+        self.x_frame_options = getattr(
+            settings, "SIGNATURE_X_FRAME_OPTIONS", "SAMEORIGIN"
+        )
+        self.frame_ancestors = getattr(
+            settings, "SIGNATURE_FRAME_ANCESTORS", "'self'"
+        )
 
     def __call__(self, request):
         response = self.get_response(request)
-        if request.path.startswith("/api/signature/envelopes/") and request.path.endswith("/signed-document/"):
-            response.headers["X-Frame-Options"] = "ALLOWALL"
+        if request.path.startswith("/api/signature/envelopes/") and request.path.endswith(
+            "/signed-document/"
+        ):
+            response.headers["X-Frame-Options"] = self.x_frame_options
+
+            csp = response.headers.get("Content-Security-Policy", "")
+            directives = [d.strip() for d in csp.split(";") if d.strip()]
+            replaced = False
+            for i, directive in enumerate(directives):
+                if directive.startswith("frame-ancestors"):
+                    directives[i] = f"frame-ancestors {self.frame_ancestors}"
+                    replaced = True
+            if not replaced:
+                directives.append(f"frame-ancestors {self.frame_ancestors}")
+            response.headers["Content-Security-Policy"] = "; ".join(directives)
         return response

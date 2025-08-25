@@ -140,6 +140,9 @@ CELERY_BROKER_URL = env.str('CELERY_BROKER_URL', 'redis://localhost:6379/0')
 # Nombre max de rappels par destinataire
 MAX_REMINDERS_SIGN = 5
 
+SIGNATURE_FRAME_ANCESTORS = env.str("SIGNATURE_FRAME_ANCESTORS", "'self'")
+SIGNATURE_X_FRAME_OPTIONS = env.str("SIGNATURE_X_FRAME_OPTIONS", "SAMEORIGIN")
+
 
 CELERY_BEAT_SCHEDULE = {
     "signature-reminders-every-10min": {

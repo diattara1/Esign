@@ -52,18 +52,20 @@ class ClamAVMiddleware(MiddlewareMixin):
                             raise SuspiciousFileOperation(f"Virus détecté : {virus}")
                     else:
                         # Fallback : écrire dans un tmp, puis appeler clamscan
-                        with tempfile.NamedTemporaryFile(delete=False) as tmp:  # delete=True si la plateforme le permet
-                            for chunk in uploaded.chunks():
-                                tmp.write(chunk)
-                            tmp.flush()
-                            tmp_path = tmp.name
+                        tmp_path = None
                         try:
+                            with tempfile.NamedTemporaryFile(delete=False) as tmp:  # delete=True si la plateforme le permet
+                                for chunk in uploaded.chunks():
+                                    tmp.write(chunk)
+                                tmp.flush()
+                                tmp_path = tmp.name
                             proc = subprocess.run(
                                 ['clamscan', '--infected', '--stdout', tmp_path],
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
                             )
                         finally:
-                            os.unlink(tmp_path)
+                            if tmp_path and os.path.exists(tmp_path):
+                                os.unlink(tmp_path)
                         output = proc.stdout + proc.stderr
                         if 'FOUND' in output:
                             # Format : C:\path\to\tmpfile: Eicar-Test-Signature FOUND

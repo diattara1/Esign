@@ -140,9 +140,9 @@ REST_FRAMEWORK = {
         'rest_framework.throttling.ScopedRateThrottle'
     ],
     'DEFAULT_THROTTLE_RATES': {
-        'anon': '75/minute',
-        'user': '75/minute',
-        'verify-token': '15/minute'
+        'anon': '50/minute',
+        'user': '50/minute',
+        'verify-token': '25/minute'
     },
 }
 
@@ -216,6 +216,7 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/4.2/howto/static-files/
 
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 

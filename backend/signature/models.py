@@ -11,7 +11,7 @@ import hmac
 import logging
 
 from .storages import EncryptedFileSystemStorage
-from .utils import validate_pdf
+from .utils import validate_pdf,stream_hash
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +42,9 @@ def _sha256(data: bytes | str) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+# =========================
+# EnvelopeDocument
+# =========================
 class EnvelopeDocument(models.Model):
     envelope = models.ForeignKey(
         "Envelope", on_delete=models.CASCADE, related_name="documents"
@@ -53,7 +56,7 @@ class EnvelopeDocument(models.Model):
     name = models.CharField(max_length=255, blank=True)
     file_type = models.CharField(max_length=50, blank=True)
     file_size = models.PositiveIntegerField(null=True, blank=True)
-    hash_original = models.CharField(max_length=64, blank=True)
+    hash_original = models.CharField(max_length=64, blank=True)  # SHA-256 hex
     version = models.PositiveIntegerField(default=1)
 
     def __str__(self):
@@ -67,13 +70,12 @@ class EnvelopeDocument(models.Model):
             orig = EnvelopeDocument.objects.get(pk=self.pk)
         except EnvelopeDocument.DoesNotExist:
             return True
-        return orig.file.name != self.file.name
+        return (orig.file.name or "") != (self.file.name or "")
 
     # ---------- validation ----------
     def clean(self):
         if not self.file:
             return
-
         validate_pdf(self.file)
 
     # ---------- sauvegarde ----------
@@ -81,36 +83,39 @@ class EnvelopeDocument(models.Model):
         is_new = self._state.adding
 
         if self.file and (is_new or self._file_changed()):
-            # On s'assure que les validations s'appliquent
+            # Validation fichier
             self.clean()
 
             # Injecte l'AAD pour le chiffrement (doc_uuid immuable)
-            f = getattr(self.file, "file", None)
-            if f is not None:
+            f = getattr(self.file, "file", None) or self.file
+            try:
                 setattr(f, "_encryption_aad", uuid.UUID(str(self.doc_uuid)).bytes)
+            except Exception:
+                pass  # best-effort
 
             # Métadonnées
             self.name = self.file.name
             self.file_type = (
                 self.file.name.split(".")[-1].lower() if "." in self.file.name else ""
             )
-            self.file_size = self.file.size
+            try:
+                self.file_size = self.file.size
+            except Exception:
+                pass
 
-            # Hash clair (pour traçabilité) si PDF
+            # Hash clair (streaming) si PDF
             if self.file_type == "pdf":
                 try:
-                    self.file.seek(0)
-                    content = self.file.read()
-                    self.hash_original = _sha256(content)
-                    self.file.seek(0)
+                    hashes = stream_hash(self.file)  # {"hash_sha256": "..."}
+                    self.hash_original = hashes["hash_sha256"]
                 except Exception as e:
-                    logger.error(f"Error computing hash for envelope document: {e}")
+                    logger.error(f"Error computing stream hash for envelope document: {e}")
 
             # Versioning : +1 si modification
             if not is_new:
                 try:
                     orig = EnvelopeDocument.objects.get(pk=self.pk)
-                    self.version = orig.version + 1
+                    self.version = (orig.version or 0) + 1
                 except EnvelopeDocument.DoesNotExist:
                     pass
 
@@ -137,7 +142,7 @@ class Envelope(models.Model):
 
     title = models.CharField(max_length=255)
     description = models.TextField(blank=True)
-    include_qr_code = models.BooleanField(default=False)  
+    include_qr_code = models.BooleanField(default=False)
     document_file = models.FileField(
         upload_to="signature/documents/",
         storage=encrypted_storage,
@@ -154,7 +159,7 @@ class Envelope(models.Model):
     status = models.CharField(
         max_length=20, choices=STATUS_CHOICES, default="draft"
     )
-    hash_original = models.CharField(max_length=64, blank=True)
+    hash_original = models.CharField(max_length=64, blank=True)  # SHA-256 hex
     version = models.PositiveIntegerField(default=1)
     file_size = models.PositiveIntegerField(null=True, blank=True)
     file_type = models.CharField(max_length=50, blank=True)
@@ -181,6 +186,7 @@ class Envelope(models.Model):
         return (orig.document_file.name or "") != (self.document_file.name or "")
 
     def compute_hash(self, data: bytes | str) -> str:
+        # Gardé pour compatibilité si ailleurs tu hashes des bytes/str
         return _sha256(data)
 
     @property
@@ -201,7 +207,6 @@ class Envelope(models.Model):
     def clean(self):
         if not self.document_file:
             return
-
         validate_pdf(self.document_file)
 
     # ---------- sauvegarde ----------
@@ -220,33 +225,36 @@ class Envelope(models.Model):
             self.clean()
 
             # Injection AAD = doc_uuid (immuable) pour chiffrement
-            f = getattr(self.document_file, "file", None)
-            if f is not None:
+            f = getattr(self.document_file, "file", None) or self.document_file
+            try:
                 setattr(f, "_encryption_aad", uuid.UUID(str(self.doc_uuid)).bytes)
+            except Exception:
+                pass  # best-effort
 
             # Métadonnées fichier
             self.file_type = (
                 self.document_file.name.split(".")[-1].lower()
-                if "." in self.document_file.name
+                if "." in (self.document_file.name or "")
                 else ""
             )
-            self.file_size = self.document_file.size
+            try:
+                self.file_size = self.document_file.size
+            except Exception:
+                pass
 
-            # Hash clair si PDF
+            # Hash clair (streaming) si PDF
             if self.file_type == "pdf":
                 try:
-                    self.document_file.seek(0)
-                    content = self.document_file.read()
-                    self.hash_original = self.compute_hash(content)
-                    self.document_file.seek(0)
+                    hashes = stream_hash(self.document_file)  # {"hash_sha256": "..."}
+                    self.hash_original = hashes["hash_sha256"]
                 except Exception as e:
-                    logger.error(f"Error computing hash for envelope: {e}")
+                    logger.error(f"Error computing stream hash for envelope: {e}")
 
             # Versioning
             if not is_new:
                 try:
                     orig = Envelope.objects.get(pk=self.pk)
-                    self.version = orig.version + 1
+                    self.version = (orig.version or 0) + 1
                 except Envelope.DoesNotExist:
                     pass
 

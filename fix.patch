@@ -1,0 +1,61 @@
+diff --git a/signature/models.py b/signature/models.py
+index 0000000..0000002 100644
+--- a/signature/models.py
++++ b/signature/models.py
+@@
+-from .storages import EncryptedFileSystemStorage
+-from .utils import validate_pdf
++from .storages import EncryptedFileSystemStorage
++from .utils import validate_pdf, stream_hash
+@@
+ class EnvelopeDocument(models.Model):
+@@
+-    hash_original = models.CharField(max_length=64, blank=True)
++    hash_original = models.CharField(max_length=64, blank=True)  # SHA-256 hex
+@@
+-    def __str__(s
++    def __str__(s
+         ...
++
++    def save(self, *args, **kwargs):
++        """
++        Calcule l'empreinte SHA-256 du fichier en **stream** (mémoire constante).
++        """
++        # Laisser Django gérer size/type avant de hasher si besoin
++        super_call_first = kwargs.pop("_super_first", False)
++        if super_call_first:
++            super().save(*args, **kwargs)
++
++        file_field = getattr(self, "file", None)
++        if file_field and file_field.name:
++            # Déterminer metadata au besoin
++            if not self.file_size and hasattr(file_field, "size"):
++                self.file_size = file_field.size
++            if not self.file_type:
++                self.file_type = "pdf"  # tu imposes le PDF côté validation
++
++            # Hash streaming si pas encore présent ou si version change
++            try:
++                hashes = stream_hash(file_field, want_md5=False)
++                self.hash_original = hashes["hash_sha256"]
++            except Exception as exc:
++                logger.error("Failed to compute stream hash for EnvelopeDocument %s: %s", self.pk, exc)
++
++        # Sauvegarde finale
++        super().save(*args, **kwargs)
++
++        # Si tu préfères que le fichier existe d'abord avant de hasher :
++        # - appelle 'self.save(_super_first=True)' pour 1er passage
++        # - puis recalcule et re-save update_fields=["hash_original"]
++
+@@
+ class Envelope(models.Model):
+@@
+-    # si tu as un champ fichier au niveau Envelope et que tu faisais un read() complet:
+-    # remplace-le par la même logique:
+-    # def save(self, *args, **kwargs):
+-    #     if self.document_file:
+-    #         self.hash_original = stream_hash(self.document_file)["hash_sha256"]
+-    #     super().save(*args, **kwargs)
++    # Si ce modèle possède un champ fichier (ex: original_file/document_file) et que tu calcules un hash :
++    # utilise exactement la même logique que ci-dessus (stream_hash) pour éviter les read() complets.

@@ -34,6 +34,7 @@ from PyPDF2 import PdfReader, PdfWriter
 from reportlab.lib.utils import ImageReader
 from django.http import HttpResponse
 from rest_framework import status
+from ..utils import stream_hash
 
 
 
@@ -211,27 +212,15 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
         return doc, 'original'
  
     @staticmethod
-    def _serve_pdf(file_field, filename: str, inline: bool = True) -> HttpResponse:
-        try:
-            fh = file_field.storage.open(file_field.name, "rb")
-            data = fh.read()
-            fh.close()
-        except Exception:
-            logger.exception("Erreur lors du service du PDF")
-            raise
-    
-        resp = HttpResponse(data, content_type="application/pdf")
+    def _serve_pdf(file_field, filename: str, inline: bool = True):
+        fh = file_field.storage.open(file_field.name, "rb")
+        resp = FileResponse(fh, content_type="application/pdf")
         disp = "inline" if inline else "attachment"
-        safe_name = _safe_filename(filename)
+        safe_name = get_valid_filename(filename)
         resp["Content-Disposition"] = f'{disp}; filename="{safe_name}"; filename*=UTF-8\'\'{safe_name}'
-    
-        # Iframe policy : SAMEORIGIN + CSP configurable
         resp["X-Frame-Options"] = "SAMEORIGIN"
         frame_ancestors = getattr(settings, "SIGNATURE_FRAME_ANCESTORS", "'self'")
-        resp["Content-Security-Policy"] = (
-            f"frame-ancestors {frame_ancestors}; sandbox allow-scripts allow-forms allow-same-origin"
-        )
-    
+        resp["Content-Security-Policy"] = f"frame-ancestors {frame_ancestors}; sandbox allow-scripts allow-forms allow-same-origin"
         resp["Cache-Control"] = "no-store"
         resp["Pragma"] = "no-cache"
         resp["Expires"] = "0"
@@ -725,128 +714,116 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
             logger.info(f"_do_sign: champ {i+1}/{len(my_fields_meta)} traité avec succès")
     
         # 4) Sauvegarder le résultat & statut
-        # 4) Sauvegarder le résultat & statut
         with transaction.atomic():
+            # 1) Marquer le destinataire comme signé
             recipient.signed = True
             recipient.signed_at = timezone.now()
-            recipient.save(update_fields=['signed', 'signed_at'])
-            
-            
+            recipient.save(update_fields=["signed", "signed_at"])
+        
+            # 2) Créer l'objet SignatureDocument
             sig_doc = SignatureDocument.objects.create(
-                    envelope=envelope,
-                    recipient=recipient,
-                    signer=(self.request.user if self.request and self.request.user.is_authenticated else None),
-                    is_guest=(recipient.user is None),
-                    signature_data=signature_data,
-                    signed_fields=signed_fields,
-                    ip_address=self.request.META.get('REMOTE_ADDR'),
-                    user_agent=self.request.META.get('HTTP_USER_AGENT', ''),
-                    )
+                envelope=envelope,
+                recipient=recipient,
+                signer=(self.request.user if self.request and self.request.user.is_authenticated else None),
+                is_guest=(recipient.user is None),
+                signature_data=signature_data,
+                signed_fields=signed_fields,
+                ip_address=self.request.META.get("REMOTE_ADDR"),
+                user_agent=self.request.META.get("HTTP_USER_AGENT", ""),
+            )
+        
+            # 3) Sauvegarder le PDF signé initial (bytes = base_bytes)
             file_name = self._signed_filename(envelope.id, recipient.id)
             # IMPORTANT : AAD = doc_uuid de l'enveloppe (immutabilité de l'identité)
             aad = envelope.doc_uuid.bytes
             sig_doc.signed_file.save(file_name, AADContentFile(base_bytes, aad), save=True)
-                        # === Ajouter les empreintes + infos certificat dans certificate_data ===
+        
+            # 3a) Empreintes (streaming) + infos certificat sur le PDF signé
             try:
-                # Relire les bytes du PDF signé que l'on vient d'écrire
-                sig_doc.signed_file.open('rb')
-                final_pdf_bytes = sig_doc.signed_file.read()
-                sig_doc.signed_file.close()
-            
-                # 1) Empreintes
-                from signature.crypto_utils import compute_hashes, extract_signer_certificate_info
-                hashes = compute_hashes(final_pdf_bytes)  # -> {'hash_md5': '...', 'hash_sha256': '...'}
-            
-                # 2) Infos certificat (v1: depuis le cert de signature configuré)
-                #    -> tu pourras plus tard enrichir pour lire OCSP/CRL/TSA depuis le PDF
+                hashes = stream_hash(sig_doc.signed_file, want_md5=True)  # mémoire constante
                 cert_info = extract_signer_certificate_info()
-            
-                # 3) Poser dans certificate_data
+        
+                prior = sig_doc.certificate_data or {}
                 sig_doc.certificate_data = {
-                    **(sig_doc.certificate_data or {}),
-                    **hashes,                          # hash_md5 / hash_sha256
-                    "certificate": cert_info,          # {common_name, organization, country, serial_number}
-                    "qr_embedded": bool(getattr(sig_doc.certificate_data or {}, "qr_embedded", False)),
+                    **prior,
+                    "hash_sha256": hashes.get("hash_sha256"),
+                    "hash_md5": hashes.get("hash_md5"),
+                    "certificate": cert_info,  # {common_name, organization, country, serial_number}
+                    "qr_embedded": bool(prior.get("qr_embedded", False)),
                 }
                 sig_doc.save(update_fields=["certificate_data"])
             except Exception:
-                logger.exception("Impossible de calculer les empreintes / infos cert")
-            
+                logger.exception("Impossible de calculer les empreintes / infos cert (stream)")
+        
             logger.info(f"[SIGN] PDF signé sauvegardé → {sig_doc.signed_file.name}")
-    
-             # 3bis) Si c'était le DERNIER signataire : apposer le QR + re-scellement
+        
+            # 3b) Si c'était le DERNIER signataire : apposer le QR + re-scellement
             if envelope.include_qr_code and not envelope.recipients.filter(signed=False).exists():
                 try:
                     # Générer / réutiliser un QR permanent
-                    qr = envelope.qr_codes.filter(qr_type='permanent').first()
+                    qr = envelope.qr_codes.filter(qr_type="permanent").first()
                     if not qr:
-                        qr = PrintQRCode.objects.create(envelope=envelope, qr_type='permanent')
-            
+                        qr = PrintQRCode.objects.create(envelope=envelope, qr_type="permanent")
+        
                     # Construire URL FRONT propre
                     front_base = getattr(settings, "FRONT_BASE_URL", "").rstrip("/")
                     if front_base:
                         verify_url = f"{front_base}/verify/{qr.uuid}?sig={qr.hmac}"
                     else:
                         verify_url = self.request.build_absolute_uri(f"/verify/{qr.uuid}?sig={qr.hmac}")
-            
+        
                     # Anti-doublon: si déjà posé/scellé, ne pas recommencer
                     already_qr = bool((sig_doc.certificate_data or {}).get("qr_embedded"))
                     if not already_qr:
-                        # On a déjà les octets signés en mémoire si tu suis l’étape 1 (ex: `base_bytes` ou `final_pdf_bytes`)
-                        # Si tu as `final_pdf_bytes` (le PDF signé juste avant overlay), utilise-le :
-                        # sinon retombe sur une lecture propre depuis le storage.
-                        try:
-                            pdf_bytes_for_overlay = final_pdf_bytes  # variable que tu as juste après la 1ère signature
-                        except NameError:
-                            # fallback: relire depuis le storage
-                            with sig_doc.signed_file.open('rb') as f:
-                                pdf_bytes_for_overlay = f.read()
-            
+                        # Lire les octets du PDF signé actuel (nécessaire pour l'overlay)
+                        with sig_doc.signed_file.open("rb") as f:
+                            pdf_bytes_for_overlay = f.read()
+        
                         # Générer le PNG du QR
                         img = qrcode.make(verify_url)
                         buf = io.BytesIO()
                         img.save(buf, format="PNG")
                         qr_png = buf.getvalue()
-            
+        
                         # Apposer le QR sur toutes les pages
                         stamped = self._add_qr_overlay_to_pdf(pdf_bytes_for_overlay, qr_png)
-            
-                        # Re-signer pour sceller l’overlay
+        
+                        # Re-signer/sceller le PDF après overlay
                         final_signed = sign_pdf_bytes(stamped, field_name="FinalizeQR")
-            
-                        # Sauvegarder le PDF final (toujours via ContentFile)
-                        sig_doc.signed_file.save(file_name, ContentFile(final_signed), save=True)
-            
-                        # Calculer empreintes + infos certificat
-                        from signature.crypto_utils import compute_hashes, extract_signer_certificate_info
-                        hashes = compute_hashes(final_signed)
-                        cert_info = extract_signer_certificate_info()
-            
-                        sig_doc.certificate_data = {
-                            **(sig_doc.certificate_data or {}),
-                            **hashes,               # 'hash_md5' & 'hash_sha256'
-                            "certificate": cert_info,
-                            "qr_embedded": True,
-                        }
-                        sig_doc.save(update_fields=["signed_file", "certificate_data"])
-            
+        
+                        # Sauvegarder le PDF final (en gardant le même AAD)
+                        sig_doc.signed_file.save(file_name, AADContentFile(final_signed, aad), save=True)
+        
+                        # Recalculer les empreintes (streaming) + infos certificat
+                        try:
+                            hashes = stream_hash(sig_doc.signed_file, want_md5=True)
+                            cert_info = extract_signer_certificate_info()
+        
+                            sig_doc.certificate_data = {
+                                **(sig_doc.certificate_data or {}),
+                                "hash_sha256": hashes.get("hash_sha256"),
+                                "hash_md5": hashes.get("hash_md5"),
+                                "certificate": cert_info,
+                                "qr_embedded": True,
+                            }
+                            sig_doc.save(update_fields=["certificate_data"])
+                        except Exception:
+                            logger.exception("Impossible de recalculer les empreintes (stream) après overlay")
                 except Exception as e:
                     logger.exception(f"QR overlay/scellage échoué: {e}")
-                
-
-
+        
             # 4) Mettre à jour le statut de l'enveloppe
             unsigned_exists = envelope.recipients.filter(signed=False).exists()
             if unsigned_exists:
-                if envelope.status != 'pending':
-                    envelope.status = 'pending'
-                    envelope.save(update_fields=['status'])
+                if envelope.status != "pending":
+                    envelope.status = "pending"
+                    envelope.save(update_fields=["status"])
                 logger.info(f"[SIGN] Envelope {envelope.id} encore en cours → status=pending")
             else:
-                envelope.status = 'completed'
-                envelope.save(update_fields=['status'])
+                envelope.status = "completed"
+                envelope.save(update_fields=["status"])
                 logger.info(f"[SIGN] Envelope {envelope.id} COMPLETED ✅")
-    
+        
             # 5) Déclenchements APRÈS COMMIT
             def _after_commit():
                 try:
@@ -857,14 +834,13 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
                         # Enveloppe complète → mails finaux
                         logger.info(f"[SIGN] on_commit → enqueue send_document_completed_notification({envelope.id})")
                         send_document_completed_notification.delay(envelope.id)
-    
+        
                         logger.info(f"[SIGN] on_commit → enqueue send_signed_pdf_to_all_signers({envelope.id})")
                         send_signed_pdf_to_all_signers.delay(envelope.id)
                 except Exception as e:
                     logger.exception(f"[SIGN][ERR] on_commit error (envelope {envelope.id}): {e}")
-    
+        
             transaction.on_commit(_after_commit)
-    
         return Response({'status': 'signed'})
     
     

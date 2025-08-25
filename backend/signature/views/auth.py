@@ -1,7 +1,7 @@
 # signature/views/auth.py (mis à jour)
 
 from rest_framework import status
-from rest_framework.decorators import api_view, permission_classes, parser_classes
+from rest_framework.decorators import api_view, permission_classes, parser_classes, throttle_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.response import Response
@@ -12,6 +12,7 @@ from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.utils.encoding import force_bytes, force_str
 from django.contrib.auth.tokens import default_token_generator
 from django.contrib.auth import get_user_model
+from rest_framework.throttling import UserRateThrottle, AnonRateThrottle
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 import logging
 
@@ -73,6 +74,7 @@ def logout(request):
 @api_view(['POST'])
 @permission_classes([AllowAny])
 @parser_classes([MultiPartParser, FormParser])
+@throttle_classes([UserRateThrottle, AnonRateThrottle])
 def register(request):
     serializer = UserRegistrationSerializer(data=request.data)
     if serializer.is_valid():
@@ -130,6 +132,7 @@ def user_profile(request):
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
+@throttle_classes([UserRateThrottle, AnonRateThrottle])
 def password_reset_request(request):
     serializer = PasswordResetSerializer(data=request.data, context={'request': request})
     if serializer.is_valid():

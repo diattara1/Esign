@@ -15,6 +15,19 @@ export const api = axios.create({
   withCredentials: true,
 });
 
+// Tentative de récupération du jeton CSRF depuis différents cookies
+const CSRF_COOKIE_NAMES = ['csrftoken', 'CSRF-TOKEN', 'XSRF-TOKEN'];
+export const getCSRFToken = () => {
+  const cookies = document.cookie ? document.cookie.split(';') : [];
+  for (const cookie of cookies) {
+    const [name, value] = cookie.trim().split('=');
+    if (CSRF_COOKIE_NAMES.includes(name)) {
+      return decodeURIComponent(value);
+    }
+  }
+  return null;
+};
+
 // Callback que l'on remplira depuis AuthContext.js
 let logoutCallback = null;
 export const setLogoutCallback = (cb) => {
@@ -46,12 +59,22 @@ const refreshAuthLogic = (failedRequest) => {
 createAuthRefreshInterceptor(api, refreshAuthLogic);
 
 // Intercepteur de requête : ajuste le Content-Type pour FormData
+// et ajoute le header CSRF sur les requêtes mutantes
 api.interceptors.request.use(
   config => {
     if (config.data instanceof FormData) {
       // Laisse le navigateur gérer le Content-Type
       delete config.headers['Content-Type'];
     }
+
+    const method = config.method ? config.method.toLowerCase() : '';
+    if (['post', 'put', 'patch', 'delete'].includes(method)) {
+      const token = getCSRFToken();
+      if (token) {
+        config.headers['X-CSRFToken'] = token;
+      }
+    }
+
     return config;
   },
   error => Promise.reject(error)

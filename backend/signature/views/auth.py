@@ -12,7 +12,7 @@ from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.utils.encoding import force_bytes, force_str
 from django.contrib.auth.tokens import default_token_generator
 from django.contrib.auth import get_user_model
-from rest_framework.throttling import UserRateThrottle, AnonRateThrottle
+from rest_framework.throttling import UserRateThrottle, AnonRateThrottle,ScopedRateThrottle
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 import logging
 
@@ -150,10 +150,13 @@ def change_password(request):
         return Response({'detail': 'Mot de passe mis à jour'}, status=status.HTTP_200_OK)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
+@throttle_classes([ScopedRateThrottle])        # <- throttle spécifique
 def verify_token(request):
-    """Endpoint pour vérifier la validité du token JWT"""
+    request.throttle_scope = 'verify-token'    # <- nom du scope
     user = request.user
     return Response({
         'valid': True,

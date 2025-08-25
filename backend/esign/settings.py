@@ -137,10 +137,12 @@ REST_FRAMEWORK = {
     'DEFAULT_THROTTLE_CLASSES': [
         'rest_framework.throttling.AnonRateThrottle',
         'rest_framework.throttling.UserRateThrottle',
+        'rest_framework.throttling.ScopedRateThrottle'
     ],
     'DEFAULT_THROTTLE_RATES': {
-        'anon': '1/minute',
-        'user': '1/minute',
+        'anon': '75/minute',
+        'user': '75/minute',
+        'verify-token': '15/minute'
     },
 }
 

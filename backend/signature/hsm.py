@@ -1,9 +1,13 @@
 # signature/hsm.py
+import logging
+
 import pkcs11
 from django.conf import settings
-from pkcs11 import Mechanism, KeyType, ObjectClass,ObjectClass
+from pkcs11 import Mechanism, KeyType, ObjectClass
 from pkcs11.exceptions import NoSuchToken, PinIncorrect
-from typing import Tuple 
+from typing import Tuple
+
+logger = logging.getLogger(__name__)
 
 def hsm_sign(recipient, pin):
     """Sign the envelope's document hash using the HSM."""
@@ -20,9 +24,8 @@ def hsm_sign(recipient, pin):
             hash_hex = recipient.envelope.hash_original
             if not hash_hex:
                 # Fallback: compute the hash from the original file
-                recipient.envelope.document_file.open('rb')
-                file_data = recipient.envelope.document_file.read()
-                recipient.envelope.document_file.close()
+                with recipient.envelope.document_file.open('rb') as f:
+                    file_data = f.read()
                 hash_hex = recipient.envelope.compute_hash(file_data)
 
             data = bytes.fromhex(hash_hex)
@@ -33,6 +36,7 @@ def hsm_sign(recipient, pin):
     except PinIncorrect:
         raise Exception("PIN incorrect")
     except Exception as e:
+        logger.exception("Erreur HSM inattendue")
         raise Exception(f"Erreur HSM: {str(e)}")
 
 

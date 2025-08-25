@@ -140,6 +140,12 @@ CELERY_BROKER_URL = env.str('CELERY_BROKER_URL', 'redis://localhost:6379/0')
 # Nombre max de rappels par destinataire
 MAX_REMINDERS_SIGN = 5
 
+# --- Paramètres OTP ---
+# Durée de validité d'un code OTP (en secondes)
+OTP_TTL_SECONDS = env.int('OTP_TTL_SECONDS', default=300)
+# Nombre maximal de tentatives de vérification avant blocage
+MAX_OTP_ATTEMPTS = env.int('MAX_OTP_ATTEMPTS', default=3)
+
 SIGNATURE_FRAME_ANCESTORS = env.str("SIGNATURE_FRAME_ANCESTORS", "'self'")
 SIGNATURE_X_FRAME_OPTIONS = env.str("SIGNATURE_X_FRAME_OPTIONS", "SAMEORIGIN")
 

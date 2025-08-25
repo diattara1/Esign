@@ -20,9 +20,7 @@ const CompletedEnvelopes = () => {
     const loadEnvelopes = async () => {
       try {
         const data = await signatureService.getEnvelopes({ status: 'completed' });
-        if (process.env.NODE_ENV === 'development') {
-          console.log('Envelopes data:', data);
-        }
+       
         setEnvelopes(data);
       } catch (err) {
         toast.error('Échec du chargement des enveloppes');
@@ -41,9 +39,7 @@ const CompletedEnvelopes = () => {
   }, []);
 
   const DocumentCell = ({ row }) => {
-    if (process.env.NODE_ENV === 'development') {
-      console.log('Envelopes datas:', row);
-    }
+    
     return (
       <div className="flex items-start space-x-3">
         <div className="flex-shrink-0">

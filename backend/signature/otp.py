@@ -6,8 +6,10 @@ from django.conf import settings
 from smtplib import SMTPException
 from .email_utils import EmailTemplates
 
-OTP_TTL_SECONDS = 120
-MAX_OTP_ATTEMPTS = 3
+
+# Durée de validité de l'OTP (en secondes) et nombre max de tentatives
+OTP_TTL_SECONDS = getattr(settings, "OTP_TTL_SECONDS", 300)
+MAX_OTP_ATTEMPTS = getattr(settings, "MAX_OTP_ATTEMPTS", 3)
 expiry_minutes = math.ceil(OTP_TTL_SECONDS / 60)
 
 

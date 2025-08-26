@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
 
 // Assurez-vous que le chemin du composant Table correspond à votre projet.
 // Si vous avez nommé le fichier "Table.jsx" et exporté par défaut, importez depuis '../components/Table'.
 import Table from '../components/Tables';
+import EmptyState from '../components/EmptyState';
 
 // Services externes
 import signatureService from '../services/signatureService';
@@ -13,6 +14,7 @@ import logService from '../services/logService';
 const SentEnvelopes = () => {
   const [envelopes, setEnvelopes] = useState([]);
   const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
 
   // Chargement initial des enveloppes envoyées
   useEffect(() => {
@@ -164,7 +166,13 @@ const SentEnvelopes = () => {
         loading={loading}
         title="Enveloppes Envoyées"
         description={`Documents envoyés pour signature (${envelopes.length})`}
-        emptyMessage="Aucune enveloppe envoyée"
+        emptyState={
+          <EmptyState
+            message="Aucune enveloppe envoyée"
+            actionLabel="Créer une enveloppe"
+            onAction={() => navigate('/signature/new')}
+          />
+        }
         // Laisse Table gérer la responsivité: cartes sur mobile, tableau sur desktop
         itemsPerPage={10}
       />

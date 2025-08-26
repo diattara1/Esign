@@ -1,12 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import Table from '../components/Tables';
+import EmptyState from '../components/EmptyState';
 import signatureService from '../services/signatureService';
 import { toast } from 'react-toastify';
 import logService from '../services/logService';
+import { useNavigate } from 'react-router-dom';
 
 const DeletedEnvelopes = () => {
   const [envelopes, setEnvelopes] = useState([]);
   const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
 
   useEffect(() => {
     const loadEnvelopes = async () => {
@@ -59,7 +62,13 @@ const DeletedEnvelopes = () => {
       title="Enveloppes Supprimées"
       description={`Documents annulés ou supprimés (${envelopes.length})`}
       loading={loading}
-      emptyMessage="Aucune enveloppe supprimée"
+      emptyState={
+        <EmptyState
+          message="Aucune enveloppe supprimée"
+          actionLabel="Créer une enveloppe"
+          onAction={() => navigate('/signature/new')}
+        />
+      }
     />
   );
 };

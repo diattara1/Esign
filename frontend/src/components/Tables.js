@@ -9,6 +9,7 @@ const Table = ({
   description,
   loading = false,
   emptyMessage = 'Aucune donnée disponible',
+  emptyState = null,
   containerClassName = '',
   tableClassName = '',
   headerClassName = '',
@@ -62,8 +63,14 @@ const Table = ({
     return (
       <div className="space-y-4">
         {title && <TableHeader title={title} description={description} />}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8 text-center">
-          <p className="text-gray-500">{emptyMessage}</p>
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+          {emptyState ? (
+            emptyState
+          ) : (
+            <div className="p-8 text-center">
+              <p className="text-gray-500">{emptyMessage}</p>
+            </div>
+          )}
         </div>
       </div>
     );

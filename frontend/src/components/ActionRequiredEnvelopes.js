@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import Table from '../components/Tables';
+import EmptyState from '../components/EmptyState';
 import signatureService from '../services/signatureService';
 import { toast } from 'react-toastify';
 import { useNavigate } from 'react-router-dom';
@@ -78,7 +79,13 @@ const ActionRequiredEnvelopes = () => {
       title="Actions Requises"
       description={`${envelopes.length} documents nécessitent votre signature`}
       loading={loading}
-      emptyMessage="Aucune action requise pour le moment"
+      emptyState={
+        <EmptyState
+          message="Aucune action requise pour le moment"
+          actionLabel="Créer une enveloppe"
+          onAction={() => navigate('/signature/new')}
+        />
+      }
     />
   );
 };

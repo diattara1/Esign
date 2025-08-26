@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import Table from '../components/Tables';
+import EmptyState from '../components/EmptyState';
 import signatureService from '../services/signatureService';
 import { toast } from 'react-toastify';
 import { FiMoreVertical, FiDownload, FiPrinter, FiTrash2, FiEye } from 'react-icons/fi';
@@ -264,7 +265,13 @@ const CompletedEnvelopes = () => {
           columns={columns}
           data={envelopes}
           loading={loading}
-          emptyMessage="Aucune enveloppe complétée trouvée"
+          emptyState={
+            <EmptyState
+              message="Aucune enveloppe complétée trouvée"
+              actionLabel="Créer une enveloppe"
+              onAction={() => navigate('/signature/new')}
+            />
+          }
           containerClassName="rounded-lg "
           tableClassName="min-w-full"
           rowClassName="hover:bg-gray-50 transition-colors cursor-pointer"

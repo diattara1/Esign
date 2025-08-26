@@ -1,6 +1,7 @@
 // src/pages/signature/DraftEnvelopes.js
 import React, { useEffect, useState } from 'react';
 import Table from '../components/Tables';
+import EmptyState from '../components/EmptyState';
 import signatureService from '../services/signatureService';
 import { toast } from 'react-toastify';
 import { useNavigate } from 'react-router-dom';
@@ -99,7 +100,13 @@ const DraftEnvelopes = () => {
       title="Brouillons"
       description={`Documents en cours de préparation (${envelopes.length})`}
       loading={loading}
-      emptyMessage="Aucun brouillon disponible"
+      emptyState={
+        <EmptyState
+          message="Aucun brouillon disponible"
+          actionLabel="Créer une enveloppe"
+          onAction={() => navigate('/signature/new')}
+        />
+      }
     />
   );
 };

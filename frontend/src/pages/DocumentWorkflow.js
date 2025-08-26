@@ -5,6 +5,7 @@ import signatureService from '../services/signatureService';
 import { toast } from 'react-toastify';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
+import logService from '../services/logService';
 
 
 pdfjs.GlobalWorkerOptions.workerSrc =
@@ -58,7 +59,7 @@ const [includeQr, setIncludeQr] = useState(false);
       toast.success('Fichiers ajoutés');
       await reloadEnvelope(); // recharge tout
     } catch (e) {
-      console.error(e);
+      logService.error(e);
       toast.error("Échec de l'upload");
     } finally {
       setIsUploading(false);
@@ -157,7 +158,7 @@ const [includeQr, setIncludeQr] = useState(false);
   }, [selectedDocId]);
 
   const onDocumentError = useCallback((err) => {
-    console.error('PDF Error:', err);
+    logService.error('PDF Error:', err);
     toast.error('Erreur lors du chargement du PDF');
   }, []);
 
@@ -179,7 +180,7 @@ const selectDocument = useCallback(async (doc) => {
  setSelectedDocId(doc.id); // 2) puis l'ID (affichage, badges, etc.)
  setNumPagesByDoc(prev => ({ ...prev, [doc.id]: undefined }));
   } catch (e) {
-    console.error(e);
+    logService.error(e);
     toast.error('Impossible de charger ce PDF');
   } finally {
     // (optionnel) setLoadingDocId(null);
@@ -314,7 +315,7 @@ const selectDocument = useCallback(async (doc) => {
       toast.success('Enveloppe envoyée');
       navigate(`/signature/sent/${id}`);
     } catch (err) {
-      console.error(err);
+      logService.error(err);
       toast.error("Échec de l'envoi");
     }
   }, [id, recipients, fields, flowType, includeQr, navigate]);

@@ -9,6 +9,7 @@ import { Document, Page } from 'react-pdf';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 import signatureService from '../services/signatureService';
+import logService from '../services/logService';
 
 const LoadingSpinner = () => (
   <div className="flex items-center justify-center">
@@ -106,7 +107,7 @@ export default function QrVerifyPage() {
         const res = await signatureService.verifyQRCodeWithSig(uuid, sig);
         setData(res);
       } catch (e) {
-        console.error(e);
+        logService.error(e);
         setErr("Impossible de charger la preuve (QR non trouvé ou signature invalide).");
       } finally {
         setLoading(false);
@@ -129,7 +130,7 @@ export default function QrVerifyPage() {
         });
         setNumPages(0);
       } catch (e) {
-        console.error('PDF fetch error:', e);
+        logService.error('PDF fetch error:', e);
         setPdfUrl(null);
       } finally {
         setLoadingPdf(false);
@@ -322,7 +323,7 @@ export default function QrVerifyPage() {
                     key={uuid}
                     file={pdfUrl}
                     onLoadSuccess={({ numPages }) => setNumPages(numPages)}
-                    onLoadError={(err) => console.error('PDF error:', err)}
+                    onLoadError={(err) => logService.error('PDF error:', err)}
                     loading={<div className="p-6">Chargement PDF…</div>}
                   >
                     {Array.from({ length: numPages }, (_, i) => (

@@ -15,6 +15,7 @@ import {
   ExternalLink,
   Download
 } from 'lucide-react';
+import logService from '../services/logService';
 
 export default function EnvelopeSent() {
   const { id } = useParams();
@@ -29,7 +30,7 @@ export default function EnvelopeSent() {
         const data = await signatureService.getEnvelope(id);
         setEnvelope(data);
       } catch (error) {
-        console.error("Erreur lors du chargement de l'enveloppe:", error);
+        logService.error("Erreur lors du chargement de l'enveloppe:", error);
         setEnvelope(null);
       } finally {
         setLoading(false);

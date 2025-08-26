@@ -1,6 +1,7 @@
 // src/pages/ProfilePage.js
 import React, { useEffect, useState } from 'react';
 import { api, API_BASE_URL } from '../services/apiUtils';
+import logService from '../services/logService';
 import { 
   User, Mail, Calendar, Phone, MapPin, Upload, Eye, EyeOff, 
   Save, Lock, CheckCircle, XCircle, Camera, Edit3, Shield
@@ -40,7 +41,7 @@ const ProfilePage = () => {
           setAvatarPreview(`${API_BASE_URL}${res.data.avatar}`);
         }
       } catch (err) {
-        console.error(err);
+        logService.error(err);
       }
     };
     fetchProfile();

@@ -16,6 +16,7 @@ import logService from '../services/logService';
 import sanitize from '../utils/sanitize';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
+import useFocusTrap from '../hooks/useFocusTrap';
 
 
 const DocumentSign = () => {
@@ -72,6 +73,8 @@ const DocumentSign = () => {
   // modal
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedField, setSelectedField] = useState(null);
+  const triggerRef = useRef(null);
+  const modalRef = useRef(null);
 
   // modes: "draw" | "upload"
   const [mode, setMode] = useState('draw');
@@ -312,16 +315,21 @@ async function urlToDataUrl(url) {
   });
 
   // modal ouverture
-  const openFieldModal = (field) => {
-  if (isAlreadySigned) return toast.info('Document déjà signé');
-  if (!field.editable) return toast.info('Champ non éditable');
-  setSelectedField(field);
-  setMode('draw');
-  setUploadPreview(signatureData[field.id] || null);
-  setSavedSelectedId(null); // <—
-  setModalOpen(true);
-};
+  const openFieldModal = (field, event) => {
+    if (isAlreadySigned) return toast.info('Document déjà signé');
+    if (!field.editable) return toast.info('Champ non éditable');
+    triggerRef.current = event?.currentTarget || null;
+    setSelectedField(field);
+    setMode('draw');
+    setUploadPreview(signatureData[field.id] || null);
+    setSavedSelectedId(null);
+    setModalOpen(true);
+  };
 
+  const closeModal = () => {
+    setModalOpen(false);
+    triggerRef.current?.focus();
+  };
 
   // validation du modal
   const handleModalConfirm = () => {
@@ -333,9 +341,21 @@ async function urlToDataUrl(url) {
         ? { ...f, signed: true, signature_data: dataUrl }
         : f))
     }));
-    setModalOpen(false);
     toast.success('Signature ajoutée');
+    closeModal();
   };
+
+  useFocusTrap(modalRef, modalOpen);
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') closeModal();
+    };
+    if (modalOpen) {
+      document.addEventListener('keydown', handleKeyDown);
+    }
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [modalOpen]);
 
   // peut-on signer ?
   const canSign = () => {
@@ -475,7 +495,7 @@ async function urlToDataUrl(url) {
                 return (
                   <div
                     key={field.id}
-                    onClick={field.editable ? () => openFieldModal(field) : undefined}
+                    onClick={field.editable ? (e) => openFieldModal(field, e) : undefined}
                     title={field.editable ? 'Cliquer pour signer' : 'Champ non éditable'}
                     className={`absolute flex items-center justify-center text-xs font-semibold border-2 ${
                       field.signed ? 'border-green-500 bg-green-100' : 'border-red-500 bg-red-100'
@@ -602,9 +622,12 @@ async function urlToDataUrl(url) {
       {/* MODAL — seulement "Dessiner" et "Importer" */}
       <Modal
         isOpen={modalOpen}
-        onRequestClose={() => setModalOpen(false)}
+        onRequestClose={closeModal}
         contentLabel="Signer le champ"
         ariaHideApp={false}
+        role="dialog"
+        aria-modal="true"
+        contentRef={(node) => (modalRef.current = node)}
         style={{
           overlay: {
             zIndex: 10000,
@@ -748,7 +771,7 @@ async function urlToDataUrl(url) {
         )}
 
         <div className="mt-4 flex justify-end gap-2">
-          <button onClick={() => setModalOpen(false)} className="px-4 py-2 rounded bg-gray-200">
+          <button onClick={closeModal} className="px-4 py-2 rounded bg-gray-200">
             Annuler
           </button>
           <button onClick={handleModalConfirm} className="px-4 py-2 rounded bg-green-600 text-white">

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import Table from '../components/Tables';
 import signatureService from '../services/signatureService';
 import { toast } from 'react-toastify';
@@ -14,6 +14,12 @@ const CompletedEnvelopes = () => {
   const [envelopes, setEnvelopes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [menuOpenId, setMenuOpenId] = useState(null);
+  const menuButtonRef = useRef(null);
+
+  const closeMenu = () => {
+    setMenuOpenId(null);
+    menuButtonRef.current?.focus();
+  };
 
   const navigate = useNavigate();
 
@@ -34,10 +40,26 @@ const CompletedEnvelopes = () => {
   }, []);
   // Fermer le menu quand on clique ailleurs
   useEffect(() => {
-    const handleClickOutside = () => setMenuOpenId(null);
+    const handleClickOutside = () => {
+      if (menuOpenId !== null) {
+        closeMenu();
+      }
+    };
     document.addEventListener('click', handleClickOutside);
     return () => document.removeEventListener('click', handleClickOutside);
-  }, []);
+  }, [menuOpenId]);
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        closeMenu();
+      }
+    };
+    if (menuOpenId !== null) {
+      document.addEventListener('keydown', handleKeyDown);
+      return () => document.removeEventListener('keydown', handleKeyDown);
+    }
+  }, [menuOpenId]);
 
   const DocumentCell = ({ row }) => {
     
@@ -149,9 +171,14 @@ const CompletedEnvelopes = () => {
   const ActionsCell = ({ value: id, row }) => (
     <div className="relative inline-block">
       <button
-        onClick={e => { 
-          e.stopPropagation(); 
-          setMenuOpenId(menuOpenId === id ? null : id); 
+        onClick={e => {
+          e.stopPropagation();
+          if (menuOpenId === id) {
+            closeMenu();
+          } else {
+            menuButtonRef.current = e.currentTarget;
+            setMenuOpenId(id);
+          }
         }}
         className="p-2 hover:bg-gray-100 rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
       >
@@ -164,7 +191,7 @@ const CompletedEnvelopes = () => {
               onClick={(e) => {
                 e.stopPropagation();
                 handlePreview(id);
-                setMenuOpenId(null);
+                closeMenu();
               }}
               className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
             >
@@ -175,7 +202,7 @@ const CompletedEnvelopes = () => {
               onClick={(e) => {
                 e.stopPropagation();
                 handleDownload(id, row.title);
-                setMenuOpenId(null);
+                closeMenu();
               }}
               className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
             >
@@ -186,7 +213,7 @@ const CompletedEnvelopes = () => {
               onClick={(e) => {
                 e.stopPropagation();
                 handlePrint(id);
-                setMenuOpenId(null);
+                closeMenu();
               }}
               className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
             >
@@ -198,6 +225,7 @@ const CompletedEnvelopes = () => {
               onClick={(e) => {
                 e.stopPropagation();
                 handleDelete(id);
+                closeMenu();
               }}
               className="flex items-center w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
             >

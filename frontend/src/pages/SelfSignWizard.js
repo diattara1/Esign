@@ -1,5 +1,7 @@
 // src/pages/SelfSignWizard.js
 import React, { useEffect, useRef, useState, useLayoutEffect } from 'react';
+import usePageTitleFocus from '../utils/usePageTitleFocus';
+import { handleKeyDown } from '../utils/keyboard';
 import { Document, Page } from 'react-pdf';
 import { toast } from 'react-toastify';
 import { FiUpload, FiX, FiEdit3, FiMenu, FiCheck } from 'react-icons/fi';
@@ -104,6 +106,8 @@ export default function SelfSignWizard() {
   // Option QR (checkbox)
   const [includeQr, setIncludeQr] = useState(true);
 
+  const titleRef = usePageTitleFocus();
+
   /* layout + responsive width (mesure unique) */
   useLayoutEffect(() => {
     const measure = () => setViewerWidth(viewerRef.current?.clientWidth || 600);
@@ -192,7 +196,7 @@ export default function SelfSignWizard() {
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-emerald-100 rounded-lg"><FiEdit3 className="w-5 h-5 text-emerald-600" /></div>
-            <h1 className="text-lg md:text-xl font-bold text-gray-900">Auto-signature</h1>
+            <h1 ref={titleRef} tabIndex={-1} className="text-lg md:text-xl font-bold text-gray-900">Auto-signature</h1>
           </div>
           {isMobile && <button onClick={() => setSidebarOpen(false)} className="p-2 hover:bg-gray-100 rounded-lg"><FiX className="w-5 h-5" /></button>}
         </div>
@@ -323,7 +327,15 @@ export default function SelfSignWizard() {
 
       {/* Sidebar */}
       <div className={`${isMobile ? `fixed inset-y-0 left-0 z-40 w-80 transform transition-transform ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}` : 'w-1/3'} bg-white border-r border-gray-200 flex flex-col`}>
-        {isMobile && sidebarOpen && <div className="fixed inset-0 bg-black/50 z-30" onClick={() => setSidebarOpen(false)} />}
+        {isMobile && sidebarOpen && (
+          <div
+            className="fixed inset-0 bg-black/50 z-30"
+            onClick={() => setSidebarOpen(false)}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => handleKeyDown(e, () => setSidebarOpen(false), () => setSidebarOpen(false))}
+          />
+        )}
         <div className="relative z-40 bg-white h-full flex flex-col"><Sidebar /></div>
       </div>
 
@@ -360,7 +372,11 @@ export default function SelfSignWizard() {
                     <div key={i} className="relative mb-6 bg-white shadow-lg rounded-lg overflow-hidden">
                       <Page pageNumber={i + 1} width={pageWidth} renderTextLayer={false} onLoadSuccess={(p) => onPageLoad(i + 1, p)} className="mx-auto" />
                       {pageDims[i + 1] && (
-                        <div onClick={(e) => handleOverlayClick(e, i + 1)}
+                        <div
+                             onClick={(e) => handleOverlayClick(e, i + 1)}
+                             role="button"
+                             tabIndex={0}
+                             onKeyDown={(e) => handleKeyDown(e, (ev) => handleOverlayClick(ev, i + 1), () => setPlacing(false))}
                              className="absolute top-0 left-1/2 -translate-x-1/2"
                              style={{ width: pageWidth, height: pageDims[i + 1].height * scale, cursor: placing ? 'crosshair' : 'default', zIndex: 10, backgroundColor: placing ? 'rgba(16,185,129,.08)' : 'transparent' }} />
                       )}

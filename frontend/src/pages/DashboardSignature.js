@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import usePageTitleFocus from '../utils/usePageTitleFocus';
 import { Link } from 'react-router-dom';
 import SignatureNavbar from '../components/SignatureNavbar';
 import signatureService from '../services/signatureService';
@@ -39,6 +40,8 @@ const DashboardSignature = () => {
   const [recentDocuments, setRecentDocuments] = useState([]);
   const [filter, setFilter] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
+
+  const titleRef = usePageTitleFocus();
 
   useEffect(() => {
     const loadData = async () => {
@@ -152,7 +155,7 @@ const DashboardSignature = () => {
       <main className="flex-1 bg-gray-50 p-4 sm:p-6 lg:px-8">
         {/* En-tête */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6 gap-4">
-          <h1 className="text-2xl font-semibold text-gray-900">Tableau de bord</h1>
+          <h1 ref={titleRef} tabIndex={-1} className="text-2xl font-semibold text-gray-900">Tableau de bord</h1>
           <Link
             to="/signature/new"
             className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"

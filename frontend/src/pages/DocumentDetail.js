@@ -2,6 +2,8 @@
 // Version responsive avec sidebar mobile et meilleure adaptation
 
 import React, { useEffect, useState, useCallback, useLayoutEffect, useRef } from 'react';
+import usePageTitleFocus from '../utils/usePageTitleFocus';
+import { handleKeyDown } from '../utils/keyboard';
 import { useParams, Link } from 'react-router-dom';
 import { Document, Page } from 'react-pdf';
 import { FiMenu, FiX, FiDownload, FiExternalLink, FiArrowLeft, FiClock } from 'react-icons/fi';
@@ -18,7 +20,13 @@ function ReminderModal({ open, count, onClose }) {
   
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div
+        className="absolute inset-0 bg-black/40"
+        onClick={onClose}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => handleKeyDown(e, onClose, onClose)}
+      />
       <div className="relative bg-white rounded-xl shadow-xl w-full max-w-sm mx-4 p-6">
         <div className="flex items-center gap-3 mb-3">
           <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center">
@@ -50,6 +58,8 @@ function ReminderModal({ open, count, onClose }) {
 
 const DocumentDetail = () => {
   const { id } = useParams();
+
+  const titleRef = usePageTitleFocus();
 
   // État principal
   const [env, setEnv] = useState(null);
@@ -242,7 +252,7 @@ const DocumentDetail = () => {
         >
           <FiMenu className="w-5 h-5" />
         </button>
-        <h1 className="font-semibold text-gray-900 truncate mx-4 flex-1">{env.title}</h1>
+        <h1 ref={titleRef} tabIndex={-1} className="font-semibold text-gray-900 truncate mx-4 flex-1">{env.title}</h1>
         <div className="flex space-x-2">
           <button
             onClick={handlePreview}

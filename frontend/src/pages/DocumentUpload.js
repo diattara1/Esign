@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import React, { useState } from 'react';
+import usePageTitleFocus from '../utils/usePageTitleFocus';
 import signatureService from '../services/signatureService';
 import { toast } from 'react-toastify';
 import { FiUpload, FiFileText } from 'react-icons/fi';
@@ -11,6 +12,8 @@ const DocumentUpload = () => {
   const [title, setTitle] = useState('');
   const [errors, setErrors] = useState({});
   const navigate = useNavigate();
+
+  const titleRef = usePageTitleFocus();
 
   const handleFileChange = async (e) => {
     const selectedFiles = Array.from(e.target.files);
@@ -61,7 +64,7 @@ const DocumentUpload = () => {
   return (
     <div className="max-w-2xl mx-auto px-6 py-10">
       <div className="bg-white rounded-lg shadow-lg p-6">
-        <h1 className="text-2xl font-bold text-gray-800 mb-6 flex items-center gap-2">
+        <h1 ref={titleRef} tabIndex={-1} className="text-2xl font-bold text-gray-800 mb-6 flex items-center gap-2">
           <FiFileText className="text-blue-500" />
           Téléverser un document
         </h1>

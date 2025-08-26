@@ -1,5 +1,6 @@
 // QrVerifyPage.jsx
 import React, { useEffect, useState, useLayoutEffect, useRef } from 'react';
+import usePageTitleFocus from '../utils/usePageTitleFocus';
 import {
   CheckCircle, AlertTriangle, FileText, Shield, Calendar,
   User, Hash, ExternalLink, Info, Mail
@@ -64,6 +65,7 @@ export default function QrVerifyPage() {
   const [numPages, setNumPages] = useState(0);
   const viewerRef = useRef(null);
   const [contentWidth, setContentWidth] = useState(0);
+  const titleRef = usePageTitleFocus();
   // Mesure responsive du conteneur PDF
   useLayoutEffect(() => {
   const el = viewerRef.current;
@@ -186,7 +188,7 @@ export default function QrVerifyPage() {
             <FileText className="w-6 h-6 text-purple-600" />
           </div>
           <div className="flex-1">
-            <h1 className="text-2xl font-bold text-gray-900">
+            <h1 ref={titleRef} tabIndex={-1} className="text-2xl font-bold text-gray-900">
               {data?.title || 'Document'}
             </h1>
             <p className="text-sm text-gray-500 mt-1">

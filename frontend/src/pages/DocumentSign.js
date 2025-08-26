@@ -4,6 +4,7 @@
 // MISE À JOUR: Redirection selon le type d'utilisateur
 
 import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
+import usePageTitleFocus from '../utils/usePageTitleFocus';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import { Document, Page, pdfjs } from 'react-pdf';
@@ -45,6 +46,8 @@ const DocumentSign = () => {
       if (ro) ro.disconnect();
     };
   }, []);
+
+  const titleRef = usePageTitleFocus();
 
   // données
   const [loading, setLoading] = useState(true);
@@ -512,7 +515,7 @@ async function urlToDataUrl(url) {
     <div className="flex h-screen">
       {/* sidebar */}
       <div className="w-80 bg-white border-r p-6 overflow-auto">
-        <h1 className="text-2xl font-bold mb-4">
+        <h1 ref={titleRef} tabIndex={-1} className="text-2xl font-bold mb-4">
         {isAlreadySigned ? 'Document déjà signé :' : 'Signer le document :'} {sanitize(envelope.title)}
         </h1>
 

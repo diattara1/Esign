@@ -1,5 +1,6 @@
 // src/pages/RegisterPage.js
 import React, { useState } from 'react';
+import usePageTitleFocus from '../utils/usePageTitleFocus';
 import { Link } from 'react-router-dom';
 import { api } from '../services/apiUtils';
 import {
@@ -31,6 +32,8 @@ const RegisterPage = () => {
   const [avatarPreview, setAvatarPreview] = useState(null);
   const isStep1Valid = registerStep1Schema.isValidSync(form);
   const isStep2Valid = registerStep2Schema.isValidSync(form);
+
+  const titleRef = usePageTitleFocus();
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -112,7 +115,7 @@ const RegisterPage = () => {
             <div className="mx-auto h-16 w-16 bg-green-500 rounded-full flex items-center justify-center mb-6">
               <CheckCircle className="h-8 w-8 text-white" />
             </div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-4">
+            <h2 ref={titleRef} tabIndex={-1} className="text-2xl font-bold text-gray-900 mb-4">
               Inscription réussie !
             </h2>
             <p className="text-gray-600 mb-6">
@@ -145,7 +148,7 @@ const RegisterPage = () => {
           <div className="mx-auto h-12 w-12 bg-blue-600 rounded-xl flex items-center justify-center">
             <UserPlus className="h-6 w-6 text-white" />
           </div>
-          <h2 className="mt-6 text-3xl font-bold tracking-tight text-gray-900">
+          <h2 ref={titleRef} tabIndex={-1} className="mt-6 text-3xl font-bold tracking-tight text-gray-900">
             Créer un compte
           </h2>
           <p className="mt-2 text-sm text-gray-600">

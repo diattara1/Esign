@@ -1,5 +1,6 @@
 // src/pages/LoginPage.js
 import React, { useState } from 'react';
+import usePageTitleFocus from '../utils/usePageTitleFocus';
 import { useAuth } from '../AuthContext';
 import { useLocation, Link } from 'react-router-dom';
 import { Eye, EyeOff, Mail, Lock, CheckCircle, XCircle, Loader2 } from 'lucide-react';
@@ -16,6 +17,8 @@ const LoginPage = () => {
   const [errors, setErrors] = useState({});
   const [showPassword, setShowPassword] = useState(false);
   const isFormValid = loginSchema.isValidSync({ username, password });
+
+  const titleRef = usePageTitleFocus();
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -46,7 +49,7 @@ const LoginPage = () => {
           <div className="mx-auto h-12 w-12 bg-blue-600 rounded-xl flex items-center justify-center">
             <Lock className="h-6 w-6 text-white" />
           </div>
-          <h2 className="mt-6 text-3xl font-bold tracking-tight text-gray-900">
+          <h2 ref={titleRef} tabIndex={-1} className="mt-6 text-3xl font-bold tracking-tight text-gray-900">
             Connexion
           </h2>
           <p className="mt-2 text-sm text-gray-600">

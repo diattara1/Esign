@@ -1,5 +1,7 @@
 // src/pages/ProfilePage.js
 import React, { useEffect, useState } from 'react';
+import usePageTitleFocus from '../utils/usePageTitleFocus';
+import { handleKeyDown } from '../utils/keyboard';
 import { api, API_BASE_URL } from '../services/apiUtils';
 import logService from '../services/logService';
 import {
@@ -36,6 +38,8 @@ const ProfilePage = () => {
   const [activeTab, setActiveTab] = useState('profile');
   const isProfileValid = profileSchema.isValidSync(profile);
   const isPwdValid = passwordChangeSchema.isValidSync(passwordData);
+
+  const titleRef = usePageTitleFocus();
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -163,7 +167,7 @@ const ProfilePage = () => {
                 </div>
               </div>
               <div className="flex-1">
-                <h1 className="text-2xl font-bold text-white">
+                <h1 ref={titleRef} tabIndex={-1} className="text-2xl font-bold text-white">
                   {profile.first_name && profile.last_name 
                     ? `${profile.first_name} ${profile.last_name}` 
                     : profile.username}
@@ -178,6 +182,7 @@ const ProfilePage = () => {
             <nav className="flex px-6">
               <button
                 onClick={() => setActiveTab('profile')}
+                onKeyDown={(e) => handleKeyDown(e, () => setActiveTab('profile'))}
                 className={`py-4 px-6 text-sm font-medium border-b-2 transition-colors ${
                   activeTab === 'profile'
                     ? 'border-blue-500 text-blue-600'
@@ -189,6 +194,7 @@ const ProfilePage = () => {
               </button>
               <button
                 onClick={() => setActiveTab('password')}
+                onKeyDown={(e) => handleKeyDown(e, () => setActiveTab('password'), () => setActiveTab('profile'))}
                 className={`py-4 px-6 text-sm font-medium border-b-2 transition-colors ${
                   activeTab === 'password'
                     ? 'border-blue-500 text-blue-600'

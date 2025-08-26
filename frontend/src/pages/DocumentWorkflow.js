@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import usePageTitleFocus from '../utils/usePageTitleFocus';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Document, Page, pdfjs } from 'react-pdf';
 import signatureService from '../services/signatureService';
@@ -20,6 +21,8 @@ export default function DocumentWorkflow() {
   const [deadlineMode, setDeadlineMode] = useState('days'); // 'days' | 'exact'
   const [deadlineDays, setDeadlineDays] = useState(7);
   const [deadlineExact, setDeadlineExact] = useState('');   // 'YYYY-MM-DDTHH:mm' (local)
+
+  const titleRef = usePageTitleFocus();
 
   const [documents, setDocuments] = useState([]);
   const [selectedDocId, setSelectedDocId] = useState(null);
@@ -403,7 +406,7 @@ const selectDocument = useCallback(async (doc) => {
       <div className="w-80 bg-white shadow-lg overflow-y-auto border-r border-gray-200">
         <div className="p-6">
           <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-bold text-gray-900">Destinataires</h2>
+            <h2 ref={titleRef} tabIndex={-1} className="text-xl font-bold text-gray-900">Destinataires</h2>
             <div className="text-sm text-gray-500">
               {recipients.length} signataire{recipients.length > 1 ? 's' : ''}
             </div>

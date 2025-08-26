@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import usePageTitleFocus from '../utils/usePageTitleFocus';
 import { useParams, useNavigate } from 'react-router-dom';
 import signatureService from '../services/signatureService';
 import SignatureNavbar from '../components/SignatureNavbar';
@@ -22,6 +23,8 @@ export default function EnvelopeSent() {
   const navigate = useNavigate();
   const [envelope, setEnvelope] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  const titleRef = usePageTitleFocus();
 
   useEffect(() => {
     const loadEnvelope = async () => {
@@ -110,7 +113,7 @@ export default function EnvelopeSent() {
           
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
-              <h1 className="text-2xl lg:text-3xl font-bold text-gray-900 mb-2">
+              <h1 ref={titleRef} tabIndex={-1} className="text-2xl lg:text-3xl font-bold text-gray-900 mb-2">
                 Document envoyé avec succès !
               </h1>
               <p className="text-gray-600">

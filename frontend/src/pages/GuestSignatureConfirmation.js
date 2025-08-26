@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import usePageTitleFocus from '../utils/usePageTitleFocus';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import signatureService from '../services/signatureService';
@@ -25,6 +26,8 @@ const GuestSignatureConfirmation = () => {
   const [downloading, setDownloading] = useState(false);
   const [envelope, setEnvelope] = useState(null);
   const [loadingEnv, setLoadingEnv] = useState(true);
+
+  const titleRef = usePageTitleFocus();
 
   const envelopeId = location.state?.id || searchParams.get('id');
   const token = searchParams.get('token');
@@ -120,7 +123,7 @@ const GuestSignatureConfirmation = () => {
               </div>
             </div>
             <div className="mt-6">
-              <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-gray-900 mb-3">
+              <h1 ref={titleRef} tabIndex={-1} className="text-3xl sm:text-4xl lg:text-5xl font-bold text-gray-900 mb-3">
                 Signature réussie !
               </h1>
               <p className="text-lg sm:text-xl text-gray-600 max-w-2xl mx-auto">

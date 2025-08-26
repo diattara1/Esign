@@ -1,5 +1,6 @@
 // src/pages/BulkSignSameWizard.js
 import React, { useEffect, useRef, useState, useLayoutEffect } from 'react';
+import usePageTitleFocus from '../utils/usePageTitleFocus';
 import { Document, Page } from 'react-pdf';
 import { toast } from 'react-toastify';
 import { FiLayers, FiDownload, FiMove, FiFile, FiX } from 'react-icons/fi';
@@ -22,6 +23,8 @@ export default function BulkSignSameWizard() {
   const [viewerWidth, setViewerWidth] = useState(0);
   const pollingRef = useRef(null);
   const [isProcessing, setIsProcessing] = useState(false);
+
+  const titleRef = usePageTitleFocus();
 
   // ---- layout measure ----
   useLayoutEffect(() => {
@@ -116,7 +119,7 @@ export default function BulkSignSameWizard() {
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center">
             <FiLayers className="w-6 h-6 text-blue-600 mr-3" />
-            <h1 className="text-xl lg:text-2xl font-bold text-gray-800">Signature masse</h1>
+            <h1 ref={titleRef} tabIndex={-1} className="text-xl lg:text-2xl font-bold text-gray-800">Signature masse</h1>
           </div>
           {(files.length || sigFile || placement) ? (
             <button

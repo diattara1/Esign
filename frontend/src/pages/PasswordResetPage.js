@@ -1,5 +1,6 @@
 // src/pages/PasswordResetPage.js
 import React, { useState } from 'react';
+import usePageTitleFocus from '../utils/usePageTitleFocus';
 import { Link } from 'react-router-dom';
 import { api } from '../services/apiUtils';
 import { Mail, ArrowLeft, CheckCircle, XCircle, Send, Loader2 } from 'lucide-react';
@@ -12,6 +13,8 @@ const PasswordResetPage = () => {
   const [isSuccess, setIsSuccess] = useState(false);
   const [errors, setErrors] = useState({});
   const isValid = passwordResetSchema.isValidSync({ email });
+
+  const titleRef = usePageTitleFocus();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -45,7 +48,7 @@ const PasswordResetPage = () => {
           <div className="mx-auto h-12 w-12 bg-blue-600 rounded-xl flex items-center justify-center">
             <Mail className="h-6 w-6 text-white" />
           </div>
-          <h2 className="mt-6 text-3xl font-bold tracking-tight text-gray-900">
+          <h2 ref={titleRef} tabIndex={-1} className="mt-6 text-3xl font-bold tracking-tight text-gray-900">
             Mot de passe oublié
           </h2>
           <p className="mt-2 text-sm text-gray-600">

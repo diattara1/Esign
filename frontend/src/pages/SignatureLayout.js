@@ -2,6 +2,7 @@
 // Version responsive avec sidebar mobile
 
 import React, { useState, useEffect } from 'react';
+import usePageTitleFocus from '../utils/usePageTitleFocus';
 import { Outlet, NavLink, useLocation } from 'react-router-dom';
 import { FiMenu, FiX } from 'react-icons/fi';
 import SignatureNavbar from '../components/SignatureNavbar';
@@ -9,6 +10,8 @@ import SignatureNavbar from '../components/SignatureNavbar';
 const SignatureLayout = () => {
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  const titleRef = usePageTitleFocus();
 
   // Fermer sidebar quand la route change (mobile)
   useEffect(() => {
@@ -44,7 +47,7 @@ const SignatureLayout = () => {
         >
           <FiMenu className="w-5 h-5" />
         </button>
-        <h1 className="font-semibold text-gray-900">Signatures</h1>
+        <h1 ref={titleRef} tabIndex={-1} className="font-semibold text-gray-900">Signatures</h1>
         <div className="w-9"> {/* Spacer pour centrer le titre */}</div>
       </div>
 

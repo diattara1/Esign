@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import usePageTitleFocus from '../utils/usePageTitleFocus';
 import { api } from '../services/apiUtils';
 import logService from '../services/logService';
 import { notificationSettingsSchema } from '../validation/schemas';
@@ -9,6 +10,8 @@ const NotificationSettings = () => {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const isValid = notificationSettingsSchema.isValidSync(prefs);
+
+  const titleRef = usePageTitleFocus();
 
   useEffect(() => {
     const fetchPrefs = async () => {
@@ -56,7 +59,7 @@ const NotificationSettings = () => {
 
   return (
     <div className="p-8">
-      <h2 className="text-2xl font-bold mb-6">Notifications</h2>
+      <h2 ref={titleRef} tabIndex={-1} className="text-2xl font-bold mb-6">Notifications</h2>
       {message && <div className="mb-4">{message}</div>}
       <form onSubmit={handleSubmit} className="space-y-4">
         <label className="flex items-center">

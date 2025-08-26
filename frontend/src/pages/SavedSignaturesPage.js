@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import usePageTitleFocus from '../utils/usePageTitleFocus';
 import SignaturePadComponent from '../components/SignaturePadComponent';
 import signatureService from '../services/signatureService';
 import { toast } from 'react-toastify';
@@ -15,6 +16,8 @@ const SavedSignaturesPage = () => {
   const [items, setItems] = useState([]);
   const [drawData, setDrawData] = useState('');
   const [uploading, setUploading] = useState(false);
+
+  const titleRef = usePageTitleFocus();
 
   const load = async () => {
     try {
@@ -73,7 +76,7 @@ const SavedSignaturesPage = () => {
 
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-6">
-      <h1 className="text-2xl font-semibold">Mes signatures enregistrées</h1>
+      <h1 ref={titleRef} tabIndex={-1} className="text-2xl font-semibold">Mes signatures enregistrées</h1>
 
       <div className="grid grid-cols-2 gap-4">
         <div>

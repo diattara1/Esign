@@ -1,7 +1,9 @@
 
-import React, { Suspense } from 'react';
+import React, { Suspense, useEffect, useState } from 'react';
 import { useAuth } from './AuthContext';
-import { Routes, Route, Navigate, Outlet,useLocation } from 'react-router-dom';
+import { Routes, Route, Navigate, Outlet, useLocation } from 'react-router-dom';
+import GlobalLoader from './components/GlobalLoader';
+import { setLoadingCallback } from './services/apiUtils';
 
 const DashboardSignature = React.lazy(() => import('./pages/DashboardSignature'));
 const DocumentDetail = React.lazy(() => import('./pages/DocumentDetail'));
@@ -45,6 +47,11 @@ const LoadingSpinner = () => (
 
 const App = () => {
   const { isLoading } = useAuth();
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    setLoadingCallback(setLoading);
+  }, []);
  
 
   // Afficher le spinner pendant le chargement de l'authentification
@@ -53,8 +60,10 @@ const App = () => {
   }
 
   return (
-    <Suspense fallback={<LoadingSpinner />}>
-      <Routes>
+    <>
+      <GlobalLoader loading={loading} />
+      <Suspense fallback={<LoadingSpinner />}>
+        <Routes>
       {/* ROUTES PUBLIQUES - À PLACER EN PREMIER ET DANS LE BON ORDRE */}
       
       {/* LOGIN */}
@@ -104,8 +113,9 @@ const App = () => {
       {/* Redirection par défaut - À PLACER EN DERNIER */}
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
        <Route path="*" element={<NotFound />} />
-      </Routes>
-    </Suspense>
+        </Routes>
+      </Suspense>
+    </>
   );
 };
 

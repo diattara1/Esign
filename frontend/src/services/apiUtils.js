@@ -20,6 +20,18 @@ export const api = axios.create({
   withCredentials: true,
 });
 
+// --- Global loading handler -------------------------------------------------
+let activeRequests = 0;
+let loadingCb = null;
+export const setLoadingCallback = (cb) => {
+  loadingCb = cb;
+};
+const updateLoading = () => {
+  if (loadingCb) {
+    loadingCb(activeRequests > 0);
+  }
+};
+
 // Tentative de récupération du jeton CSRF depuis différents cookies
 const CSRF_COOKIE_NAMES = ['csrftoken', 'CSRF-TOKEN', 'XSRF-TOKEN'];
 export const getCSRFToken = () => {
@@ -67,6 +79,8 @@ createAuthRefreshInterceptor(api, refreshAuthLogic);
 // Intercepteur de requête : ajuste le Content-Type pour FormData
 api.interceptors.request.use(
   config => {
+    activeRequests++;
+    updateLoading();
     if (config.data instanceof FormData) {
       // Laisse le navigateur gérer le Content-Type
       delete config.headers['Content-Type'];
@@ -87,10 +101,16 @@ api.interceptors.request.use(
 
 // Intercepteur de réponse : gère les autres erreurs (403, 5xx, network)
 api.interceptors.response.use(
-  response => response,
+  response => {
+    activeRequests = Math.max(activeRequests - 1, 0);
+    updateLoading();
+    return response;
+  },
   error => {
+    activeRequests = Math.max(activeRequests - 1, 0);
+    updateLoading();
     if (!error.response) {
-        toast.error('Erreur réseau ou serveur injoignable');
+      toast.error('Erreur réseau ou serveur injoignable');
       logService.error('Network error or backend unreachable');
     } else if (error.response.status === 403) {
       console.warn('Access denied (403).');

@@ -1,4 +1,5 @@
 import { api } from './apiUtils';
+import { toast } from 'react-toastify';
 
 const BASE = 'api/signature';
 
@@ -9,7 +10,11 @@ const apiRequest = async (method, url, data, config, errorMessage = 'Une erreur 
     const res = await api[m](...args);
     return res.data;
   } catch (err) {
-    throw new Error(errorMessage);
+    if (err.response && err.response.status < 500) {
+      toast.error(errorMessage);
+    }
+    err.message = errorMessage;
+    throw err;
   }
 };
 

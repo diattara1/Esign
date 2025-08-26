@@ -6,7 +6,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#000000" />
     <meta name="description" content="InteliSign" />
-    
+    <meta http-equiv="Content-Security-Policy"
+  content="
+    default-src 'self';
+    img-src 'self' data: blob:;
+    font-src 'self' https://fonts.gstatic.com;
+    style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+    script-src 'self';
+    connect-src 'self';
+    worker-src 'self' blob:;
+    frame-ancestors 'self';
+    object-src 'none';
+  ">
+
     <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo192.png" />
     <!--
       manifest.json provides metadata used when your web app is installed on a

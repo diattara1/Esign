@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { Routes, Route, Navigate, Outlet } from 'react-router-dom';
 
 import DashboardSignature from './pages/DashboardSignature';
@@ -42,9 +42,7 @@ const LoadingSpinner = () => (
 
 const App = () => {
   const { isLoading } = useAuth();
-  useEffect(() => {
-    toast.success('Toast de test');
-  }, []);
+ 
 
   // Afficher le spinner pendant le chargement de l'authentification
   if (isLoading) {

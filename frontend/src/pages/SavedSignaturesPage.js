@@ -61,6 +61,7 @@ const SavedSignaturesPage = () => {
   };
 
   const remove = async (id) => {
+    if (!window.confirm('Supprimer cette signature ?')) return;
     try {
       await signatureService.deleteSavedSignature(id);
       toast.success('Supprimé');

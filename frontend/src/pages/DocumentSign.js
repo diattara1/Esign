@@ -18,6 +18,8 @@ import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 import useFocusTrap from '../hooks/useFocusTrap';
 
+const MAX_OTP_ATTEMPTS = 3;
+const COOLDOWN_SECONDS = 30;
 
 const DocumentSign = () => {
   const { id } = useParams();
@@ -69,6 +71,24 @@ const DocumentSign = () => {
   const [sendingOtp, setSendingOtp] = useState(false);
   const [verifyingOtp, setVerifyingOtp] = useState(false);
   const [otpError, setOtpError] = useState('');
+  const [otpAttempts, setOtpAttempts] = useState(MAX_OTP_ATTEMPTS);
+  const [cooldownUntil, setCooldownUntil] = useState(null);
+  const [otpStatus, setOtpStatus] = useState('');
+
+  useEffect(() => {
+    if (!cooldownUntil) return;
+    const interval = setInterval(() => {
+      const remaining = Math.ceil((cooldownUntil - Date.now()) / 1000);
+      if (remaining <= 0) {
+        setCooldownUntil(null);
+        setOtpAttempts(MAX_OTP_ATTEMPTS);
+        setOtpStatus('');
+      } else {
+        setOtpStatus(`Réessayez dans ${remaining}s`);
+      }
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [cooldownUntil]);
 
   // modal
   const [modalOpen, setModalOpen] = useState(false);
@@ -259,11 +279,15 @@ async function urlToDataUrl(url) {
   };
 
   const handleVerifyOtp = async () => {
+    if (cooldownUntil && cooldownUntil > Date.now()) return;
     setVerifyingOtp(true);
     try {
       await signatureService.verifyOtp(id, otp, token);
       setOtpVerified(true);
       setOtpError('');
+      setOtpStatus('');
+      setOtpAttempts(MAX_OTP_ATTEMPTS);
+      setCooldownUntil(null);
       toast.success('OTP vérifié');
 
       await new Promise(resolve => setTimeout(resolve, 400));
@@ -287,6 +311,14 @@ async function urlToDataUrl(url) {
       logService.error(e);
       const msg = e?.response?.data?.error || 'OTP invalide';
       setOtpError(msg);
+      const remaining = otpAttempts - 1;
+      setOtpAttempts(remaining);
+      if (remaining <= 0) {
+        setCooldownUntil(Date.now() + COOLDOWN_SECONDS * 1000);
+        setOtpStatus(`Trop d'échecs. Réessayez dans ${COOLDOWN_SECONDS}s`);
+      } else {
+        setOtpStatus(`Il reste ${remaining} tentative(s).`);
+      }
       toast.error(msg);
     } finally {
       setVerifyingOtp(false);
@@ -580,11 +612,15 @@ async function urlToDataUrl(url) {
               onChange={e => setOtp(e.target.value)}
               placeholder="Entrez le code OTP"
               className="w-full border p-2 rounded mb-2"
+              disabled={cooldownUntil && cooldownUntil > Date.now()}
             />
-            {otpError && <p className="text-red-600 text-sm mb-2">{otpError}</p>}
+            <div role="status" aria-live="polite" className="text-sm mb-2">
+              {otpError && <p className="text-red-600">{otpError}</p>}
+              {otpStatus && <p className="text-gray-600">{otpStatus}</p>}
+            </div>
             <button
               onClick={handleVerifyOtp}
-              disabled={verifyingOtp}
+              disabled={verifyingOtp || (cooldownUntil && cooldownUntil > Date.now())}
               className="w-full bg-green-600 text-white p-2 rounded disabled:opacity-50"
             >
               {verifyingOtp ? 'Vérification…' : 'Vérifier OTP'}

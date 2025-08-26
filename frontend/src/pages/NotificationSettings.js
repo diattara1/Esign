@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../services/apiUtils';
-import logService from '../services/logService';
 
 const NotificationSettings = () => {
   const [prefs, setPrefs] = useState({ email: true, sms: false, push: false });
@@ -16,7 +15,7 @@ const NotificationSettings = () => {
           setId(data[0].id);
         }
       } catch (err) {
-        logService.error(err);
+        console.error(err);
       }
     };
     fetchPrefs();

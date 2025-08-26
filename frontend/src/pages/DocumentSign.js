@@ -12,7 +12,6 @@ import { api } from '../services/apiUtils'; // ✅ axios (baseURL)
 import SignaturePadComponent from '../components/SignaturePadComponent';
 import Modal from 'react-modal';
 import Countdown from '../components/Countdown';
-import logService from '../services/logService';
 
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
@@ -173,7 +172,7 @@ async function urlToDataUrl(url) {
           setOtpVerified(true);
         }
       } catch (err) {
-        logService.error(err);
+        console.error(err);
         toast.error(err?.response?.data?.error || 'Impossible de charger la page de signature');
         navigate('/');
         return;
@@ -232,7 +231,7 @@ async function urlToDataUrl(url) {
         setPdfUrl(blobUrl);
       } catch (e) {
         if (!alive) return;
-        logService.error('Erreur lors du chargement du document:', e);
+        console.error('Erreur lors du chargement du document:', e);
         toast.error(`Impossible de charger ce PDF: ${e.message}`);
       }
     };
@@ -250,7 +249,7 @@ async function urlToDataUrl(url) {
       setOtpSent(true);
       toast.success('Code OTP envoyé');
     } catch (e) {
-      logService.error(e);
+      console.error(e);
       toast.error(e?.response?.data?.error || 'Erreur envoi OTP');
     } finally {
       setSendingOtp(false);
@@ -279,11 +278,11 @@ async function urlToDataUrl(url) {
         }
         if (blobUrl) setPdfUrl(blobUrl);
       } catch (pdfError) {
-        logService.error('Erreur lors du rechargement du PDF:', pdfError);
+        console.error('Erreur lors du rechargement du PDF:', pdfError);
         toast.error('PDF vérifié mais erreur de chargement. Veuillez rafraîchir la page.');
       }
     } catch (e) {
-      logService.error(e);
+      console.error(e);
       const msg = e?.response?.data?.error || 'OTP invalide';
       setOtpError(msg);
       toast.error(msg);
@@ -295,7 +294,7 @@ async function urlToDataUrl(url) {
   // PDF callbacks
   const onDocumentLoad = ({ numPages }) => setNumPages(numPages);
   const onDocumentError = (err) => {
-    logService.error('PDF error:', err);
+    console.error('PDF error:', err);
     toast.error('Erreur chargement PDF');
   };
   const onPageLoadSuccess = (num, page) => {
@@ -389,7 +388,7 @@ async function urlToDataUrl(url) {
         });
       }
     } catch (e) {
-      logService.error(e);
+      console.error(e);
       toast.error(e?.response?.data?.error || 'Erreur lors de la signature');
     } finally {
       setSigning(false);
@@ -725,7 +724,7 @@ async function urlToDataUrl(url) {
     setUploadPreview(dataUrl);
     setSavedSelectedId(sig.id);
   } catch (err) {
-    logService.error("Erreur chargement signature:", err);
+    console.error("Erreur chargement signature:", err);
     toast.error("Impossible de charger la signature enregistrée");
   }
 }}

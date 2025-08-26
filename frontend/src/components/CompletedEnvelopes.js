@@ -6,7 +6,6 @@ import { FiMoreVertical, FiDownload, FiPrinter, FiTrash2, FiEye } from 'react-ic
 import { CheckCircle, FileText, Calendar, User } from 'lucide-react';
 import slugify from 'slugify';
 import { useNavigate } from "react-router-dom";
-import logService from '../services/logService';
 
 
 
@@ -25,7 +24,7 @@ const CompletedEnvelopes = () => {
         setEnvelopes(data);
       } catch (err) {
         toast.error('Échec du chargement des enveloppes');
-        logService.error(err);
+        console.error(err);
       } finally {
         setLoading(false);
       }
@@ -113,7 +112,7 @@ const CompletedEnvelopes = () => {
       toast.success('Document téléchargé avec succès');
     } catch (err) {
       toast.error('Échec du téléchargement');
-      logService.error(err);
+      console.error(err);
     }
   };
 
@@ -129,7 +128,7 @@ const CompletedEnvelopes = () => {
       }
     } catch (err) {
       toast.error('Échec de l\'impression');
-      logService.error(err);
+      console.error(err);
     }
   };
 
@@ -142,7 +141,7 @@ const CompletedEnvelopes = () => {
       toast.success('Enveloppe supprimée avec succès');
     } catch (err) {
       toast.error('Échec de la suppression');
-      logService.error(err);
+      console.error(err);
     }
   };
 

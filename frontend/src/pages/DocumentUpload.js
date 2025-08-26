@@ -3,7 +3,6 @@ import React, { useState } from 'react';
 import signatureService from '../services/signatureService';
 import { toast } from 'react-toastify';
 import { FiUpload, FiFileText } from 'react-icons/fi';
-import logService from '../services/logService';
 
 const DocumentUpload = () => {
   const [files, setFiles] = useState([]);
@@ -48,7 +47,7 @@ const DocumentUpload = () => {
       toast.success('Document téléversé avec succès');
       navigate(`/signature/workflow/${response.id}`);
     } catch (error) {
-      logService.error('Erreur lors du téléversement:', error);
+      console.error('Erreur lors du téléversement:', error);
       toast.error(error.response?.data?.detail || 'Erreur lors du téléversement du document');
     }
   };

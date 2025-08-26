@@ -16,7 +16,6 @@ import {
   Calendar,
   Award
 } from 'lucide-react';
-import logService from '../services/logService';
 
 const GuestSignatureConfirmation = () => {
   const navigate = useNavigate();
@@ -39,7 +38,7 @@ const GuestSignatureConfirmation = () => {
         const data = await signatureService.getGuestEnvelope(envelopeId, token);
         setEnvelope(data);
       } catch (e) {
-        logService.error(e);
+        console.error(e);
         toast.error('Impossible de charger les informations du document');
       } finally {
         setLoadingEnv(false);
@@ -69,7 +68,7 @@ const GuestSignatureConfirmation = () => {
       window.URL.revokeObjectURL(url);
       toast.success('Document téléchargé avec succès');
     } catch (err) {
-      logService.error('Erreur téléchargement document signé:', err);
+      console.error('Erreur téléchargement document signé:', err);
       toast.error('Échec du téléchargement. Veuillez réessayer.');
     } finally {
       setDownloading(false);

@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react';
 import Table from '../components/Tables';
 import signatureService from '../services/signatureService';
 import { toast } from 'react-toastify';
-import logService from '../services/logService';
 
 const DeletedEnvelopes = () => {
   const [envelopes, setEnvelopes] = useState([]);
@@ -15,7 +14,7 @@ const DeletedEnvelopes = () => {
         setEnvelopes(data);
       } catch (err) {
         toast.error('Échec du chargement des enveloppes supprimées');
-        logService.error('Failed to fetch deleted envelopes:', err);
+        console.error('Failed to fetch deleted envelopes:', err);
       } finally {
         setLoading(false);
       }

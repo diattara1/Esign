@@ -1,7 +1,6 @@
 // src/servics/apiUtils.js
 import axios from 'axios';
 import createAuthRefreshInterceptor from 'axios-auth-refresh';
-import { toast } from 'react-toastify';
 import logService from './logService';
 // URL de base de l'API Django
 export const API_BASE_URL = process.env.REACT_APP_API_BASE_URL;
@@ -41,6 +40,12 @@ export const getCSRFToken = () => {
 let logoutCallback = null;
 export const setLogoutCallback = (cb) => {
   logoutCallback = cb;
+};
+
+// Callback global pour gérer les erreurs réseau
+let errorCallback = null;
+export const setErrorCallback = (cb) => {
+  errorCallback = cb;
 };
 
 // Logique de refresh à déclencher sur 401
@@ -93,7 +98,9 @@ api.interceptors.response.use(
   response => response,
   error => {
     if (!error.response) {
-        toast.error('Erreur réseau ou serveur injoignable');
+      if (errorCallback) {
+        errorCallback('Erreur réseau ou serveur injoignable');
+      }
       logService.error('Network error or backend unreachable');
     } else if (error.response.status === 403) {
       console.warn('Access denied (403).');

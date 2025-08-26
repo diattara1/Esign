@@ -360,9 +360,11 @@ export default function SelfSignWizard() {
                     <div key={i} className="relative mb-6 bg-white shadow-lg rounded-lg overflow-hidden">
                       <Page pageNumber={i + 1} width={pageWidth} renderTextLayer={false} onLoadSuccess={(p) => onPageLoad(i + 1, p)} className="mx-auto" />
                       {pageDims[i + 1] && (
-                        <div onClick={(e) => handleOverlayClick(e, i + 1)}
-                             className="absolute top-0 left-1/2 -translate-x-1/2"
-                             style={{ width: pageWidth, height: pageDims[i + 1].height * scale, cursor: placing ? 'crosshair' : 'default', zIndex: 10, backgroundColor: placing ? 'rgba(16,185,129,.08)' : 'transparent' }} />
+                        <div
+                             onClick={(e) => handleOverlayClick(e, i + 1)}
+                             className={`absolute top-0 left-1/2 -translate-x-1/2 z-10 ${placing ? 'cursor-crosshair bg-emerald-500/10' : 'cursor-default bg-transparent'}`}
+                             style={{ width: pageWidth, height: pageDims[i + 1].height * scale }}
+                        />
                       )}
                       {placement?.page === i + 1 && (
                         <div className="absolute border-2 border-emerald-500 bg-emerald-100/60 rounded"

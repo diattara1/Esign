@@ -254,8 +254,8 @@ export default function BulkSignSameWizard() {
                       {pageDims[n] && (
                         <div
                           onClick={(e) => handleOverlayClick(e, n)}
-                          className="absolute top-0 left-0 w-full rounded-lg"
-                          style={{ height: pageDims[n].height * s, cursor: placing ? 'crosshair' : 'default', zIndex: 10, backgroundColor: placing ? 'rgba(59,130,246,.06)' : 'transparent' }}
+                          className={`absolute top-0 left-0 w-full rounded-lg z-10 ${placing ? 'cursor-crosshair bg-blue-500/10' : 'cursor-default bg-transparent'}`}
+                          style={{ height: pageDims[n].height * s }}
                         />
                       )}
                       {placement?.page === n && (

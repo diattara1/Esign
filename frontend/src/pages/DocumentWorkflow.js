@@ -363,24 +363,20 @@ const selectDocument = useCallback(async (doc) => {
     const factor = pdfWidth / vp.width;
 
     const style = {
-      position: 'absolute',
       left: field.position.x * factor,
       top: field.position.y * factor,
       width: field.position.width * factor,
       height: field.position.height * factor,
-      borderRadius: 8,
-      boxShadow: '0 0 0 1px rgba(0,0,0,.20), 0 2px 6px rgba(0,0,0,.08)',
-      background: '#fff',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      zIndex: 15
     };
 
     return (
-      <div key={`${pageNumber}-${field.name}-${field.position.x}-${field.position.y}`} style={style}>
-        <div style={{ textAlign: 'center', fontSize: 12, lineHeight: 1.1, color: '#374151' }}>
-          <div style={{ fontWeight: 700, marginBottom: 2 }}>Signature</div>
+      <div
+        key={`${pageNumber}-${field.name}-${field.position.x}-${field.position.y}`}
+        style={style}
+        className="absolute rounded-lg shadow-md bg-white flex items-center justify-center z-10"
+      >
+        <div className="text-center text-xs leading-[1.1] text-gray-700">
+          <div className="font-bold mb-0.5">Signature</div>
           <div>{field.recipient_name || field.name.replace('Signature ', '')}</div>
         </div>
       </div>
@@ -713,8 +709,7 @@ const selectDocument = useCallback(async (doc) => {
                           {/* Overlay de clic (pour placer) */}
                           <div
                             onClick={e => handlePdfClick(e, pageNumber)}
-                            className={`absolute inset-0 z-10 ${placing.idx !== null ? 'cursor-crosshair bg-yellow-200/10' : 'cursor-default'}`}
-                            style={{ pointerEvents: placing.idx !== null ? 'auto' : 'none' }}
+                            className={`absolute inset-0 z-10 ${placing.idx !== null ? 'pointer-events-auto cursor-crosshair bg-yellow-200/10' : 'pointer-events-none cursor-default'}`}
                           />
                         </div>
                       );

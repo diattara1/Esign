@@ -605,18 +605,8 @@ async function urlToDataUrl(url) {
         onRequestClose={() => setModalOpen(false)}
         contentLabel="Signer le champ"
         ariaHideApp={false}
-        style={{
-          overlay: {
-            zIndex: 10000,
-            backgroundColor: 'rgba(0,0,0,0.5)'
-          },
-          content: {
-            zIndex: 10001,
-            inset: '10% 20%',
-            borderRadius: '12px',
-            padding: '16px'
-          }
-        }}
+        overlayClassName="fixed inset-0 bg-black/50 z-[10000]"
+        className="z-[10001] mx-[20%] my-[10%] rounded-xl p-4 bg-white"
       >
         <h2 className="text-lg font-semibold mb-3">Ajouter une signature</h2>
 

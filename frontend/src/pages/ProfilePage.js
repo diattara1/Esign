@@ -2,10 +2,11 @@
 import React, { useEffect, useState } from 'react';
 import { api, API_BASE_URL } from '../services/apiUtils';
 import logService from '../services/logService';
-import { 
-  User, Mail, Calendar, Phone, MapPin, Upload, Eye, EyeOff, 
+import {
+  User, Mail, Calendar, Phone, MapPin, Upload, Eye, EyeOff,
   Save, Lock, CheckCircle, XCircle, Camera, Edit3, Shield
 } from 'lucide-react';
+import { profileSchema, passwordChangeSchema } from '../validation/schemas';
 
 const ProfilePage = () => {
   const [profile, setProfile] = useState({
@@ -28,9 +29,13 @@ const ProfilePage = () => {
   });
   const [pwdMessage, setPwdMessage] = useState('');
   const [pwdLoading, setPwdLoading] = useState(false);
+  const [errors, setErrors] = useState({});
+  const [pwdErrors, setPwdErrors] = useState({});
   const [showOldPassword, setShowOldPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [activeTab, setActiveTab] = useState('profile');
+  const isProfileValid = profileSchema.isValidSync(profile);
+  const isPwdValid = passwordChangeSchema.isValidSync(passwordData);
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -50,6 +55,9 @@ const ProfilePage = () => {
   const handleChange = (e) => {
     const { name, value } = e.target;
     setProfile((prev) => ({ ...prev, [name]: value }));
+    if (errors[name]) {
+      setErrors((prev) => ({ ...prev, [name]: undefined }));
+    }
   };
 
   const handleFileChange = (e) => {
@@ -63,13 +71,27 @@ const ProfilePage = () => {
   const handlePasswordChange = (e) => {
     const { name, value } = e.target;
     setPasswordData((prev) => ({ ...prev, [name]: value }));
+    if (pwdErrors[name]) {
+      setPwdErrors((prev) => ({ ...prev, [name]: undefined }));
+    }
   };
 
   const handlePasswordSubmit = async (e) => {
     e.preventDefault();
     setPwdMessage('');
+    setPwdErrors({});
+    try {
+      await passwordChangeSchema.validate(passwordData, { abortEarly: false });
+    } catch (err) {
+      const newErrors = {};
+      err.inner.forEach((e) => {
+        newErrors[e.path] = e.message;
+      });
+      setPwdErrors(newErrors);
+      return;
+    }
     setPwdLoading(true);
-    
+
     try {
       await api.post('/api/signature/change-password/', passwordData);
       setPwdMessage('Mot de passe mis à jour avec succès');
@@ -84,6 +106,17 @@ const ProfilePage = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setMessage('');
+    setErrors({});
+    try {
+      await profileSchema.validate(profile, { abortEarly: false });
+    } catch (err) {
+      const newErrors = {};
+      err.inner.forEach((e) => {
+        newErrors[e.path] = e.message;
+      });
+      setErrors(newErrors);
+      return;
+    }
     setIsLoading(true);
     
     const formData = new FormData();
@@ -284,6 +317,9 @@ const ProfilePage = () => {
                     className="block w-full px-3 py-3 border border-gray-300 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition-colors"
                     placeholder="Votre prénom"
                   />
+                  {errors.first_name && (
+                    <p className="mt-1 text-sm text-red-600">{errors.first_name}</p>
+                  )}
                 </div>
 
                 <div>
@@ -298,6 +334,9 @@ const ProfilePage = () => {
                     className="block w-full px-3 py-3 border border-gray-300 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition-colors"
                     placeholder="Votre nom"
                   />
+                  {errors.last_name && (
+                    <p className="mt-1 text-sm text-red-600">{errors.last_name}</p>
+                  )}
                 </div>
               </div>
 
@@ -378,7 +417,7 @@ const ProfilePage = () => {
               <div className="flex justify-end pt-6 border-t border-gray-200">
                 <button
                   type="submit"
-                  disabled={isLoading}
+                  disabled={isLoading || !isProfileValid}
                   className="inline-flex items-center px-6 py-3 border border-transparent text-sm font-medium rounded-xl text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-lg"
                 >
                   <Save className="h-4 w-4 mr-2" />
@@ -436,10 +475,12 @@ const ProfilePage = () => {
                     name="old_password"
                     value={passwordData.old_password}
                     onChange={handlePasswordChange}
-                    required
                     className="block w-full pl-10 pr-10 py-3 border border-gray-300 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition-colors"
                     placeholder="Entrez votre mot de passe actuel"
                   />
+                  {pwdErrors.old_password && (
+                    <p className="mt-1 text-sm text-red-600">{pwdErrors.old_password}</p>
+                  )}
                   <button
                     type="button"
                     className="absolute inset-y-0 right-0 pr-3 flex items-center"
@@ -467,10 +508,12 @@ const ProfilePage = () => {
                     name="new_password"
                     value={passwordData.new_password}
                     onChange={handlePasswordChange}
-                    required
                     className="block w-full pl-10 pr-10 py-3 border border-gray-300 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition-colors"
                     placeholder="Entrez votre nouveau mot de passe"
                   />
+                  {pwdErrors.new_password && (
+                    <p className="mt-1 text-sm text-red-600">{pwdErrors.new_password}</p>
+                  )}
                   <button
                     type="button"
                     className="absolute inset-y-0 right-0 pr-3 flex items-center"
@@ -504,7 +547,7 @@ const ProfilePage = () => {
               <div className="flex justify-end pt-6 border-t border-gray-200">
                 <button
                   type="submit"
-                  disabled={pwdLoading}
+                  disabled={pwdLoading || !isPwdValid}
                   className="inline-flex items-center px-6 py-3 border border-transparent text-sm font-medium rounded-xl text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-lg"
                 >
                   <Shield className="h-4 w-4 mr-2" />

@@ -2,11 +2,12 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../services/apiUtils';
-import { 
-  User, Mail, Lock, Eye, EyeOff, Calendar, Phone, MapPin, 
+import {
+  User, Mail, Lock, Eye, EyeOff, Calendar, Phone, MapPin,
   Upload, UserPlus, ArrowLeft, CheckCircle, XCircle, Loader2,
   Check
 } from 'lucide-react';
+import { registerStep1Schema, registerStep2Schema } from '../validation/schemas';
 
 const RegisterPage = () => {
   const [form, setForm] = useState({
@@ -28,6 +29,8 @@ const RegisterPage = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [currentStep, setCurrentStep] = useState(1);
   const [avatarPreview, setAvatarPreview] = useState(null);
+  const isStep1Valid = registerStep1Schema.isValidSync(form);
+  const isStep2Valid = registerStep2Schema.isValidSync(form);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -46,19 +49,23 @@ const RegisterPage = () => {
     }
   };
 
-  const validateStep1 = () => {
-    const stepErrors = {};
-    if (!form.username.trim()) stepErrors.username = 'Nom d\'utilisateur requis';
-    if (!form.email.trim()) stepErrors.email = 'Email requis';
-    if (!form.password.trim()) stepErrors.password = 'Mot de passe requis';
-    if (form.password.length < 5) stepErrors.password = 'Minimum 5 caractères';
-    
-    setErrors(stepErrors);
-    return Object.keys(stepErrors).length === 0;
+  const validateStep1 = async () => {
+    try {
+      await registerStep1Schema.validate(form, { abortEarly: false });
+      setErrors({});
+      return true;
+    } catch (err) {
+      const stepErrors = {};
+      err.inner.forEach((e) => {
+        stepErrors[e.path] = e.message;
+      });
+      setErrors(stepErrors);
+      return false;
+    }
   };
 
-  const handleNext = () => {
-    if (validateStep1()) {
+  const handleNext = async () => {
+    if (await validateStep1()) {
       setCurrentStep(2);
     }
   };
@@ -67,6 +74,16 @@ const RegisterPage = () => {
     e.preventDefault();
     setMessage('');
     setErrors({});
+    try {
+      await registerStep2Schema.validate(form, { abortEarly: false });
+    } catch (err) {
+      const stepErrors = {};
+      err.inner.forEach((e) => {
+        stepErrors[e.path] = e.message;
+      });
+      setErrors(stepErrors);
+      return;
+    }
     setIsLoading(true);
     
     try {
@@ -205,10 +222,12 @@ const RegisterPage = () => {
                         name="username"
                         value={form.username}
                         onChange={handleChange}
-                        required
                         className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition-colors"
                         placeholder="Nom d'utilisateur"
                       />
+                      {errors.username && (
+                        <p className="mt-1 text-sm text-red-600">{errors.username}</p>
+                      )}
                     </div>
                   </div>
 
@@ -226,10 +245,12 @@ const RegisterPage = () => {
                         name="email"
                         value={form.email}
                         onChange={handleChange}
-                        required
                         className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition-colors"
                         placeholder="exemple@email.com"
                       />
+                      {errors.email && (
+                        <p className="mt-1 text-sm text-red-600">{errors.email}</p>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -249,10 +270,12 @@ const RegisterPage = () => {
                       name="password"
                       value={form.password}
                       onChange={handleChange}
-                      required
                       className="block w-full pl-10 pr-10 py-3 border border-gray-300 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition-colors"
                       placeholder="Minimum 5 caractères"
                     />
+                    {errors.password && (
+                      <p className="mt-1 text-sm text-red-600">{errors.password}</p>
+                    )}
                     <button
                       type="button"
                       className="absolute inset-y-0 right-0 pr-3 flex items-center"
@@ -274,7 +297,8 @@ const RegisterPage = () => {
                   <button
                     type="button"
                     onClick={handleNext}
-                    className="inline-flex items-center px-6 py-3 border border-transparent text-sm font-medium rounded-xl text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors shadow-lg"
+                    disabled={!isStep1Valid}
+                    className="inline-flex items-center px-6 py-3 border border-transparent text-sm font-medium rounded-xl text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Suivant
                   </button>
@@ -311,6 +335,9 @@ const RegisterPage = () => {
                       className="block w-full px-3 py-3 border border-gray-300 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition-colors"
                       placeholder="Votre prénom"
                     />
+                    {errors.first_name && (
+                      <p className="mt-1 text-sm text-red-600">{errors.first_name}</p>
+                    )}
                   </div>
 
                   <div>
@@ -326,6 +353,9 @@ const RegisterPage = () => {
                       className="block w-full px-3 py-3 border border-gray-300 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition-colors"
                       placeholder="Votre nom"
                     />
+                    {errors.last_name && (
+                      <p className="mt-1 text-sm text-red-600">{errors.last_name}</p>
+                    )}
                   </div>
                 </div>
 
@@ -347,6 +377,9 @@ const RegisterPage = () => {
                         onChange={handleChange}
                         className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition-colors"
                       />
+                      {errors.birth_date && (
+                        <p className="mt-1 text-sm text-red-600">{errors.birth_date}</p>
+                      )}
                     </div>
                   </div>
 
@@ -455,7 +488,7 @@ const RegisterPage = () => {
                   </button>
                   <button
                     type="submit"
-                    disabled={isLoading}
+                    disabled={isLoading || !isStep2Valid}
                     className="inline-flex items-center px-6 py-3 border border-transparent text-sm font-medium rounded-xl text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-lg"
                   >
                     {isLoading && (

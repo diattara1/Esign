@@ -1,11 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../services/apiUtils';
 import logService from '../services/logService';
+import { notificationSettingsSchema } from '../validation/schemas';
 
 const NotificationSettings = () => {
   const [prefs, setPrefs] = useState({ email: true, sms: false, push: false });
   const [id, setId] = useState(null);
   const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+  const isValid = notificationSettingsSchema.isValidSync(prefs);
 
   useEffect(() => {
     const fetchPrefs = async () => {
@@ -25,11 +28,19 @@ const NotificationSettings = () => {
   const handleChange = (e) => {
     const { name, checked } = e.target;
     setPrefs({ ...prefs, [name]: checked });
+    setError('');
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setMessage('');
+    setError('');
+    try {
+      await notificationSettingsSchema.validate(prefs, { abortEarly: false });
+    } catch (err) {
+      setError(err.message);
+      return;
+    }
     try {
       if (id) {
         await api.put(`/api/signature/notifications/${id}/`, prefs);
@@ -60,7 +71,8 @@ const NotificationSettings = () => {
           <input type="checkbox" name="push" checked={prefs.push} onChange={handleChange} className="mr-2" />
           Push
         </label>
-        <button type="submit" className="mt-4 bg-blue-600 text-white px-4 py-2 rounded">Sauvegarder</button>
+        {error && <p className="text-sm text-red-600">{error}</p>}
+        <button type="submit" disabled={!isValid} className="mt-4 bg-blue-600 text-white px-4 py-2 rounded disabled:opacity-50 disabled:cursor-not-allowed">Sauvegarder</button>
       </form>
     </div>
   );

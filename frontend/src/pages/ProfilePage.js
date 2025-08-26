@@ -7,6 +7,7 @@ import {
   Save, Lock, CheckCircle, XCircle, Camera, Edit3, Shield
 } from 'lucide-react';
 import { profileSchema, passwordChangeSchema } from '../validation/schemas';
+import useKeyboardActions from '../hooks/useKeyboardActions';
 
 const ProfilePage = () => {
   const [profile, setProfile] = useState({
@@ -139,6 +140,9 @@ const ProfilePage = () => {
     }
   };
 
+  const profileKeyDown = useKeyboardActions({ onEnter: handleSubmit });
+  const pwdKeyDown = useKeyboardActions({ onEnter: handlePasswordSubmit });
+
   return (
     <div className="min-h-screen bg-gray-50 py-8">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -230,7 +234,7 @@ const ProfilePage = () => {
               </div>
             )}
 
-            <form onSubmit={handleSubmit} className="space-y-6" encType="multipart/form-data">
+            <form onSubmit={handleSubmit} onKeyDown={profileKeyDown} className="space-y-6" encType="multipart/form-data">
               {/* Photo de profil */}
               <div className="flex items-center space-x-6">
                 <div className="flex-shrink-0">
@@ -461,7 +465,7 @@ const ProfilePage = () => {
               </div>
             )}
 
-            <form onSubmit={handlePasswordSubmit} className="space-y-6">
+            <form onSubmit={handlePasswordSubmit} onKeyDown={pwdKeyDown} className="space-y-6">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Mot de passe actuel

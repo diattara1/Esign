@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { api } from '../services/apiUtils';
 import { Mail, ArrowLeft, CheckCircle, XCircle, Send, Loader2 } from 'lucide-react';
 import { passwordResetSchema } from '../validation/schemas';
+import useKeyboardActions from '../hooks/useKeyboardActions';
 
 const PasswordResetPage = () => {
   const [email, setEmail] = useState('');
@@ -12,6 +13,8 @@ const PasswordResetPage = () => {
   const [isSuccess, setIsSuccess] = useState(false);
   const [errors, setErrors] = useState({});
   const isValid = passwordResetSchema.isValidSync({ email });
+
+  const handleKeyDown = useKeyboardActions({ onEnter: handleSubmit });
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -83,7 +86,7 @@ const PasswordResetPage = () => {
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-6">
+          <form onSubmit={handleSubmit} onKeyDown={handleKeyDown} className="space-y-6">
             {/* Email */}
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">

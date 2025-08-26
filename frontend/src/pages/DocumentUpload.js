@@ -5,12 +5,15 @@ import { toast } from 'react-toastify';
 import { FiUpload, FiFileText } from 'react-icons/fi';
 import logService from '../services/logService';
 import { documentUploadSchema } from '../validation/schemas';
+import useKeyboardActions from '../hooks/useKeyboardActions';
 
 const DocumentUpload = () => {
   const [files, setFiles] = useState([]);
   const [title, setTitle] = useState('');
   const [errors, setErrors] = useState({});
   const navigate = useNavigate();
+
+  const handleKeyDown = useKeyboardActions({ onEnter: handleSubmit });
 
   const handleFileChange = async (e) => {
     const selectedFiles = Array.from(e.target.files);
@@ -66,7 +69,7 @@ const DocumentUpload = () => {
           Téléverser un document
         </h1>
 
-        <form onSubmit={handleSubmit} className="space-y-5">
+        <form onSubmit={handleSubmit} onKeyDown={handleKeyDown} className="space-y-5">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Titre du document</label>
             <input

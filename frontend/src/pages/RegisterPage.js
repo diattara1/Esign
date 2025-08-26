@@ -8,6 +8,7 @@ import {
   Check
 } from 'lucide-react';
 import { registerStep1Schema, registerStep2Schema } from '../validation/schemas';
+import useKeyboardActions from '../hooks/useKeyboardActions';
 
 const RegisterPage = () => {
   const [form, setForm] = useState({
@@ -103,6 +104,16 @@ const RegisterPage = () => {
       setIsLoading(false);
     }
   };
+
+  const handleKeyDown = useKeyboardActions({
+    onEnter: (e) => {
+      if (currentStep === 1) {
+        handleNext(e);
+      } else {
+        handleSubmit(e);
+      }
+    }
+  });
 
   if (success) {
     return (
@@ -201,7 +212,7 @@ const RegisterPage = () => {
             </div>
           )}
 
-          <form onSubmit={handleSubmit} encType="multipart/form-data">
+          <form onSubmit={handleSubmit} onKeyDown={handleKeyDown} encType="multipart/form-data">
             {currentStep === 1 && (
               <div className="space-y-6">
                 <h3 className="text-lg font-medium text-gray-900 mb-4">Informations de connexion</h3>
@@ -298,6 +309,7 @@ const RegisterPage = () => {
                     type="button"
                     onClick={handleNext}
                     disabled={!isStep1Valid}
+                    onKeyDown={(e) => e.key === 'Enter' && handleNext(e)}
                     className="inline-flex items-center px-6 py-3 border border-transparent text-sm font-medium rounded-xl text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Suivant

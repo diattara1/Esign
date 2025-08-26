@@ -17,6 +17,7 @@ import sanitize from '../utils/sanitize';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 import useFocusTrap from '../hooks/useFocusTrap';
+import useKeyboardActions from '../hooks/useKeyboardActions';
 
 
 const DocumentSign = () => {
@@ -347,15 +348,10 @@ async function urlToDataUrl(url) {
 
   useFocusTrap(modalRef, modalOpen);
 
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.key === 'Escape') closeModal();
-    };
-    if (modalOpen) {
-      document.addEventListener('keydown', handleKeyDown);
-    }
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [modalOpen]);
+  const modalKeyDown = useKeyboardActions({
+    onEnter: handleModalConfirm,
+    onEsc: closeModal,
+  });
 
   // peut-on signer ?
   const canSign = () => {
@@ -641,6 +637,7 @@ async function urlToDataUrl(url) {
           }
         }}
       >
+        <div onKeyDown={modalKeyDown}>
         <h2 className="text-lg font-semibold mb-3">Ajouter une signature</h2>
 
         <div className="flex items-center gap-4 mb-3">
@@ -771,12 +768,21 @@ async function urlToDataUrl(url) {
         )}
 
         <div className="mt-4 flex justify-end gap-2">
-          <button onClick={closeModal} className="px-4 py-2 rounded bg-gray-200">
+          <button
+            onClick={closeModal}
+            className="px-4 py-2 rounded bg-gray-200"
+            onKeyDown={(e) => e.key === 'Enter' && closeModal(e)}
+          >
             Annuler
           </button>
-          <button onClick={handleModalConfirm} className="px-4 py-2 rounded bg-green-600 text-white">
+          <button
+            onClick={handleModalConfirm}
+            onKeyDown={(e) => e.key === 'Enter' && handleModalConfirm(e)}
+            className="px-4 py-2 rounded bg-green-600 text-white"
+          >
             Valider
           </button>
+        </div>
         </div>
       </Modal>
     </div>

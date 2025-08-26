@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { api } from '../services/apiUtils';
 import logService from '../services/logService';
 import { notificationSettingsSchema } from '../validation/schemas';
+import useKeyboardActions from '../hooks/useKeyboardActions';
 
 const NotificationSettings = () => {
   const [prefs, setPrefs] = useState({ email: true, sms: false, push: false });
@@ -9,6 +10,8 @@ const NotificationSettings = () => {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const isValid = notificationSettingsSchema.isValidSync(prefs);
+
+  const handleKeyDown = useKeyboardActions({ onEnter: handleSubmit });
 
   useEffect(() => {
     const fetchPrefs = async () => {
@@ -58,7 +61,7 @@ const NotificationSettings = () => {
     <div className="p-8">
       <h2 className="text-2xl font-bold mb-6">Notifications</h2>
       {message && <div className="mb-4">{message}</div>}
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} onKeyDown={handleKeyDown} className="space-y-4">
         <label className="flex items-center">
           <input type="checkbox" name="email" checked={prefs.email} onChange={handleChange} className="mr-2" />
           Email

@@ -12,10 +12,12 @@ import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 import logService from '../services/logService';
 import useFocusTrap from '../hooks/useFocusTrap';
+import useKeyboardActions from '../hooks/useKeyboardActions';
 
 function ReminderModal({ open, count, onClose }) {
   const dialogRef = useRef(null);
   useFocusTrap(dialogRef, open);
+  const handleKeyDown = useKeyboardActions({ onEnter: onClose, onEsc: onClose });
 
   if (!open) return null;
   const has = (count ?? 0) > 0;
@@ -28,6 +30,7 @@ function ReminderModal({ open, count, onClose }) {
         className="relative bg-white rounded-xl shadow-xl w-full max-w-sm mx-4 p-6"
         role="dialog"
         aria-modal="true"
+        onKeyDown={handleKeyDown}
       >
         <div className="flex items-center gap-3 mb-3">
           <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center">
@@ -47,6 +50,7 @@ function ReminderModal({ open, count, onClose }) {
         <div className="flex justify-end">
           <button
             onClick={onClose}
+            onKeyDown={(e) => e.key === 'Enter' && onClose(e)}
             className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700"
           >
             OK

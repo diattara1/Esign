@@ -4,6 +4,7 @@ import { useAuth } from '../AuthContext';
 import { useLocation, Link } from 'react-router-dom';
 import { Eye, EyeOff, Mail, Lock, CheckCircle, XCircle, Loader2 } from 'lucide-react';
 import { loginSchema } from '../validation/schemas';
+import useKeyboardActions from '../hooks/useKeyboardActions';
 
 const LoginPage = () => {
   const { login, authLoading } = useAuth();
@@ -16,6 +17,8 @@ const LoginPage = () => {
   const [errors, setErrors] = useState({});
   const [showPassword, setShowPassword] = useState(false);
   const isFormValid = loginSchema.isValidSync({ username, password });
+
+  const handleKeyDown = useKeyboardActions({ onEnter: handleLogin });
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -88,7 +91,7 @@ const LoginPage = () => {
             </div>
           )}
 
-          <form onSubmit={handleLogin} className="space-y-6">
+          <form onSubmit={handleLogin} onKeyDown={handleKeyDown} className="space-y-6">
             {/* Nom d'utilisateur */}
             <div>
               <label htmlFor="username" className="block text-sm font-medium text-gray-700 mb-2">

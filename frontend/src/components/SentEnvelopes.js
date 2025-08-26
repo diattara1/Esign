@@ -6,14 +6,15 @@ import { Link } from 'react-router-dom';
 
 const SentEnvelopes = () => {
   const [envelopes, setEnvelopes] = useState([]);
-
+  const [loading, setLoading] = useState(true);
   useEffect(() => {
     signatureService.getEnvelopes({ status: 'sent' })
       .then(setEnvelopes)
       .catch(err => {
         console.error(err);
         toast.error("Impossible de charger les enveloppes envoyées");
-      });
+       })
+      .finally(() => setLoading(false));
   }, []);
 
   const DocumentCell = ({ row }) => (
@@ -86,6 +87,7 @@ const SentEnvelopes = () => {
     <Table
       columns={columns}
       data={envelopes}
+      loading={loading}
       title="Enveloppes Envoyées"
       description={`Documents envoyés pour signature (${envelopes.length})`}
       emptyMessage="Aucune enveloppe envoyée"

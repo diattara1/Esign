@@ -37,7 +37,12 @@ export const AuthProvider = ({ children }) => {
   const logout = async () => {
     try {
       await api.post('/api/logout/');
-    } catch {}
+    } catch (err) {
+      const msg = err.response?.data?.detail
+               || err.response?.data?.error
+               || 'Erreur de déconnexion';
+      toast.error(msg);
+    }
     setUser(null);
     navigate('/login');
   };

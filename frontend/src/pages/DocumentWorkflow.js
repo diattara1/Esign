@@ -8,7 +8,7 @@ import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 import logService from '../services/logService';
 import sanitize from '../utils/sanitize';
-
+import Countdown from '../components/Countdown';
 pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js';
 
 export default function DocumentWorkflow() {
@@ -41,7 +41,17 @@ export default function DocumentWorkflow() {
   const [isUploading, setIsUploading] = useState(false);
 const [includeQr, setIncludeQr] = useState(false);
   const [loadingDocId, setLoadingDocId] = useState(null);
-
+const deadlineAt = useMemo(() => {
+    if (deadlineMode === 'exact' && deadlineExact) {
+      return new Date(deadlineExact).toISOString();
+    }
+    if (deadlineMode === 'days' && deadlineDays) {
+      const d = new Date();
+      d.setDate(d.getDate() + Number(deadlineDays));
+      return d.toISOString();
+    }
+    return null;
+  }, [deadlineMode, deadlineExact, deadlineDays]);
   const pdfWrapper = useRef(null);
    const prevUrlRef = useRef(null);
      useEffect(() => {
@@ -350,16 +360,11 @@ const [includeQr, setIncludeQr] = useState(false);
         flow_type: flowType,
         include_qr_code: includeQr,
         reminder_days: Number(reminderDays) || 1,
+        deadline_at: deadlineAt,
       };
-      if (deadlineMode === 'exact' && deadlineExact) {
-        // datetime-local -> ISO 8601
-        payload.deadline_at = new Date(deadlineExact).toISOString();
-      } else if (deadlineMode === 'days' && deadlineDays) {
-        const d = new Date();
-        d.setDate(d.getDate() + Number(deadlineDays));
-        payload.deadline_at = d.toISOString();
-      } else {
-        payload.deadline_at = null; // pas d'échéance explicite -> géré par le backend si besoin
+      if (payload.deadline_at && new Date(payload.deadline_at) < new Date()) {
+        toast.error("L'échéance est déjà passée");
+        return;// pas d'échéance explicite -> géré par le backend si besoin
       }
 
       // 1) On sauvegarde l'enveloppe avec les nouveaux champs
@@ -374,7 +379,7 @@ const [includeQr, setIncludeQr] = useState(false);
       logService.error(err);
       toast.error("Échec de l'envoi");
     }
-  }, [id, recipients, fields, flowType, includeQr, reminderDays, deadlineMode, deadlineDays, deadlineExact, navigate]);
+  }, [id, recipients, fields, flowType, includeQr, reminderDays, deadlineAt, navigate]);
 
 
   // ---- Rendu visuel d'un champ posé ----
@@ -652,16 +657,7 @@ const [includeQr, setIncludeQr] = useState(false);
     Intégrer un QR Code de vérification au PDF final
   </label>
 </div>
-
-          <button
-            onClick={handleSubmit}
-            disabled={recipients.some(r => !r.email || !r.full_name) || fields.length === 0}
-            className="w-full mt-6 bg-green-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
-          >
-            Envoyer l'enveloppe
-          </button>
-        </div>
-                  {/* --- Relances / Échéance --- */}
+         {/* --- Relances / Échéance --- */}
           <div className="mb-6 p-4 bg-gray-50 rounded-lg space-y-4">
             <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Intervalle entre relances (en jours)</label>
@@ -715,14 +711,23 @@ const [includeQr, setIncludeQr] = useState(false);
                   onChange={e => setDeadlineExact(e.target.value)}
                   className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-md text-sm disabled:bg-gray-100"
                 />
+                <Countdown targetIso={deadlineAt} className="text-sm text-gray-700" />
                 <p className="text-xs text-gray-500">
                   Si vide, une échéance par défaut sera appliquée côté serveur.
                 </p>
               </div>
             </div>
           </div>
-      </div>
-
+          <button
+            onClick={handleSubmit}
+            disabled={recipients.some(r => !r.email || !r.full_name) || fields.length === 0}
+            className="w-full mt-6 bg-green-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+          >
+            Envoyer l'enveloppe
+          </button>
+        </div>
+         
+      
       {/* Zone centrale - PDF Viewer */}
       <div className="flex-1 flex flex-col bg-gray-100">
         <div className="flex-1 flex overflow-hidden">

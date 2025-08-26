@@ -7,8 +7,10 @@ import { pdfjs } from 'react-pdf';
 import ErrorBoundary from './components/ErrorBoundary';
 import './index.css';
 
-pdfjs.GlobalWorkerOptions.workerSrc =
-  `//unpkg.com/pdfjs-dist@${pdfjs.version}/legacy/build/pdf.worker.min.js`;
+
+pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js';
+
+
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
   <BrowserRouter>

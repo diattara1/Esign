@@ -273,8 +273,14 @@ const [reminderCount, setReminderCount] = useState(0);
 )}
 
             <div><strong>Flux :</strong> {env.flow_type === 'sequential' ? 'Séquentiel' : 'Parallèle'}</div>
-            {env.deadline_at && (<div><strong>Échéance :</strong> {new Date(env.deadline_at).toLocaleDateString()}</div>)}
-          </div>
+          {env.deadline_at && (
+  <Countdown
+    targetIso={env.deadline_at}
+    className="mt-2"
+  />
+)}
+<div><strong>Échéance :</strong> {env.deadline_at ? new Date(env.deadline_at).toLocaleDateString() : '—'}</div>
+</div>
 
           {/* Progression */}
           <div className="space-y-4 mb-6">

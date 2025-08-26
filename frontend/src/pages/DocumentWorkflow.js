@@ -8,8 +8,7 @@ import 'react-pdf/dist/Page/TextLayer.css';
 import logService from '../services/logService';
 import sanitize from '../utils/sanitize';
 
-pdfjs.GlobalWorkerOptions.workerSrc =
-  `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
+pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js';
 
 export default function DocumentWorkflow() {
   const { id } = useParams();

@@ -1,5 +1,4 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -12,18 +11,15 @@ class ErrorBoundary extends React.Component {
   }
 
   componentDidCatch(error, errorInfo) {
-    // You can log the error to an error reporting service here
+    // eslint-disable-next-line no-console
     console.error('ErrorBoundary caught an error', error, errorInfo);
   }
 
   render() {
     if (this.state.hasError) {
       return (
-        <div className="h-screen flex flex-col items-center justify-center p-4 text-center">
-          <h1 className="text-2xl font-bold mb-4">Une erreur s'est produite</h1>
-          <Link to="/" className="text-blue-500 underline">
-            Retour à l'accueil
-          </Link>
+        <div className="min-h-screen flex items-center justify-center p-4">
+          <p className="text-red-600 text-center">Une erreur inattendue est survenue.</p>
         </div>
       );
     }

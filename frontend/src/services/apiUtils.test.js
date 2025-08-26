@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { api, setLogoutCallback } from './apiUtils';
+import { api, setLogoutCallback, setErrorCallback } from './apiUtils';
 
 describe('refresh failure handling', () => {
   const originalAdapter = api.defaults.adapter;
@@ -30,5 +30,23 @@ describe('refresh failure handling', () => {
     await expect(api.get('/protected')).rejects.toBeDefined();
 
     expect(navigate).toHaveBeenCalledWith('/login');
+  });
+});
+
+describe('network error handling', () => {
+  const originalAdapter = api.defaults.adapter;
+
+  afterEach(() => {
+    api.defaults.adapter = originalAdapter;
+  });
+
+  test('invokes global error callback on network error', async () => {
+    const errorCb = jest.fn();
+    setErrorCallback(errorCb);
+
+    api.defaults.adapter = () => Promise.reject({ request: {} });
+
+    await expect(api.get('/whatever')).rejects.toBeDefined();
+    expect(errorCb).toHaveBeenCalled();
   });
 });

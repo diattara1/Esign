@@ -5,6 +5,7 @@ import { BrowserRouter } from 'react-router-dom';
 import { AuthProvider } from './AuthContext';
 import { pdfjs } from 'react-pdf';
 import ErrorBoundary from './components/ErrorBoundary';
+import { ErrorProvider } from './ErrorContext';
 import './index.css';
 
 
@@ -15,9 +16,11 @@ const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
   <BrowserRouter>
     <ErrorBoundary>
-      <AuthProvider>
-        <App />
-      </AuthProvider>
+      <ErrorProvider>
+        <AuthProvider>
+          <App />
+        </AuthProvider>
+      </ErrorProvider>
     </ErrorBoundary>
   </BrowserRouter>
 );

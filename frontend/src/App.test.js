@@ -44,5 +44,5 @@ test.each(routes)('displays fallback while loading %s', (route) => {
       <App />
     </MemoryRouter>
   );
-  expect(screen.getByTestId('loading-spinner')).toBeInTheDocument();
+  expect(screen.getByTestId('loading-skeleton')).toBeInTheDocument();
 });

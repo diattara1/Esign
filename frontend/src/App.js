@@ -2,6 +2,7 @@
 import React, { Suspense } from 'react';
 import { useAuth } from './AuthContext';
 import { Routes, Route, Navigate, Outlet,useLocation } from 'react-router-dom';
+import LoadingSkeleton from './components/LoadingSkeleton';
 
 const DashboardSignature = React.lazy(() => import('./pages/DashboardSignature'));
 const DocumentDetail = React.lazy(() => import('./pages/DocumentDetail'));
@@ -37,23 +38,17 @@ const ProtectedRoute = () => {
 
 };
 
-const LoadingSpinner = () => (
-  <div className="min-h-screen flex items-center justify-center" data-testid="loading-spinner">
-    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-  </div>
-);
-
 const App = () => {
   const { isLoading } = useAuth();
  
 
-  // Afficher le spinner pendant le chargement de l'authentification
+  // Afficher le skeleton pendant le chargement de l'authentification
   if (isLoading) {
-    return <LoadingSpinner />;
+    return <LoadingSkeleton />;
   }
 
   return (
-    <Suspense fallback={<LoadingSpinner />}>
+    <Suspense fallback={<LoadingSkeleton />}> 
       <Routes>
       {/* ROUTES PUBLIQUES - À PLACER EN PREMIER ET DANS LE BON ORDRE */}
       

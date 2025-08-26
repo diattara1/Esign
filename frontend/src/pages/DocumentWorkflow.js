@@ -39,6 +39,7 @@ export default function DocumentWorkflow() {
   const [placing, setPlacing] = useState({ idx: null, type: 'signature' });
   const [isUploading, setIsUploading] = useState(false);
 const [includeQr, setIncludeQr] = useState(false);
+  const [loadingDocId, setLoadingDocId] = useState(null);
 
   const pdfWrapper = useRef(null);
    const prevUrlRef = useRef(null);
@@ -179,32 +180,30 @@ const [includeQr, setIncludeQr] = useState(false);
   }, []);
 
   // ---- Sélection d'un document dans la colonne de droite ----
- // remplace ta fonction selectDocument par ceci
-const selectDocument = useCallback(async (doc) => {
-  if (selectedDocId === doc.id) return;
+  const selectDocument = useCallback(async (doc) => {
+    if (selectedDocId === doc.id) return;
 
-  let cancelled = false;
-  try {
-    // (optionnel) setLoadingDocId(doc.id);
+    let cancelled = false;
+    setLoadingDocId(doc.id);
+    try {
+      // 1) on télécharge d'abord le nouveau PDF
+      const blobUrl = await signatureService.fetchDocumentBlob(id, doc.id);
+      if (cancelled) return;
 
-    // 1) on télécharge d'abord le nouveau PDF
-    const blobUrl = await signatureService.fetchDocumentBlob(id, doc.id);
-    if (cancelled) return;
+      // 2) swap atomique : on change l'id et l'URL en même temps
+      setPdfUrl(blobUrl); // 1) d'abord l'URL du nouveau PDF
+      setSelectedDocId(doc.id); // 2) puis l'ID (affichage, badges, etc.)
+      setNumPagesByDoc(prev => ({ ...prev, [doc.id]: undefined }));
+    } catch (e) {
+      logService.error(e);
+      toast.error('Impossible de charger ce PDF');
+    } finally {
+      setLoadingDocId(null);
+    }
 
-    // 2) swap atomique : on change l'id et l'URL en même temps
-     setPdfUrl(blobUrl); // 1) d'abord l'URL du nouveau PDF
- setSelectedDocId(doc.id); // 2) puis l'ID (affichage, badges, etc.)
- setNumPagesByDoc(prev => ({ ...prev, [doc.id]: undefined }));
-  } catch (e) {
-    logService.error(e);
-    toast.error('Impossible de charger ce PDF');
-  } finally {
-    // (optionnel) setLoadingDocId(null);
-  }
-
-  // cleanup si le composant est démonté pendant l'async
-  return () => { cancelled = true; };
-}, [selectedDocId, id]);
+    // cleanup si le composant est démonté pendant l'async
+    return () => { cancelled = true; };
+  }, [selectedDocId, id]);
 
 
   // ---- Vérifier si un destinataire peut placer sa signature ----
@@ -756,49 +755,63 @@ const selectDocument = useCallback(async (doc) => {
             </div>
           ) : (
             <div className="space-y-2">
-              {documents.map(doc => (
-                <button
-                  key={doc.id}
-                  onClick={() => selectDocument(doc)}
-                  className={`w-full text-left p-3 rounded-lg border transition-all ${
-                    selectedDocId === doc.id
-                      ? 'bg-blue-50 border-blue-200 shadow-sm'
-                      : 'bg-white border-gray-200 hover:bg-gray-50 hover:border-gray-300'
-                  }`}
-                >
-                  <div className="flex items-start space-x-3">
-                    <div className={`mt-0.5 w-8 h-10 rounded border-2 flex items-center justify-center ${
-                      selectedDocId === doc.id ? 'border-blue-300 bg-blue-100' : 'border-gray-300 bg-gray-50'
-                    }`}>
-                      <svg className={`w-4 h-4 ${selectedDocId === doc.id ? 'text-blue-600' : 'text-gray-400'}`} fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clipRule="evenodd" />
-                      </svg>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className={`text-sm font-medium truncate ${
-                        selectedDocId === doc.id ? 'text-blue-900' : 'text-gray-900'
+                {documents.map(doc => (
+                  <button
+                    key={doc.id}
+                    onClick={() => selectDocument(doc)}
+                    className={`w-full text-left p-3 rounded-lg border transition-all ${
+                      selectedDocId === doc.id
+                        ? 'bg-blue-50 border-blue-200 shadow-sm'
+                        : 'bg-white border-gray-200 hover:bg-gray-50 hover:border-gray-300'
+                    }`}
+                  >
+                    <div className="flex items-start space-x-3">
+                      <div className={`relative mt-0.5 w-8 h-10 rounded border-2 flex items-center justify-center ${
+                        selectedDocId === doc.id ? 'border-blue-300 bg-blue-100' : 'border-gray-300 bg-gray-50'
                       }`}>
-                        {doc.name || `Document ${doc.id}`}
-                      </p>
-                      <div className="mt-1 flex items-center space-x-2">
-                        <span className="text-xs text-gray-500">PDF</span>
-                        {numPagesByDoc[doc.id] && (
-                          <>
-                            <span className="text-xs text-gray-400">•</span>
-                            <span className="text-xs text-gray-500">
-                              {numPagesByDoc[doc.id]} page{numPagesByDoc[doc.id] > 1 ? 's' : ''}
-                            </span>
-                          </>
+                        {loadingDocId === doc.id ? (
+                          <div className="w-full h-full rounded bg-gray-200 animate-pulse" />
+                        ) : (
+                          <svg
+                            className={`w-4 h-4 ${selectedDocId === doc.id ? 'text-blue-600' : 'text-gray-400'}`}
+                            fill="currentColor"
+                            viewBox="0 0 20 20"
+                          >
+                            <path
+                              fillRule="evenodd"
+                              d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z"
+                              clipRule="evenodd"
+                            />
+                          </svg>
                         )}
                       </div>
+                      <div className="flex-1 min-w-0">
+                        <p
+                          className={`text-sm font-medium truncate ${
+                            selectedDocId === doc.id ? 'text-blue-900' : 'text-gray-900'
+                          }`}
+                        >
+                          {doc.name || `Document ${doc.id}`}
+                        </p>
+                        <div className="mt-1 flex items-center space-x-2">
+                          <span className="text-xs text-gray-500">PDF</span>
+                          {numPagesByDoc[doc.id] && (
+                            <>
+                              <span className="text-xs text-gray-400">•</span>
+                              <span className="text-xs text-gray-500">
+                                {numPagesByDoc[doc.id]} page{numPagesByDoc[doc.id] > 1 ? 's' : ''}
+                              </span>
+                            </>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
-    </div>
   );
 }

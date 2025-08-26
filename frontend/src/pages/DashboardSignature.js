@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';              
+import { Link } from 'react-router-dom';
 import SignatureNavbar from '../components/SignatureNavbar';
 import signatureService from '../services/signatureService';
 import { toast } from 'react-toastify';
 import slugify from 'slugify';
+import logService from '../services/logService';
 
 import {
   FileText,
@@ -96,7 +97,7 @@ const DashboardSignature = () => {
         setNotifications(notifs);
         setRecentDocuments(recents);
       } catch (err) {
-        console.error('Erreur chargement dashboard:', err);
+        logService.error('Erreur chargement dashboard:', err);
         toast.error('Échec du chargement du tableau de bord');
       }
     };
@@ -109,7 +110,7 @@ const DashboardSignature = () => {
       const { download_url } = await signatureService.downloadEnvelope(id);
       window.open(download_url, '_blank');
     } catch (error) {
-      console.error('Erreur lors de la prévisualisation du PDF:', error);
+      logService.error('Erreur lors de la prévisualisation du PDF:', error);
       toast.error('Impossible de prévisualiser le PDF');
     }
   };
@@ -135,7 +136,7 @@ const DashboardSignature = () => {
 
       toast.success('Document téléchargé avec succès');
     } catch (err) {
-      console.error('Erreur lors du téléchargement du PDF:', err);
+      logService.error('Erreur lors du téléchargement du PDF:', err);
       toast.error('Échec du téléchargement du document');
     }
   };

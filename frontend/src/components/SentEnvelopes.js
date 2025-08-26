@@ -3,6 +3,7 @@ import Table from '../components/Tables';
 import signatureService from '../services/signatureService';
 import { toast } from 'react-toastify';
 import { Link } from 'react-router-dom';
+import logService from '../services/logService';
 
 const SentEnvelopes = () => {
   const [envelopes, setEnvelopes] = useState([]);
@@ -11,7 +12,7 @@ const SentEnvelopes = () => {
     signatureService.getEnvelopes({ status: 'sent' })
       .then(setEnvelopes)
       .catch(err => {
-        console.error(err);
+        logService.error(err);
         toast.error("Impossible de charger les enveloppes envoyées");
        })
       .finally(() => setLoading(false));

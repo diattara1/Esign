@@ -5,6 +5,7 @@ import signatureService from '../services/signatureService';
 import { toast } from 'react-toastify';
 import { useNavigate } from 'react-router-dom';
 import { FiEdit2, FiTrash2 } from 'react-icons/fi';
+import logService from '../services/logService';
 
 const DraftEnvelopes = () => {
   const [envelopes, setEnvelopes] = useState([]);
@@ -18,7 +19,7 @@ const DraftEnvelopes = () => {
         setEnvelopes(data);
       } catch (err) {
         toast.error('Échec du chargement des brouillons');
-        console.error('Failed to fetch draft envelopes:', err);
+        logService.error('Failed to fetch draft envelopes:', err);
       } finally {
         setLoading(false);
       }
@@ -39,7 +40,7 @@ const DraftEnvelopes = () => {
       toast.success('Brouillon supprimé');
     } catch (err) {
       toast.error('Échec de la suppression');
-      console.error(err);
+      logService.error(err);
     }
   };
 

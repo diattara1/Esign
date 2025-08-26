@@ -3,6 +3,7 @@ import Table from '../components/Tables';
 import signatureService from '../services/signatureService';
 import { toast } from 'react-toastify';
 import { useNavigate } from 'react-router-dom';
+import logService from '../services/logService';
 
 const ActionRequiredEnvelopes = () => {
   const [envelopes, setEnvelopes] = useState([]);
@@ -16,7 +17,7 @@ const ActionRequiredEnvelopes = () => {
         setEnvelopes(data);
       } catch (err) {
         toast.error("Impossible de charger les actions requises");
-        console.error(err);
+        logService.error(err);
       } finally {
         setLoading(false);
       }

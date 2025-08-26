@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useCallback } from 'react';
 import SignatureCanvas from 'react-signature-canvas';
+import logService from '../services/logService';
 
 const SignaturePadComponent = ({ onEnd, onChange, initialValue, canvasProps }) => {
   const sigRef = useRef(null);
@@ -10,7 +11,7 @@ const SignaturePadComponent = ({ onEnd, onChange, initialValue, canvasProps }) =
     try {
       sigRef.current.fromDataURL(initialValue);
     } catch (error) {
-      console.error('Erreur lors du chargement de la signature :', error);
+      logService.error('Erreur lors du chargement de la signature :', error);
     }
   }, [initialValue]);
 

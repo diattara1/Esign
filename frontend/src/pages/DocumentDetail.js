@@ -10,6 +10,7 @@ import { toast } from 'react-toastify';
 import Countdown from '../components/Countdown';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
+import logService from '../services/logService';
 
 // ⬆️ tout en haut de src/pages/DocumentDetail.js (après les imports)
 function ReminderModal({ open, count, onClose }) {
@@ -108,7 +109,7 @@ const [reminderCount, setReminderCount] = useState(0);
       });
       setNumPages(0);
     } catch (e) {
-      console.error(e);
+      logService.error(e);
       setPdfUrl(null);
       toast.error('Impossible de charger le PDF');
     } finally {
@@ -127,7 +128,7 @@ const [reminderCount, setReminderCount] = useState(0);
         if (docs.length > 0) setSelectedDoc(docs[0]); // pour l’UI
         await loadConsolidatedPreview(); // toujours la version consolidée
       } catch (err) {
-        console.error(err);
+        logService.error(err);
         toast.error("Échec du chargement de l'enveloppe");
       } finally {
         setLoading(false);
@@ -167,7 +168,7 @@ const [reminderCount, setReminderCount] = useState(0);
       document.body.removeChild(a);
       toast.success('Document téléchargé');
     } catch (e) {
-      console.error(e);
+      logService.error(e);
       toast.error('Échec du téléchargement');
     }
   };
@@ -175,7 +176,7 @@ const [reminderCount, setReminderCount] = useState(0);
   // Callbacks react-pdf
   const onDocumentLoad = ({ numPages }) => setNumPages(numPages);
   const onDocumentError = (err) => {
-    console.error('PDF error:', err);
+    logService.error('PDF error:', err);
     toast.error('Erreur lors du chargement du PDF');
   };
 

@@ -15,6 +15,7 @@ import {
   Shield,
   ExternalLink
 } from 'lucide-react';
+import logService from '../services/logService';
 
 const SignatureConfirmation = () => {
   const navigate = useNavigate();
@@ -34,7 +35,7 @@ const SignatureConfirmation = () => {
         const data = await signatureService.getEnvelope(envelopeId);
         setEnvelope(data);
       } catch (e) {
-        console.error(e);
+        logService.error(e);
       } finally {
         setLoadingEnv(false);
       }
@@ -63,7 +64,7 @@ const SignatureConfirmation = () => {
       window.URL.revokeObjectURL(url);
       toast.success('Document téléchargé avec succès');
     } catch (err) {
-      console.error('Erreur téléchargement document signé:', err);
+      logService.error('Erreur téléchargement document signé:', err);
       toast.error('Échec du téléchargement. Veuillez réessayer.');
     } finally {
       setDownloading(false);

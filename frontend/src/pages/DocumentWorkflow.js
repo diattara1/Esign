@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Document, Page, pdfjs } from 'react-pdf';
+import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
 import signatureService from '../services/signatureService';
 import { toast } from 'react-toastify';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
@@ -316,6 +317,28 @@ const [includeQr, setIncludeQr] = useState(false);
     }
   }, [recipients, placing.idx]);
 
+  const handleDragEnd = useCallback((result) => {
+    if (!result.destination) return;
+    setRecipients(prev => {
+      const items = Array.from(prev);
+      const [moved] = items.splice(result.source.index, 1);
+      items.splice(result.destination.index, 0, moved);
+      const orderMap = {};
+      const updated = items.map((rec, i) => {
+        orderMap[rec.order] = i + 1;
+        return { ...rec, order: i + 1 };
+      });
+      setFields(prevFields =>
+        prevFields.map(f =>
+          orderMap[f.recipient_id]
+            ? { ...f, recipient_id: orderMap[f.recipient_id] }
+            : f
+        )
+      );
+      return updated;
+    });
+  }, [setFields]);
+
   // ---- Envoi ----
   const handleSubmit = useCallback(async (e) => {
     e.preventDefault();
@@ -466,98 +489,130 @@ const [includeQr, setIncludeQr] = useState(false);
             )}
           </div>
 
-          <div className="space-y-4">
-            {recipients.map((recipient, idx) => {
-              const canPlace = canPlaceSignature(idx);
-              const hasSignature = hasSignatureOnCurrentDoc(recipient.order);
-              
-              return (
-                <div key={idx} className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center space-x-2">
-                      <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-                        <span className="text-sm font-medium text-blue-700">{idx + 1}</span>
-                      </div>
-                      <span className="font-medium text-gray-900">Destinataire #{idx + 1}</span>
-                    </div>
-                    {recipients.length > 1 && (
-                      <button
-                        onClick={() => removeRecipient(idx)}
-                        className="text-red-400 hover:text-red-600 p-1"
-                        title="Supprimer"
-                      >
-                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-                        </svg>
-                      </button>
-                    )}
-                  </div>
+            <DragDropContext onDragEnd={handleDragEnd}>
+              <Droppable droppableId="recipients">
+                {(provided) => (
+                  <div
+                    className="space-y-4"
+                    ref={provided.innerRef}
+                    {...provided.droppableProps}
+                  >
+                    {recipients.map((recipient, idx) => {
+                      const canPlace = canPlaceSignature(idx);
+                      const hasSignature = hasSignatureOnCurrentDoc(recipient.order);
+                      const emailError = !recipient.email
+                        ? "Email obligatoire"
+                        : /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipient.email)
+                        ? ""
+                        : "Email invalide";
 
-                  <div className="space-y-3">
-                    <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">Email</label>
-                      <input
-                        type="email"
-                        value={recipient.email}
-                        onChange={e => updateRecipient(idx, 'email', e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        placeholder="exemple@email.com"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">Nom complet</label>
-                      <input
-                        type="text"
-                        value={recipient.full_name}
-                        onChange={e => updateRecipient(idx, 'full_name', e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        placeholder="Jean Dupont"
-                      />
-                    </div>
+                      return (
+                        <Draggable key={idx} draggableId={`rec-${idx}`} index={idx}>
+                          {(dragProvided) => (
+                            <div
+                              ref={dragProvided.innerRef}
+                              {...dragProvided.draggableProps}
+                              {...dragProvided.dragHandleProps}
+                              className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm"
+                            >
+                              <div className="flex items-center justify-between mb-3">
+                                <div className="flex items-center space-x-2">
+                                  <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                                    <span className="text-sm font-medium text-blue-700">{idx + 1}</span>
+                                  </div>
+                                  <span className="font-medium text-gray-900">Destinataire #{idx + 1}</span>
+                                </div>
+                                {recipients.length > 1 && (
+                                  <button
+                                    onClick={() => removeRecipient(idx)}
+                                    className="text-red-400 hover:text-red-600 p-1"
+                                    title="Supprimer"
+                                  >
+                                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                      <path
+                                        fillRule="evenodd"
+                                        d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+                                        clipRule="evenodd"
+                                      />
+                                    </svg>
+                                  </button>
+                                )}
+                              </div>
 
-                    <div className="pt-2">
-                      <button
-                        type="button"
-                        onClick={() => setPlacing({ idx, type: 'signature' })}
-                        disabled={!selectedDocId || !canPlace}
-                        className={`w-full px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                          placing.idx === idx
-                            ? 'bg-yellow-100 text-yellow-800 border border-yellow-300'
-                            : canPlace && selectedDocId
-                            ? 'bg-blue-600 text-white hover:bg-blue-700'
-                            : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                        }`}
-                      >
-                        {placing.idx === idx 
-                          ? 'Cliquez sur le PDF pour placer' 
-                          : hasSignature
-                          ? 'Redéfinir position signature'
-                          : 'Définir position signature'
-                        }
-                      </button>
-                      
-                      {!selectedDocId && (
-                        <p className="text-xs text-red-500 mt-1">
-                          Sélectionnez d'abord un document à droite
-                        </p>
-                      )}
-                      
-                      {selectedDocId && !canPlace && (
-                        <p className="text-xs text-red-500 mt-1">
-                          Renseignez l'email et le nom complet
-                        </p>
-                      )}
-                      
-                      {hasSignature && canPlace && selectedDocId && (
-                        <p className="text-xs text-green-600 mt-1">
-                          ✓ Signature placée sur ce document
-                        </p>
-                      )}
-                    </div>
+                              <div className="space-y-3">
+                                <div>
+                                  <label className="block text-xs font-medium text-gray-700 mb-1">Email</label>
+                                  <input
+                                    type="email"
+                                    value={recipient.email}
+                                    onChange={e => updateRecipient(idx, 'email', e.target.value)}
+                                    className={`w-full px-3 py-2 border rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${emailError ? 'border-red-500' : 'border-gray-300'}`}
+                                    placeholder="exemple@email.com"
+                                  />
+                                  {emailError && (
+                                    <p className="text-xs text-red-500 mt-1">{emailError}</p>
+                                  )}
+                                </div>
+                                <div>
+                                  <label className="block text-xs font-medium text-gray-700 mb-1">Nom complet</label>
+                                  <input
+                                    type="text"
+                                    value={recipient.full_name}
+                                    onChange={e => updateRecipient(idx, 'full_name', e.target.value)}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                    placeholder="Jean Dupont"
+                                  />
+                                </div>
+
+                                <div className="pt-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => setPlacing({ idx, type: 'signature' })}
+                                    disabled={!selectedDocId || !canPlace}
+                                    className={`w-full px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                                      placing.idx === idx
+                                        ? 'bg-yellow-100 text-yellow-800 border border-yellow-300'
+                                        : canPlace && selectedDocId
+                                        ? 'bg-blue-600 text-white hover:bg-blue-700'
+                                        : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                                    }`}
+                                  >
+                                    {placing.idx === idx
+                                      ? 'Cliquez sur le PDF pour placer'
+                                      : hasSignature
+                                      ? 'Redéfinir position signature'
+                                      : 'Définir position signature'}
+                                  </button>
+
+                                  {!selectedDocId && (
+                                    <p className="text-xs text-red-500 mt-1">
+                                      Sélectionnez d'abord un document à droite
+                                    </p>
+                                  )}
+
+                                  {selectedDocId && !canPlace && (
+                                    <p className="text-xs text-red-500 mt-1">
+                                      Renseignez l'email et le nom complet
+                                    </p>
+                                  )}
+
+                                  {hasSignature && canPlace && selectedDocId && (
+                                    <p className="text-xs text-green-600 mt-1">
+                                      ✓ Signature placée sur ce document
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </Draggable>
+                      );
+                    })}
+                    {provided.placeholder}
                   </div>
-                </div>
-              );
-            })}
+                )}
+              </Droppable>
+            </DragDropContext>
 
             <button
               onClick={addRecipient}

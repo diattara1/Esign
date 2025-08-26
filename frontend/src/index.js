@@ -5,6 +5,8 @@ import { BrowserRouter } from 'react-router-dom';
 import { AuthProvider } from './AuthContext';
 import { pdfjs } from 'react-pdf';
 import ErrorBoundary from './components/ErrorBoundary';
+import './index.css';
+
 pdfjs.GlobalWorkerOptions.workerSrc =
   `//unpkg.com/pdfjs-dist@${pdfjs.version}/legacy/build/pdf.worker.min.js`;
 const root = ReactDOM.createRoot(document.getElementById('root'));

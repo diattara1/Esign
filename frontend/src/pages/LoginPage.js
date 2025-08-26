@@ -5,7 +5,7 @@ import { useLocation, Link } from 'react-router-dom';
 import { Eye, EyeOff, Mail, Lock, CheckCircle, XCircle, Loader2 } from 'lucide-react';
 
 const LoginPage = () => {
-  const { login, isLoading } = useAuth();
+  const { login, authLoading } = useAuth();
   const location = useLocation();
   const params = new URLSearchParams(location.search);
   const activated = params.get('activated');
@@ -17,7 +17,8 @@ const LoginPage = () => {
   const handleLogin = async (e) => {
     e.preventDefault();
     setError('');
-    const success = await login(username, password);
+    const redirectTo = location.state?.from?.pathname;
+    const success = await login(username, password, redirectTo);
     if (!success) {
       setError("Nom d'utilisateur ou mot de passe incorrect.");
       setPassword('');
@@ -131,13 +132,13 @@ const LoginPage = () => {
             <div>
               <button
                 type="submit"
-                disabled={isLoading}
+                disabled={authLoading}
                 className="group relative w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-xl text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-lg hover:shadow-xl"
               >
-                {isLoading && (
+                {authLoading && (
                   <Loader2 className="absolute left-4 h-5 w-5 animate-spin" />
                 )}
-                {isLoading ? 'Connexion...' : 'Se connecter'}
+                {authLoading ? 'Connexion...' : 'Se connecter'}
               </button>
             </div>
           </form>

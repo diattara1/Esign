@@ -11,14 +11,17 @@ export const AuthProvider = ({ children }) => {
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [authLoading, setAuthLoading] = useState(false);
 
   // login renvoie true si OK, false sinon (pas d'exception non gérée)
-  const login = async (username, password) => {
+   
+  const login = async (username, password, redirectTo = '/dashboard') => {
+     setAuthLoading(true);
     try {
       await api.post('/api/token/', { username, password });
       const userData = await verifyToken();
       setUser(userData.user);
-      navigate('/dashboard');
+      navigate(redirectTo);
       return true;
     } catch (err) {
       const msg = err.response?.data?.detail
@@ -26,6 +29,8 @@ export const AuthProvider = ({ children }) => {
                || 'Impossible de se connecter';
       toast.error(msg);
       return false;
+          } finally {
+      setAuthLoading(false);
     }
   };
 
@@ -66,6 +71,7 @@ export const AuthProvider = ({ children }) => {
       user,
       isAuthenticated: !!user,
       isLoading,
+       authLoading,
       login,
       logout,
       handleTokenExpiry

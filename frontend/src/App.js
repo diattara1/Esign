@@ -1,7 +1,7 @@
 
 import React, { Suspense } from 'react';
-
-import { Routes, Route, Navigate, Outlet } from 'react-router-dom';
+import { useAuth } from './AuthContext';
+import { Routes, Route, Navigate, Outlet,useLocation } from 'react-router-dom';
 
 const DashboardSignature = React.lazy(() => import('./pages/DashboardSignature'));
 const DocumentDetail = React.lazy(() => import('./pages/DocumentDetail'));
@@ -28,12 +28,13 @@ const DeletedEnvelopes = React.lazy(() => import('./components/DeletedEnvelopes'
 const MainLayout = React.lazy(() => import('./layouts/MainLayout'));
 const QrVerifyPage = React.lazy(() => import('./pages/QrVerifyPage'));
 const NotFound = React.lazy(() => import('./pages/NotFound'));
-import { useAuth } from './AuthContext';
-import { toast } from 'react-toastify';
+
 
 const ProtectedRoute = () => {
   const { isAuthenticated } = useAuth();
-  return isAuthenticated ? <Outlet /> : <Navigate to="/login" replace />;
+  const location = useLocation();
+  return isAuthenticated ? <Outlet /> : <Navigate to="/login" replace state={{ from: location }} />;
+
 };
 
 const LoadingSpinner = () => (

@@ -11,15 +11,24 @@ import Countdown from '../components/Countdown';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 import logService from '../services/logService';
+import useFocusTrap from '../hooks/useFocusTrap';
 
 function ReminderModal({ open, count, onClose }) {
+  const dialogRef = useRef(null);
+  useFocusTrap(dialogRef, open);
+
   if (!open) return null;
   const has = (count ?? 0) > 0;
-  
+
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative bg-white rounded-xl shadow-xl w-full max-w-sm mx-4 p-6">
+      <div
+        ref={dialogRef}
+        className="relative bg-white rounded-xl shadow-xl w-full max-w-sm mx-4 p-6"
+        role="dialog"
+        aria-modal="true"
+      >
         <div className="flex items-center gap-3 mb-3">
           <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center">
             <svg viewBox="0 0 24 24" className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" strokeWidth="2">
@@ -69,6 +78,7 @@ const DocumentDetail = () => {
   const [reminding, setReminding] = useState(false);
   const [reminderModalOpen, setReminderModalOpen] = useState(false);
   const [reminderCount, setReminderCount] = useState(0);
+  const remindBtnRef = useRef(null);
 
   // Viewer width
   const viewerRef = useRef(null);
@@ -196,6 +206,19 @@ const DocumentDetail = () => {
       setReminding(false);
     }
   };
+
+  const closeReminderModal = () => {
+    setReminderModalOpen(false);
+    remindBtnRef.current?.focus();
+  };
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') closeReminderModal();
+    };
+    if (reminderModalOpen) document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [reminderModalOpen]);
 
   // Callbacks react-pdf
   const onDocumentLoad = ({ numPages }) => setNumPages(numPages);
@@ -377,6 +400,7 @@ const DocumentDetail = () => {
               {/* Bouton relance */}
               {(env.status === 'sent' || env.status === 'pending') && (
                 <button
+                  ref={remindBtnRef}
                   onClick={handleRemind}
                   disabled={reminding}
                   className={`w-full px-4 py-2 rounded-lg transition-colors text-white text-sm font-medium ${
@@ -522,7 +546,7 @@ const DocumentDetail = () => {
       <ReminderModal
         open={reminderModalOpen}
         count={reminderCount}
-        onClose={() => setReminderModalOpen(false)}
+        onClose={closeReminderModal}
       />
     </div>
   );

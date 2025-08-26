@@ -24,6 +24,9 @@ const SignatureNavbar = () => {
   const [signMenuOpen, setSignMenuOpen] = useState(false);
   const profileRef = useRef(null);
   const signRef = useRef(null);
+  const mobileButtonRef = useRef(null);
+  const profileButtonRef = useRef(null);
+  const signButtonRef = useRef(null);
 
   const mainLinks = [
     { path: '/dashboard', label: 'Tableau de bord', icon: <FiHome className="w-4 h-4" /> },
@@ -74,6 +77,27 @@ const SignatureNavbar = () => {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        if (mobileMenuOpen) {
+          setMobileMenuOpen(false);
+          mobileButtonRef.current?.focus();
+        }
+        if (profileMenuOpen) {
+          setProfileMenuOpen(false);
+          profileButtonRef.current?.focus();
+        }
+        if (signMenuOpen) {
+          setSignMenuOpen(false);
+          signButtonRef.current?.focus();
+        }
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [mobileMenuOpen, profileMenuOpen, signMenuOpen]);
 
   const getColorClasses = (color) => {
     const colors = {
@@ -130,6 +154,7 @@ const SignatureNavbar = () => {
             {/* Sign Now Dropdown */}
             <div className="relative" ref={signRef}>
               <button
+                ref={signButtonRef}
                 onClick={() => setSignMenuOpen(!signMenuOpen)}
                 className="hidden md:inline-flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-emerald-600 to-emerald-700 text-white text-sm font-medium rounded-lg hover:from-emerald-700 hover:to-emerald-800 transition-all duration-200 transform hover:scale-105 shadow-md"
               >
@@ -166,6 +191,7 @@ const SignatureNavbar = () => {
             {/* Profile Dropdown */}
             <div className="relative" ref={profileRef}>
               <button
+                ref={profileButtonRef}
                 onClick={() => setProfileMenuOpen(!profileMenuOpen)}
                 className="flex items-center space-x-2 p-1 rounded-lg hover:bg-gray-100 transition-colors duration-200"
               >
@@ -210,6 +236,7 @@ const SignatureNavbar = () => {
 
             {/* Mobile menu button */}
             <button
+              ref={mobileButtonRef}
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
               className="md:hidden p-2 rounded-lg text-gray-500 hover:text-gray-600 hover:bg-gray-100 transition-colors duration-200"
             >

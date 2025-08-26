@@ -3,18 +3,28 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../services/apiUtils';
 import { Mail, ArrowLeft, CheckCircle, XCircle, Send, Loader2 } from 'lucide-react';
+import { passwordResetSchema } from '../validation/schemas';
 
 const PasswordResetPage = () => {
   const [email, setEmail] = useState('');
   const [message, setMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [errors, setErrors] = useState({});
+  const isValid = passwordResetSchema.isValidSync({ email });
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setMessage('');
+    setErrors({});
+    try {
+      await passwordResetSchema.validate({ email }, { abortEarly: false });
+    } catch (err) {
+      setErrors({ email: err.message });
+      return;
+    }
     setIsLoading(true);
-    
+
     try {
       await api.post('/api/signature/password-reset/', { email });
       setMessage('Si un compte existe pour cet email, un lien de réinitialisation a été envoyé.');
@@ -87,11 +97,16 @@ const PasswordResetPage = () => {
                   id="email"
                   type="email"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    setErrors({});
+                  }}
                   className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition-colors"
                   placeholder="exemple@email.com"
                 />
+                {errors.email && (
+                  <p className="mt-1 text-sm text-red-600">{errors.email}</p>
+                )}
               </div>
               <p className="mt-2 text-sm text-gray-500">
                 Nous vous enverrons un lien sécurisé pour réinitialiser votre mot de passe.
@@ -102,7 +117,7 @@ const PasswordResetPage = () => {
             <div>
               <button
                 type="submit"
-                disabled={isLoading}
+                disabled={isLoading || !isValid}
                 className="group relative w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-xl text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-lg hover:shadow-xl"
               >
                 {isLoading && (

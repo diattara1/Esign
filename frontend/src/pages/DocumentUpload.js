@@ -4,37 +4,42 @@ import signatureService from '../services/signatureService';
 import { toast } from 'react-toastify';
 import { FiUpload, FiFileText } from 'react-icons/fi';
 import logService from '../services/logService';
+import { documentUploadSchema } from '../validation/schemas';
 
 const DocumentUpload = () => {
   const [files, setFiles] = useState([]);
   const [title, setTitle] = useState('');
+  const [errors, setErrors] = useState({});
   const navigate = useNavigate();
 
-  const handleFileChange = (e) => {
+  const handleFileChange = async (e) => {
     const selectedFiles = Array.from(e.target.files);
-    const valid = [];
-    selectedFiles.forEach((f) => {
-      if (f.size === 0) {
-        toast.error('Le fichier sélectionné est vide');
-        return;
-      }
-      if (f.size > 10 * 1024 * 1024) {
-        toast.error('Le fichier est trop volumineux (max 10MB)');
-        return;
-      }
-      if (!f.name.toLowerCase().endsWith('.pdf')) {
-        toast.error('Seuls les fichiers PDF sont autorisés');
-        return;
-      }
-      valid.push(f);
-    });
-    setFiles(valid);
+    setFiles(selectedFiles);
+    try {
+      await documentUploadSchema.validate(
+        { title, files: selectedFiles },
+        { abortEarly: false }
+      );
+      setErrors((prev) => ({ ...prev, files: undefined }));
+    } catch (err) {
+      const fileErr = err.inner.find((er) => er.path === 'files');
+      setErrors((prev) => ({ ...prev, files: fileErr?.message }));
+    }
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!files.length || !title) {
-      toast.error('Veuillez fournir un titre et au moins un fichier valide');
+    try {
+      await documentUploadSchema.validate(
+        { title, files },
+        { abortEarly: false }
+      );
+    } catch (err) {
+      const newErrors = {};
+      err.inner.forEach((e) => {
+        newErrors[e.path] = e.message;
+      });
+      setErrors(newErrors);
       return;
     }
 
@@ -67,11 +72,16 @@ const DocumentUpload = () => {
             <input
               type="text"
               value={title}
-              onChange={(e) => setTitle(e.target.value)}
+              onChange={(e) => {
+                setTitle(e.target.value);
+                setErrors((prev) => ({ ...prev, title: undefined }));
+              }}
               placeholder="Ex: Contrat de partenariat"
               className="w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-              required
             />
+            {errors.title && (
+              <p className="mt-1 text-sm text-red-600">{errors.title}</p>
+            )}
           </div>
 
             <div>
@@ -82,8 +92,10 @@ const DocumentUpload = () => {
                 accept=".pdf"
                 multiple
                 className="w-full border border-gray-300 px-4 py-2 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 bg-gray-50"
-                required
               />
+              {errors.files && (
+                <p className="mt-1 text-sm text-red-600">{errors.files}</p>
+              )}
               {files.length > 0 && (
                 <ul className="mt-2 text-sm text-green-600 list-disc list-inside">
                   {files.map((f) => (
@@ -95,7 +107,7 @@ const DocumentUpload = () => {
 
             <button
               type="submit"
-              disabled={!files.length || !title}
+              disabled={!documentUploadSchema.isValidSync({ title, files })}
               className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <FiUpload />

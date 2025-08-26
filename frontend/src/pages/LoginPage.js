@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { useAuth } from '../AuthContext';
 import { useLocation, Link } from 'react-router-dom';
 import { Eye, EyeOff, Mail, Lock, CheckCircle, XCircle, Loader2 } from 'lucide-react';
+import { loginSchema } from '../validation/schemas';
 
 const LoginPage = () => {
   const { login, authLoading } = useAuth();
@@ -12,11 +13,24 @@ const LoginPage = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [errors, setErrors] = useState({});
   const [showPassword, setShowPassword] = useState(false);
+  const isFormValid = loginSchema.isValidSync({ username, password });
 
   const handleLogin = async (e) => {
     e.preventDefault();
     setError('');
+    setErrors({});
+    try {
+      await loginSchema.validate({ username, password }, { abortEarly: false });
+    } catch (err) {
+      const newErrors = {};
+      err.inner.forEach((e) => {
+        newErrors[e.path] = e.message;
+      });
+      setErrors(newErrors);
+      return;
+    }
     const redirectTo = location.state?.from?.pathname;
     const success = await login(username, password, redirectTo);
     if (!success) {
@@ -88,11 +102,16 @@ const LoginPage = () => {
                   id="username"
                   type="text"
                   value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  required
+                  onChange={(e) => {
+                    setUsername(e.target.value);
+                    setErrors((prev) => ({ ...prev, username: undefined }));
+                  }}
                   className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition-colors"
                   placeholder="Entrez votre nom d'utilisateur"
                 />
+                {errors.username && (
+                  <p className="mt-1 text-sm text-red-600">{errors.username}</p>
+                )}
               </div>
             </div>
 
@@ -109,11 +128,16 @@ const LoginPage = () => {
                   id="password"
                   type={showPassword ? 'text' : 'password'}
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    setErrors((prev) => ({ ...prev, password: undefined }));
+                  }}
                   className="block w-full pl-10 pr-10 py-3 border border-gray-300 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition-colors"
                   placeholder="Entrez votre mot de passe"
                 />
+                {errors.password && (
+                  <p className="mt-1 text-sm text-red-600">{errors.password}</p>
+                )}
                 <button
                   type="button"
                   className="absolute inset-y-0 right-0 pr-3 flex items-center"
@@ -132,7 +156,7 @@ const LoginPage = () => {
             <div>
               <button
                 type="submit"
-                disabled={authLoading}
+                disabled={authLoading || !isFormValid}
                 className="group relative w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-xl text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-lg hover:shadow-xl"
               >
                 {authLoading && (

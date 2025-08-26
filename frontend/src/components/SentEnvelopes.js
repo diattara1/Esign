@@ -68,12 +68,13 @@ const SentEnvelopes = () => {
           </Link>
           <button
             onClick={() => {
+              if (!window.confirm('Voulez-vous vraiment annuler cette enveloppe ?')) return;
               signatureService.cancelEnvelope(value)
                 .then(() => {
                   toast.success('Enveloppe annulée');
                   setEnvelopes(envelopes.filter(e => e.id !== value));
                 })
-                .catch(() => toast.error('Échec de l\'annulation'));
+                .catch(() => toast.error("Échec de l'annulation"));
             }}
             className="text-red-600 hover:text-red-800 text-sm"
           >

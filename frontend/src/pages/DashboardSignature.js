@@ -250,88 +250,92 @@ const DashboardSignature = () => {
                   />
                 </div>
               </div>
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Titre</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Statut</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Progression</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Signataires</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Créé le</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Échéance</th>
-                      <th className="px-6 py-3"></th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {displayedDocuments.map(doc => (
-                      <tr key={doc.id}>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <p className="text-sm font-medium text-gray-900">{doc.title}</p>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          {/* Badge statut lisible */}
-                          {(['pending','sent'].includes(doc.status)) && (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                              En cours
-                            </span>
-                          )}
-                          {doc.status === 'completed' && (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                              Terminé
-                            </span>
-                          )}
-                          {(!['pending','sent','completed'].includes(doc.status)) && (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-                              {String(doc.status).replace(/([A-Z])/g, ' $1')}
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          {/* Badge progression + barre */}
-                          <div className="flex items-center space-x-2 mb-1">
-                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-                              {doc.signedBy}/{doc.signers} signés
-                            </span>
-                          </div>
-                          <div className="w-40 bg-gray-200 rounded-full h-2" title={`${doc.progress}%`}>
-                            <div
-                              className="h-2 rounded-full bg-blue-600"
-                              style={{ width: `${doc.progress}%` }}
-                              role="progressbar"
-                              aria-valuemin={0}
-                              aria-valuemax={100}
-                              aria-valuenow={Number(doc.progress)}
-                            />
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <p className="text-sm text-gray-500">{doc.signedBy}/{doc.signers}</p>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <p className="text-sm text-gray-500">{new Date(doc.createdAt).toLocaleDateString('fr-FR')}</p>
-                        </td>
-                         <td className="px-6 py-4 whitespace-nowrap">
-                          <p className="text-sm text-gray-500">
-                            {doc.deadline ? new Date(doc.deadline).toLocaleDateString('fr-FR') : '-'}
-                          </p>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
-                          <Eye
-                            className="inline-block w-5 h-5 cursor-pointer hover:text-blue-600"
-                            onClick={() => handlePreview(doc.id)}
-                          />
-                          <Download
-                            className="inline-block w-5 h-5 cursor-pointer hover:text-green-600"
-                            onClick={() => handleDownload(doc.id, doc.title)}
-                          />
-                          <Edit3 className="inline-block w-5 h-5 cursor-pointer hover:text-indigo-600" />
-                        </td>
+              {displayedDocuments.length === 0 ? (
+                <div className="p-6 text-center text-gray-500">Aucun document récent</div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Titre</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Statut</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Progression</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Signataires</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Créé le</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Échéance</th>
+                        <th className="px-6 py-3"></th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {displayedDocuments.map(doc => (
+                        <tr key={doc.id}>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <p className="text-sm font-medium text-gray-900">{doc.title}</p>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            {/* Badge statut lisible */}
+                            {(['pending','sent'].includes(doc.status)) && (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                                En cours
+                              </span>
+                            )}
+                            {doc.status === 'completed' && (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                Terminé
+                              </span>
+                            )}
+                            {(!['pending','sent','completed'].includes(doc.status)) && (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                                {String(doc.status).replace(/([A-Z])/g, ' $1')}
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            {/* Badge progression + barre */}
+                            <div className="flex items-center space-x-2 mb-1">
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                                {doc.signedBy}/{doc.signers} signés
+                              </span>
+                            </div>
+                            <div className="w-40 bg-gray-200 rounded-full h-2" title={`${doc.progress}%`}>
+                              <div
+                                className="h-2 rounded-full bg-blue-600"
+                                style={{ width: `${doc.progress}%` }}
+                                role="progressbar"
+                                aria-valuemin={0}
+                                aria-valuemax={100}
+                                aria-valuenow={Number(doc.progress)}
+                              />
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <p className="text-sm text-gray-500">{doc.signedBy}/{doc.signers}</p>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <p className="text-sm text-gray-500">{new Date(doc.createdAt).toLocaleDateString('fr-FR')}</p>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <p className="text-sm text-gray-500">
+                              {doc.deadline ? new Date(doc.deadline).toLocaleDateString('fr-FR') : '-'}
+                            </p>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
+                            <Eye
+                              className="inline-block w-5 h-5 cursor-pointer hover:text-blue-600"
+                              onClick={() => handlePreview(doc.id)}
+                            />
+                            <Download
+                              className="inline-block w-5 h-5 cursor-pointer hover:text-green-600"
+                              onClick={() => handleDownload(doc.id, doc.title)}
+                            />
+                            <Edit3 className="inline-block w-5 h-5 cursor-pointer hover:text-indigo-600" />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           </div>
 

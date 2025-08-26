@@ -189,7 +189,7 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 # Configuration email templates
-APP_NAME = "Votre Plateforme IntelliSign"
+APP_NAME = "IntelliSign"
 
 # Email configuration
 EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"

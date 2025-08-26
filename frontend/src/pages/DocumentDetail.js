@@ -16,6 +16,13 @@ import useFocusTrap from '../hooks/useFocusTrap';
 function ReminderModal({ open, count, onClose }) {
   const dialogRef = useRef(null);
   useFocusTrap(dialogRef, open);
+ useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') onClose();
+    };
+    if (open) document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [open, onClose]);
 
   if (!open) return null;
   const has = (count ?? 0) > 0;
@@ -212,13 +219,7 @@ const DocumentDetail = () => {
     remindBtnRef.current?.focus();
   };
 
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.key === 'Escape') closeReminderModal();
-    };
-    if (reminderModalOpen) document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [reminderModalOpen]);
+
 
   // Callbacks react-pdf
   const onDocumentLoad = ({ numPages }) => setNumPages(numPages);

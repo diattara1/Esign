@@ -68,7 +68,9 @@ const SentEnvelopes = () => {
           </Link>
           <button
             onClick={() => {
-              signatureService.cancelEnvelope(value)
+              if (!window.confirm('Voulez-vous vraiment annuler cette enveloppe ?')) return;
+              signatureService
+                .cancelEnvelope(value)
                 .then(() => {
                   toast.success('Enveloppe annulée');
                   setEnvelopes(envelopes.filter(e => e.id !== value));

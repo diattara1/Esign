@@ -264,7 +264,14 @@ const DashboardSignature = () => {
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
-                    {displayedDocuments.map(doc => (
+                    {displayedDocuments.length === 0 ? (
+                      <tr>
+                        <td colSpan="7" className="px-6 py-4 text-center text-gray-500">
+                          Aucun document récent
+                        </td>
+                      </tr>
+                    ) : (
+                      displayedDocuments.map(doc => (
                       <tr key={doc.id}>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <p className="text-sm font-medium text-gray-900">{doc.title}</p>

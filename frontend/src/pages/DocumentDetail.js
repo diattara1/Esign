@@ -190,11 +190,11 @@ const [reminderCount, setReminderCount] = useState(0);
         <div className="p-6">
           <h1 className="text-2xl font-bold mb-6">Détails : {env.title}</h1>
 
-          {documents.length > 0 && (
+          {documents.length > 0 ? (
             <div className="mb-6">
               <div className="flex items-center justify-between mb-2">
                 <h2 className="text-lg font-semibold">Documents</h2>
-                
+
               </div>
               <ul className="space-y-1">
                 {documents.map(doc => (
@@ -210,8 +210,10 @@ const [reminderCount, setReminderCount] = useState(0);
                   </li>
                 ))}
               </ul>
-             
+
             </div>
+          ) : (
+            <p className="mb-6 text-sm text-gray-500">Aucun document disponible.</p>
           )}
 
           {/* Meta */}

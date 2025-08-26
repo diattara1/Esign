@@ -6,7 +6,7 @@ import { toast } from 'react-toastify';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 import logService from '../services/logService';
-
+import sanitize from '../utils/sanitize';
 
 pdfjs.GlobalWorkerOptions.workerSrc =
   `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
@@ -17,6 +17,10 @@ export default function DocumentWorkflow() {
 
   const [envelope, setEnvelope] = useState(null);
   const [flowType, setFlowType] = useState('sequential');
+  const [reminderDays, setReminderDays] = useState(1);
+  const [deadlineMode, setDeadlineMode] = useState('days'); // 'days' | 'exact'
+  const [deadlineDays, setDeadlineDays] = useState(7);
+  const [deadlineExact, setDeadlineExact] = useState('');   // 'YYYY-MM-DDTHH:mm' (local)
 
   const [documents, setDocuments] = useState([]);
   const [selectedDocId, setSelectedDocId] = useState(null);
@@ -71,6 +75,19 @@ const [includeQr, setIncludeQr] = useState(false);
     const env = await signatureService.getEnvelope(id);
     setEnvelope(env);
     setFlowType(env.flow_type || 'sequential');
+    setReminderDays(env.reminder_days ?? 1);
+    // Si une deadline existe déjà, on bascule l'UI en "date exacte"
+    if (env.deadline_at) {
+      setDeadlineMode('exact');
+      const d = new Date(env.deadline_at);
+      const pad = n => String(n).padStart(2, '0');
+      const local = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+      setDeadlineExact(local);
+    } else {
+      setDeadlineMode('days');
+      setDeadlineExact('');
+      setDeadlineDays(7);
+    }
 
     const docs = env.documents || [];
     setDocuments(docs);
@@ -226,22 +243,23 @@ const selectDocument = useCallback(async (doc) => {
       !(field.recipient_id === recipient.order && field.document_id === selectedDocId && field.field_type === 'signature')
     ));
 
+    const safeName = sanitize(recipient.full_name);
     const newField = {
       recipient_id: recipient.order,
       document_id: selectedDocId,
       field_type: placing.type,
       page: pageNumber,
       position: normalized,
-      name: `Signature ${recipient.full_name}`,
+      name: `Signature ${safeName}`,
       required: true,
-      recipient_name: recipient.full_name // Stocker le nom pour l'affichage
+      recipient_name: safeName // Stocker le nom pour l'affichage
     };
 
     setFields(prev => [...prev, newField]);
     setPlacing({ idx: null, type: 'signature' });
 
-    const docName = (documents.find(d => d.id === selectedDocId) || {}).name || `Document ${selectedDocId}`;
-    toast.success(`Signature de ${recipient.full_name} placée sur ${docName} (page ${pageNumber})`);
+    const docName = sanitize((documents.find(d => d.id === selectedDocId) || {}).name || `Document ${selectedDocId}`);
+    toast.success(`Signature de ${safeName} placée sur ${docName} (page ${pageNumber})`);
   }, [placing.idx, placing.type, selectedDocId, pageDimensions, pdfWidth, recipients, documents, canPlaceSignature]);
 
   // ---- Fichiers ----
@@ -304,13 +322,30 @@ const selectDocument = useCallback(async (doc) => {
   const handleSubmit = useCallback(async (e) => {
     e.preventDefault();
     try {
-      await signatureService.updateEnvelope(id, {
+     // Construit payload avec échéance choisie
+      const payload = {
         recipients,
         fields,
         flow_type: flowType,
         include_qr_code: includeQr,
-      });
-      await signatureService.sendEnvelope(id, { include_qr_code: includeQr });
+        reminder_days: Number(reminderDays) || 1,
+      };
+      if (deadlineMode === 'exact' && deadlineExact) {
+        // datetime-local -> ISO 8601
+        payload.deadline_at = new Date(deadlineExact).toISOString();
+      } else if (deadlineMode === 'days' && deadlineDays) {
+        const d = new Date();
+        d.setDate(d.getDate() + Number(deadlineDays));
+        payload.deadline_at = d.toISOString();
+      } else {
+        payload.deadline_at = null; // pas d'échéance explicite -> géré par le backend si besoin
+      }
+
+      // 1) On sauvegarde l'enveloppe avec les nouveaux champs
+      await signatureService.updateEnvelope(id, payload);
+      // 2) Puis on envoie (le backend lit include_qr_code et utilisera deadline_at déjà posé)
+      await signatureService.sendEnvelope(id, { include_qr_code: includeQr, reminder_days: payload.reminder_days, deadline_at: payload.deadline_at });
+
       
       toast.success('Enveloppe envoyée');
       navigate(`/signature/sent/${id}`);
@@ -318,7 +353,8 @@ const selectDocument = useCallback(async (doc) => {
       logService.error(err);
       toast.error("Échec de l'envoi");
     }
-  }, [id, recipients, fields, flowType, includeQr, navigate]);
+  }, [id, recipients, fields, flowType, includeQr, reminderDays, deadlineMode, deadlineDays, deadlineExact, navigate]);
+
 
   // ---- Rendu visuel d'un champ posé ----
   const renderFieldBox = (field, pageNumber) => {
@@ -572,6 +608,66 @@ const selectDocument = useCallback(async (doc) => {
             Envoyer l'enveloppe
           </button>
         </div>
+                  {/* --- Relances / Échéance --- */}
+          <div className="mb-6 p-4 bg-gray-50 rounded-lg space-y-4">
+            <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Intervalle entre relances (en jours)</label>
+ <p className="text-xs text-gray-500 mt-1">Ex. 1 = tous les jours, 2 = tous les 2 jours, 7 = 1 fois/semaine.</p>
+<input
+                type="number"
+                min={1}
+                value={reminderDays}
+                onChange={e => setReminderDays(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Échéance</label>
+              <div className="space-y-2">
+                <label className="flex items-center">
+                  <input
+                    type="radio"
+                    name="deadlineMode"
+                    value="days"
+                    checked={deadlineMode === 'days'}
+                    onChange={() => setDeadlineMode('days')}
+                    className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+                  />
+                  <span className="ml-3 text-sm text-gray-700">Dans</span>
+                  <input
+                    type="number"
+                    min={1}
+                    disabled={deadlineMode !== 'days'}
+                    value={deadlineDays}
+                    onChange={e => setDeadlineDays(e.target.value)}
+                    className="ml-2 w-20 px-2 py-1 border border-gray-300 rounded-md text-sm disabled:bg-gray-100"
+                  />
+                  <span className="ml-2 text-sm text-gray-700">jour(s)</span>
+                </label>
+                <label className="flex items-center">
+                  <input
+                    type="radio"
+                    name="deadlineMode"
+                    value="exact"
+                    checked={deadlineMode === 'exact'}
+                    onChange={() => setDeadlineMode('exact')}
+                    className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+                  />
+                  <span className="ml-3 text-sm text-gray-700">Date exacte</span>
+                </label>
+                <input
+                  type="datetime-local"
+                  disabled={deadlineMode !== 'exact'}
+                  value={deadlineExact}
+                  onChange={e => setDeadlineExact(e.target.value)}
+                  className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-md text-sm disabled:bg-gray-100"
+                />
+                <p className="text-xs text-gray-500">
+                  Si vide, une échéance par défaut sera appliquée côté serveur.
+                </p>
+              </div>
+            </div>
+          </div>
       </div>
 
       {/* Zone centrale - PDF Viewer */}

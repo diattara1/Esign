@@ -10,7 +10,7 @@ import hashlib
 import hmac
 import logging
 
-from .storages import EncryptedFileSystemStorage
+from .storages import EncryptedFileSystemStorage, AADContentFile
 from .utils import validate_pdf,stream_hash
 
 logger = logging.getLogger(__name__)
@@ -83,33 +83,52 @@ class EnvelopeDocument(models.Model):
         is_new = self._state.adding
 
         if self.file and (is_new or self._file_changed()):
-            # Validation fichier
-            self.clean()
-
-            # Injecte l'AAD pour le chiffrement (doc_uuid immuable)
-            f = getattr(self.file, "file", None) or self.file
+            # --- Lire *tous les octets* de l'upload, pour éviter les flux fermés ensuite
+            src = getattr(self.file, "file", None) or self.file
+            # nom/extension AVANT de remplacer le field
+            orig_name = getattr(self.file, "name", "") or "document.pdf"
+            file_ext = orig_name.split(".")[-1].lower() if "." in orig_name else ""
+            # lecture tolérante (chunks() si dispo)
             try:
-                setattr(f, "_encryption_aad", uuid.UUID(str(self.doc_uuid)).bytes)
-            except Exception:
-                pass  # best-effort
+                if hasattr(src, "open"):
+                    try:
+                        src.open("rb")
+                    except Exception:
+                        pass
+                if hasattr(src, "seek"):
+                    try:
+                        src.seek(0)
+                    except Exception:
+                        pass
+                if hasattr(src, "chunks"):
+                    data = b"".join(chunk for chunk in src.chunks())
+                else:
+                    data = src.read()
+            finally:
+                try:
+                    # on ne *ferme* pas explicitement l'upload : Django gère
+                    if hasattr(src, "seek"):
+                        src.seek(0)
+                except Exception:
+                    pass
 
-            # Métadonnées
-            self.name = self.file.name
-            self.file_type = (
-                self.file.name.split(".")[-1].lower() if "." in self.file.name else ""
-            )
+            # --- Validations & métadonnées sur les *octets*
+            self.name = orig_name
+            self.file_type = file_ext
+            self.file_size = len(data)
+            if self.file_type == "pdf" and not data.startswith(b"%PDF-"):
+                raise ValidationError("Le fichier n'est pas un PDF valide.")
+            # hash clair
             try:
-                self.file_size = self.file.size
+                import hashlib
+                self.hash_original = hashlib.sha256(data).hexdigest()
             except Exception:
+                # best-effort
                 pass
 
-            # Hash clair (streaming) si PDF
-            if self.file_type == "pdf":
-                try:
-                    hashes = stream_hash(self.file)  # {"hash_sha256": "..."}
-                    self.hash_original = hashes["hash_sha256"]
-                except Exception as e:
-                    logger.error(f"Error computing stream hash for envelope document: {e}")
+            # --- Remplacement du FileField par un flux propre (AAD = doc_uuid)
+            aad = uuid.UUID(str(self.doc_uuid)).bytes
+            self.file = AADContentFile(data, aad=aad, name=orig_name)
 
             # Versioning : +1 si modification
             if not is_new:
@@ -221,34 +240,46 @@ class Envelope(models.Model):
                 pass
 
         if self.document_file and (is_new or self._file_changed()):
-            # Valide le fichier
-            self.clean()
-
-            # Injection AAD = doc_uuid (immuable) pour chiffrement
-            f = getattr(self.document_file, "file", None) or self.document_file
+            # Lire octets de l'upload pour éviter flux fermé côté storage
+            src = getattr(self.document_file, "file", None) or self.document_file
+            orig_name = getattr(self.document_file, "name", "") or "document.pdf"
+            file_ext = orig_name.split(".")[-1].lower() if "." in (orig_name or "") else ""
             try:
-                setattr(f, "_encryption_aad", uuid.UUID(str(self.doc_uuid)).bytes)
-            except Exception:
-                pass  # best-effort
+                if hasattr(src, "open"):
+                    try:
+                        src.open("rb")
+                    except Exception:
+                        pass
+                if hasattr(src, "seek"):
+                    try:
+                        src.seek(0)
+                    except Exception:
+                        pass
+                if hasattr(src, "chunks"):
+                    data = b"".join(chunk for chunk in src.chunks())
+                else:
+                    data = src.read()
+            finally:
+                try:
+                    if hasattr(src, "seek"):
+                        src.seek(0)
+                except Exception:
+                    pass
 
-            # Métadonnées fichier
-            self.file_type = (
-                self.document_file.name.split(".")[-1].lower()
-                if "." in (self.document_file.name or "")
-                else ""
-            )
+            # Métadonnées + validation
+            self.file_type = file_ext
+            self.file_size = len(data)
+            if self.file_type == "pdf" and not data.startswith(b"%PDF-"):
+                raise ValidationError("Le fichier n'est pas un PDF valide.")
             try:
-                self.file_size = self.document_file.size
+                import hashlib
+                self.hash_original = hashlib.sha256(data).hexdigest()
             except Exception:
                 pass
 
-            # Hash clair (streaming) si PDF
-            if self.file_type == "pdf":
-                try:
-                    hashes = stream_hash(self.document_file)  # {"hash_sha256": "..."}
-                    self.hash_original = hashes["hash_sha256"]
-                except Exception as e:
-                    logger.error(f"Error computing stream hash for envelope: {e}")
+            # Remplacer par AADContentFile (AAD = doc_uuid)
+            aad = uuid.UUID(str(self.doc_uuid)).bytes
+            self.document_file = AADContentFile(data, aad=aad, name=orig_name)
 
             # Versioning
             if not is_new:

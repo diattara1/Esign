@@ -9,6 +9,9 @@ export const API_BASE_URL = process.env.REACT_APP_API_BASE_URL;
 if (!API_BASE_URL) {
   throw new Error('REACT_APP_API_BASE_URL is not defined');
 }
+if (process.env.NODE_ENV === 'production' && !API_BASE_URL.startsWith('https://')) {
+  throw new Error('API_BASE_URL must use HTTPS in production');
+}
 
 // Instance Axios principale
 export const api = axios.create({

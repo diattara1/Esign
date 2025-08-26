@@ -17,7 +17,7 @@ import {
   Award
 } from 'lucide-react';
 import logService from '../services/logService';
-
+import sanitize from '../utils/sanitize';
 const GuestSignatureConfirmation = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -62,7 +62,8 @@ const GuestSignatureConfirmation = () => {
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `${envelope?.title || 'document'}_signe.pdf`;
+      const safeTitle = sanitize(envelope?.title || 'document');
+      link.download = `${safeTitle}_signe.pdf`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);

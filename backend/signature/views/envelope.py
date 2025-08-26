@@ -843,6 +843,35 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
             transaction.on_commit(_after_commit)
         return Response({'status': 'signed'})
     
+    @action(detail=True, methods=['post'])
+    def remind(self, request, pk=None):
+        env = self.get_object()
+
+        if env.status not in ['sent', 'pending']:
+            return Response({'error': "L'enveloppe doit être envoyée/en cours pour relancer."},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        MAX_REMINDERS = 5  # ajuste selon ton besoin
+        now = timezone.now()
+        reminders_sent = 0
+
+        qs = env.recipients.filter(signed=False)
+        for rec in qs:
+            # Éligibilité simple : plafond non atteint
+            if (rec.reminder_count or 0) >= MAX_REMINDERS:
+                continue
+
+            # Mets à jour les compteurs & prochaines relances
+            rec.reminder_count = (rec.reminder_count or 0) + 1
+            rec.last_reminder_at = now
+            rec.next_reminder_at = now + timezone.timedelta(days=env.reminder_days or 1)
+            rec.save(update_fields=['reminder_count', 'last_reminder_at', 'next_reminder_at'])
+
+            # Réutilise ton envoi d’email existant
+            send_signature_email.delay(env.id, rec.id)
+            reminders_sent += 1
+
+        return Response({'reminders': reminders_sent}, status=status.HTTP_200_OK)
     
     @staticmethod
     def _add_qr_overlay_to_pdf(pdf_bytes: bytes, qr_png_bytes: bytes, *, size_pt=50, margin_pt=13, y_offset=-5):

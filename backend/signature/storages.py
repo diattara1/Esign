@@ -8,6 +8,8 @@ from typing import Optional
 from django.core.files.storage import FileSystemStorage
 from django.core.files.base import ContentFile, File
 from django.core.exceptions import ValidationError
+from django.conf import settings
+import base64
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
 from cryptography.exceptions import InvalidTag
@@ -97,9 +99,34 @@ class EncryptedFileSystemStorage(FileSystemStorage):
         valid_name = self.get_valid_name(name)
         final_name = self.get_available_name(valid_name)
 
-        # Lecture/validation en flux pour éviter de charger tout le fichier en mémoire
-        if hasattr(content, "seek"):
-            content.seek(0)
+        # --- Assurer qu'on peut lire depuis le début, même si le fichier a été fermé en amont
+        def _rewind_or_reopen(f):
+            try:
+                if hasattr(f, "seek"):
+                    f.seek(0)
+                    return
+            except ValueError:
+                # Fichier fermé → tenter de le rouvrir
+                pass
+            # Essayer d'ouvrir sur l'objet lui-même…
+            if hasattr(f, "open"):
+                try:
+                    f.open("rb")
+                    if hasattr(f, "seek"):
+                        f.seek(0)
+                        return
+                except Exception:
+                    pass
+            # …sinon sur l'attribut .file (cas UploadedFile/File)
+            inner = getattr(f, "file", None)
+            if inner and hasattr(inner, "open"):
+                inner.open("rb")
+                if hasattr(f, "seek"):
+                    f.seek(0)
+                    return
+            raise ValidationError("Impossible d'ouvrir le fichier source pour chiffrement (flux fermé).")
+
+        _rewind_or_reopen(content)
         chunk_size = 1024 * 1024  # 1 Mo
         first_chunk = True
         ciphertext = bytearray()
@@ -211,8 +238,7 @@ class EncryptedFileSystemStorage(FileSystemStorage):
         - EG1 (legacy): clé globale base64 (settings.FILE_ENCRYPTION_KEY_B64), AAD = nom
         - PDF en clair: servi tel quel (utile pendant migration)
         """
-        import base64
-        from django.conf import settings  # pour FILE_ENCRYPTION_KEY_B64 (legacy)
+        
     
         with super().open(name, mode) as f:
             blob = f.read()

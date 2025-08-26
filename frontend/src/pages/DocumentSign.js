@@ -13,7 +13,7 @@ import SignaturePadComponent from '../components/SignaturePadComponent';
 import Modal from 'react-modal';
 import Countdown from '../components/Countdown';
 import logService from '../services/logService';
-
+import sanitize from '../utils/sanitize';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 
@@ -515,7 +515,7 @@ async function urlToDataUrl(url) {
       {/* sidebar */}
       <div className="w-80 bg-white border-r p-6 overflow-auto">
         <h1 className="text-2xl font-bold mb-4">
-          {isAlreadySigned ? 'Document déjà signé :' : 'Signer le document :'} {envelope.title}
+        {isAlreadySigned ? 'Document déjà signé :' : 'Signer le document :'} {sanitize(envelope.title)}
         </h1>
 
         {/* docs */}

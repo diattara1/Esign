@@ -16,7 +16,7 @@ import {
   Download
 } from 'lucide-react';
 import logService from '../services/logService';
-
+import sanitize from '../utils/sanitize';
 export default function EnvelopeSent() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -129,7 +129,7 @@ export default function EnvelopeSent() {
                 <div className="flex-1">
                   <div className="flex items-center gap-3 mb-2">
                     <FileText className="w-5 h-5 text-blue-500" />
-                    <h2 className="text-xl font-semibold text-gray-900">{envelope.title}</h2>
+                     <h2 className="text-xl font-semibold text-gray-900">{sanitize(envelope.title)}</h2>
                   </div>
                   {getStatusBadge(envelope.status)}
                 </div>
@@ -206,10 +206,10 @@ export default function EnvelopeSent() {
                           {recipient.signed ? <CheckCircle className="w-4 h-4" /> : <User className="w-4 h-4" />}
                         </div>
                         <div>
-                          <p className="font-medium text-gray-900">{recipient.full_name}</p>
+                           <p className="font-medium text-gray-900">{sanitize(recipient.full_name)}</p>
                           <div className="flex items-center gap-1 text-sm text-gray-600">
                             <Mail className="w-3 h-3" />
-                            <span>{recipient.email}</span>
+                            <span>{sanitize(recipient.email)}</span>
                           </div>
                         </div>
                       </div>

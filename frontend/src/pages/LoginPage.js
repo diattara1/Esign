@@ -15,6 +15,7 @@ const LoginPage = () => {
   const [error, setError] = useState('');
   const [errors, setErrors] = useState({});
   const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
   const isFormValid = loginSchema.isValidSync({ username, password });
 
   const handleLogin = async (e) => {
@@ -32,7 +33,7 @@ const LoginPage = () => {
       return;
     }
     const redirectTo = location.state?.from?.pathname;
-    const success = await login(username, password, redirectTo);
+    const success = await login(username, password, redirectTo, rememberMe);
     if (!success) {
       setError("Nom d'utilisateur ou mot de passe incorrect.");
       setPassword('');
@@ -101,6 +102,7 @@ const LoginPage = () => {
                 <input
                   id="username"
                   type="text"
+                  autoComplete="username"
                   value={username}
                   onChange={(e) => {
                     setUsername(e.target.value);
@@ -127,6 +129,7 @@ const LoginPage = () => {
                 <input
                   id="password"
                   type={showPassword ? 'text' : 'password'}
+                  autoComplete="current-password"
                   value={password}
                   onChange={(e) => {
                     setPassword(e.target.value);
@@ -149,6 +152,21 @@ const LoginPage = () => {
                     <Eye className="h-5 w-5 text-gray-400 hover:text-gray-600" />
                   )}
                 </button>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <div className="flex items-center">
+                <input
+                  id="rememberMe"
+                  type="checkbox"
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
+                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                />
+                <label htmlFor="rememberMe" className="ml-2 block text-sm text-gray-900">
+                  Rester connecté
+                </label>
               </div>
             </div>
 

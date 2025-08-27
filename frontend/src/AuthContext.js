@@ -15,10 +15,10 @@ export const AuthProvider = ({ children }) => {
 
   // login renvoie true si OK, false sinon (pas d'exception non gérée)
    
-  const login = async (username, password, redirectTo = '/dashboard') => {
+  const login = async (username, password, redirectTo = '/dashboard', rememberMe = false) => {
      setAuthLoading(true);
     try {
-      await api.post('/api/token/', { username, password });
+      await api.post('/api/token/', { username, password, remember_me: rememberMe });
       const userData = await verifyToken();
       setUser(userData.user);
       navigate(redirectTo);

@@ -14,6 +14,8 @@ from django.contrib.auth.tokens import default_token_generator
 from django.contrib.auth import get_user_model
 from rest_framework.throttling import UserRateThrottle, AnonRateThrottle,ScopedRateThrottle
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
+from rest_framework_simplejwt.tokens import RefreshToken
+from datetime import timedelta
 import logging
 
 from ..serializers import (
@@ -32,15 +34,27 @@ class CookieTokenObtainPairView(TokenObtainPairView):
     """Issue JWTs and store them in HttpOnly cookies."""
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "login"
+
     def post(self, request, *args, **kwargs):
-        response = super().post(request, *args, **kwargs)
-        access = response.data.get('access')
-        refresh = response.data.get('refresh')
-        if access:
-            response.set_cookie('access_token', access, httponly=True, secure=True, samesite='Lax')
-        if refresh:
-            response.set_cookie('refresh_token', refresh, httponly=True, secure=True, samesite='Lax')
-        response.data = {'detail': 'Login successful'}
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = serializer.user
+        remember_me = request.data.get('remember_me')
+
+        refresh = RefreshToken.for_user(user)
+        access_token = refresh.access_token
+
+        access_max_age = None
+        refresh_max_age = None
+        if remember_me:
+            refresh.set_exp(lifetime=timedelta(days=30))
+            access_token.set_exp(lifetime=timedelta(days=1))
+            access_max_age = int(timedelta(days=1).total_seconds())
+            refresh_max_age = int(timedelta(days=30).total_seconds())
+
+        response = Response({'detail': 'Login successful'}, status=status.HTTP_200_OK)
+        response.set_cookie('access_token', str(access_token), httponly=True, secure=True, samesite='Lax', max_age=access_max_age)
+        response.set_cookie('refresh_token', str(refresh), httponly=True, secure=True, samesite='Lax', max_age=refresh_max_age)
         return response
 
 

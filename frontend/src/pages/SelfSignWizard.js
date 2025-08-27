@@ -1,8 +1,8 @@
-// src/pages/SelfSignWizard.js
+// src/pages/SelfSignWizard.js (version responsive améliorée)
 import React, { useEffect, useRef, useState, useLayoutEffect } from 'react';
 import { Document, Page } from 'react-pdf';
 import { toast } from 'react-toastify';
-import { FiUpload, FiX, FiEdit3, FiMenu, FiCheck } from 'react-icons/fi';
+import { FiUpload, FiX, FiEdit3, FiMenu } from 'react-icons/fi';
 import signatureService from '../services/signatureService';
 import { api } from '../services/apiUtils';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
@@ -104,17 +104,25 @@ export default function SelfSignWizard() {
   // Option QR (checkbox)
   const [includeQr, setIncludeQr] = useState(true);
 
-  /* layout + responsive width (mesure unique) */
+  /* layout + responsive width (mesure + breakpoints) */
   useLayoutEffect(() => {
     const measure = () => setViewerWidth(viewerRef.current?.clientWidth || 600);
     const onResize = () => setIsMobile(window.innerWidth < 768);
     measure(); onResize();
     const ro = new ResizeObserver(measure);
-    viewerRef.current && ro.observe(viewerRef.current);
+    if (viewerRef.current) ro.observe(viewerRef.current);
     window.addEventListener('resize', measure);
     window.addEventListener('resize', onResize);
     return () => { ro.disconnect(); window.removeEventListener('resize', measure); window.removeEventListener('resize', onResize); };
   }, []);
+
+  // Empêche le scroll derrière le tiroir mobile
+  useEffect(() => {
+    if (!isMobile) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = sidebarOpen ? 'hidden' : prev || '';
+    return () => { document.body.style.overflow = prev; };
+  }, [isMobile, sidebarOpen]);
 
   // Charger les signatures enregistrées
   useEffect(() => {
@@ -301,37 +309,39 @@ export default function SelfSignWizard() {
       <div className="p-4 md:p-6 bg-gray-50 mt-auto">
         <button onClick={() => { setPlacing(true); if (isMobile) setSidebarOpen(false); }}
                 disabled={!pdfUrl}
-                className={`w-full mb-3 px-4 py-2 rounded-lg font-medium ${placing ? 'bg-yellow-500 text-white' : 'bg-emerald-500 text-white hover:bg-emerald-600'} disabled:opacity-50`}>
+                className={`w-full mb-3 px-4 py-3 rounded-lg font-medium ${placing ? 'bg-yellow-500 text-white' : 'bg-emerald-500 text-white hover:bg-emerald-600'} disabled:opacity-50`}>
           {placement ? 'Redéfinir la zone' : 'Définir la zone'}
         </button>
         <button onClick={submit}
                 disabled={isProcessing || !file || !placement || !sigDataUrl}
-                className="w-full px-4 py-2 bg-gradient-to-r from-emerald-600 to-blue-600 text-white font-medium rounded-lg hover:from-emerald-700 hover:to-blue-700 disabled:opacity-50">
+                className="w-full px-4 py-3 bg-gradient-to-r from-emerald-600 to-blue-600 text-white font-medium rounded-lg hover:from-emerald-700 hover:to-blue-700 disabled:opacity-50">
           {isProcessing ? 'Signature…' : 'Signer et télécharger'}
         </button>
       </div>
     </>
   );
 
+  const containerOverlayStyle = isMobile && sidebarOpen ? { touchAction: 'none' } : {};
+
   return (
-    <div className="flex h-screen bg-gray-50">
+    <div className="flex h-screen bg-gray-50" style={containerOverlayStyle}>
       {isMobile && (
-        <button onClick={() => setSidebarOpen(true)} className="fixed top-20 left-4 z-50 p-3 bg-white rounded-lg shadow-lg border md:hidden">
+        <button onClick={() => setSidebarOpen(true)} className="fixed top-4 left-4 z-50 p-3 bg-white rounded-lg shadow-lg border md:hidden">
           <FiMenu className="w-5 h-5" />
         </button>
       )}
 
       {/* Sidebar */}
-      <div className={`${isMobile ? `fixed inset-y-0 left-0 z-40 w-80 transform transition-transform ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}` : 'w-1/3'} bg-white border-r border-gray-200 flex flex-col`}>
+      <div className={`${isMobile ? `fixed inset-y-0 left-0 z-40 w-full max-w-sm transform transition-transform duration-200 ease-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}` : 'w-1/3 max-w-md'} bg-white border-r border-gray-200 flex flex-col`}>
         {isMobile && sidebarOpen && <div className="fixed inset-0 bg-black/50 z-30" onClick={() => setSidebarOpen(false)} />}
         <div className="relative z-40 bg-white h-full flex flex-col"><Sidebar /></div>
       </div>
 
       {/* Viewer */}
       <div className="flex-1 flex flex-col" ref={viewerRef}>
-        <div className="bg-white border-b border-gray-200 px-4 md:px-6 py-4">
+        <div className="bg-white border-b border-gray-200 px-4 md:px-6 py-4 sticky top-0 z-10">
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-gray-900">{file ? file.name : 'Aperçu PDF'}</h2>
+            <h2 className="text-lg font-semibold text-gray-900 truncate">{file ? file.name : 'Aperçu PDF'}</h2>
             {placement && <span className="hidden md:inline px-2 py-1 bg-emerald-100 text-emerald-700 text-xs rounded-full">Zone p.{placement.page}</span>}
             {placing && <span className="px-3 py-1 bg-yellow-100 text-yellow-800 text-sm rounded-full animate-pulse">Mode placement actif</span>}
           </div>
@@ -340,8 +350,8 @@ export default function SelfSignWizard() {
         <div className="flex-1 overflow-auto bg-gray-100" style={isProcessing ? { pointerEvents: 'none', filter: 'grayscale(0.2)', opacity: 0.7 } : {}}>
           {!pdfUrl ? (
             <div className="flex items-center justify-center h-full p-6 text-center">
-              <FiUpload className="w-12 h-12 text-gray-400 mx-auto mb-4" />
               <div>
+                <FiUpload className="w-12 h-12 text-gray-400 mx-auto mb-4" />
                 <p className="text-gray-600 text-lg">Ajoute un PDF pour prévisualiser</p>
                 <p className="text-gray-400 text-sm mt-2">Signature rapide d’un document</p>
                 {isMobile && <button onClick={() => setSidebarOpen(true)} className="mt-4 px-4 py-2 bg-emerald-500 text-white rounded-lg">Ouvrir les options</button>}
@@ -353,7 +363,9 @@ export default function SelfSignWizard() {
                         loading={<div className="flex items-center justify-center p-8"><div className="w-8 h-8 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" /></div>}
                         error={<div className="text-red-500 text-center p-8">Erreur lors du chargement du PDF</div>}>
                 {Array.from({ length: numPages }, (_, i) => {
-                  const pageWidth = Math.min(viewerWidth - (isMobile ? 24 : 48), isMobile ? 350 : 800);
+                  const containerPadding = isMobile ? 24 : 48; // correspond aux p-3/md:p-6
+                  const maxWidth = Math.min(Math.max(viewerWidth - containerPadding, 320), 900);
+                  const pageWidth = maxWidth;
                   const scale = pageWidth / (pageDims[i + 1]?.width || 1);
 
                   return (

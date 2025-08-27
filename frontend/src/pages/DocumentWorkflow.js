@@ -26,6 +26,12 @@ export default function DocumentWorkflow() {
   const [selectedDocId, setSelectedDocId] = useState(null);
   const [pdfUrl, setPdfUrl] = useState(null);
 
+  // États pour la responsivité
+  const [isMobileView, setIsMobileView] = useState(false);
+  const [showLeftSidebar, setShowLeftSidebar] = useState(true);
+  const [showRightSidebar, setShowRightSidebar] = useState(true);
+  const [currentMobileTab, setCurrentMobileTab] = useState('recipients'); // 'recipients' | 'pdf' | 'documents'
+
   // largeur stable (on rend par width, pas par scale)
   const [pdfWidth, setPdfWidth] = useState(800);
 
@@ -39,9 +45,10 @@ export default function DocumentWorkflow() {
   const [fields, setFields] = useState([]); // champs posés
   const [placing, setPlacing] = useState({ idx: null, type: 'signature' });
   const [isUploading, setIsUploading] = useState(false);
-const [includeQr, setIncludeQr] = useState(false);
+  const [includeQr, setIncludeQr] = useState(false);
   const [loadingDocId, setLoadingDocId] = useState(null);
-const deadlineAt = useMemo(() => {
+
+  const deadlineAt = useMemo(() => {
     if (deadlineMode === 'exact' && deadlineExact) {
       return new Date(deadlineExact).toISOString();
     }
@@ -52,9 +59,31 @@ const deadlineAt = useMemo(() => {
     }
     return null;
   }, [deadlineMode, deadlineExact, deadlineDays]);
+
   const pdfWrapper = useRef(null);
-   const prevUrlRef = useRef(null);
-     useEffect(() => {
+  const prevUrlRef = useRef(null);
+
+  // Détection de la taille d'écran
+  useEffect(() => {
+    const checkScreenSize = () => {
+      const isMobile = window.innerWidth < 1024; // lg breakpoint
+      setIsMobileView(isMobile);
+      
+      if (isMobile) {
+        setShowLeftSidebar(false);
+        setShowRightSidebar(false);
+      } else {
+        setShowLeftSidebar(true);
+        setShowRightSidebar(true);
+      }
+    };
+
+    checkScreenSize();
+    window.addEventListener('resize', checkScreenSize);
+    return () => window.removeEventListener('resize', checkScreenSize);
+  }, []);
+
+  useEffect(() => {
     const prev = prevUrlRef.current;
     prevUrlRef.current = pdfUrl;
     return () => {
@@ -138,9 +167,11 @@ const deadlineAt = useMemo(() => {
     const compute = () => {
       const node = pdfWrapper.current;
       if (!node) return;
-      const padding = 48; // ≈ p-6
+      const padding = isMobileView ? 16 : 48; // Moins de padding sur mobile
       const container = node.clientWidth || 0;
-      const next = Math.min(Math.max(container - padding, 320), 900);
+      const maxWidth = isMobileView ? 600 : 900;
+      const minWidth = isMobileView ? 280 : 320;
+      const next = Math.min(Math.max(container - padding, minWidth), maxWidth);
       if (Math.abs(next - last) > 1) {
         last = next;
         setPdfWidth(next);
@@ -159,7 +190,7 @@ const deadlineAt = useMemo(() => {
       cancelAnimationFrame(raf);
       ro.disconnect();
     };
-  }, []);
+  }, [isMobileView]);
 
   // ---- Callbacks PDF ----
   const onDocumentLoad = useCallback(({ numPages }) => {
@@ -205,6 +236,11 @@ const deadlineAt = useMemo(() => {
       setPdfUrl(blobUrl); // 1) d'abord l'URL du nouveau PDF
       setSelectedDocId(doc.id); // 2) puis l'ID (affichage, badges, etc.)
       setNumPagesByDoc(prev => ({ ...prev, [doc.id]: undefined }));
+      
+      // Sur mobile, passer automatiquement à la vue PDF
+      if (isMobileView) {
+        setCurrentMobileTab('pdf');
+      }
     } catch (e) {
       logService.error(e);
       toast.error('Impossible de charger ce PDF');
@@ -214,8 +250,7 @@ const deadlineAt = useMemo(() => {
 
     // cleanup si le composant est démonté pendant l'async
     return () => { cancelled = true; };
-  }, [selectedDocId, id]);
-
+  }, [selectedDocId, id, isMobileView]);
 
   // ---- Vérifier si un destinataire peut placer sa signature ----
   const canPlaceSignature = useCallback((recipientIdx) => {
@@ -381,6 +416,14 @@ const deadlineAt = useMemo(() => {
     }
   }, [id, recipients, fields, flowType, includeQr, reminderDays, deadlineAt, navigate]);
 
+  // ---- Vérifier si un destinataire a déjà une signature sur le document sélectionné ----
+  const hasSignatureOnCurrentDoc = useCallback((recipientOrder) => {
+    return fields.some(field => 
+      field.recipient_id === recipientOrder && 
+      field.document_id === selectedDocId && 
+      field.field_type === 'signature'
+    );
+  }, [fields, selectedDocId]);
 
   // ---- Rendu visuel d'un champ posé ----
   const renderFieldBox = (field, pageNumber) => {
@@ -406,7 +449,7 @@ const deadlineAt = useMemo(() => {
 
     return (
       <div key={`${pageNumber}-${field.name}-${field.position.x}-${field.position.y}`} style={style}>
-        <div style={{ textAlign: 'center', fontSize: 12, lineHeight: 1.1, color: '#374151' }}>
+        <div style={{ textAlign: 'center', fontSize: isMobileView ? 10 : 12, lineHeight: 1.1, color: '#374151' }}>
           <div style={{ fontWeight: 700, marginBottom: 2 }}>Signature</div>
           <div>{field.recipient_name || field.name.replace('Signature ', '')}</div>
         </div>
@@ -414,464 +457,588 @@ const deadlineAt = useMemo(() => {
     );
   };
 
-  // ---- Vérifier si un destinataire a déjà une signature sur le document sélectionné ----
-  const hasSignatureOnCurrentDoc = useCallback((recipientOrder) => {
-    return fields.some(field => 
-      field.recipient_id === recipientOrder && 
-      field.document_id === selectedDocId && 
-      field.field_type === 'signature'
-    );
-  }, [fields, selectedDocId]);
+  // Navigation mobile
+  const MobileNavigation = () => (
+    <div className="lg:hidden bg-white border-t border-gray-200 px-4 py-2">
+      <div className="flex space-x-1">
+        <button
+          onClick={() => setCurrentMobileTab('recipients')}
+          className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+            currentMobileTab === 'recipients'
+              ? 'bg-blue-100 text-blue-700'
+              : 'text-gray-600 hover:bg-gray-100'
+          }`}
+        >
+          Destinataires
+        </button>
+        <button
+          onClick={() => setCurrentMobileTab('pdf')}
+          className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+            currentMobileTab === 'pdf'
+              ? 'bg-blue-100 text-blue-700'
+              : 'text-gray-600 hover:bg-gray-100'
+          }`}
+        >
+          PDF
+        </button>
+        <button
+          onClick={() => setCurrentMobileTab('documents')}
+          className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+            currentMobileTab === 'documents'
+              ? 'bg-blue-100 text-blue-700'
+              : 'text-gray-600 hover:bg-gray-100'
+          }`}
+        >
+          Documents
+        </button>
+      </div>
+    </div>
+  );
 
-  // ---- Rendu ----
-  return (
-    <div className="h-screen bg-gray-50 flex overflow-hidden">
-      {/* Sidebar Gauche - Destinataires */}
-      <div className="w-80 bg-white shadow-lg overflow-y-auto border-r border-gray-200">
-        <div className="p-6">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-bold text-gray-900">Destinataires</h2>
-            <div className="text-sm text-gray-500">
-              {recipients.length} signataire{recipients.length > 1 ? 's' : ''}
+  // Sidebar des destinataires
+  const RecipientsPanel = ({ className = "" }) => (
+    <div className={`bg-white shadow-lg overflow-y-auto border-gray-200 ${className}`}>
+      <div className="p-4 lg:p-6">
+        <div className="flex items-center justify-between mb-4 lg:mb-6">
+          <h2 className="text-lg lg:text-xl font-bold text-gray-900">Destinataires</h2>
+          <div className="text-sm text-gray-500">
+            {recipients.length} signataire{recipients.length > 1 ? 's' : ''}
+          </div>
+        </div>
+
+        <div className="mb-4 lg:mb-6 p-3 lg:p-4 bg-gray-50 rounded-lg">
+          <h3 className="font-medium mb-3 text-gray-900 text-sm lg:text-base">Type de signature</h3>
+          <div className="space-y-2">
+            <label className="flex items-center">
+              <input
+                type="radio"
+                name="flowType"
+                value="sequential"
+                checked={flowType === 'sequential'}
+                onChange={() => setFlowType('sequential')}
+                className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+              />
+              <span className="ml-3 text-sm font-medium text-gray-700">
+                Séquentielle <span className="text-gray-500 text-xs">(un par un)</span>
+              </span>
+            </label>
+            <label className="flex items-center">
+              <input
+                type="radio"
+                name="flowType"
+                value="parallel"
+                checked={flowType === 'parallel'}
+                onChange={() => setFlowType('parallel')}
+                className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+              />
+              <span className="ml-3 text-sm font-medium text-gray-700">
+                Parallèle <span className="text-gray-500 text-xs">(tous en même temps)</span>
+              </span>
+            </label>
+          </div>
+        </div>
+
+        <div className="mb-4 lg:mb-6">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Ajouter des documents
+          </label>
+          <div className="relative">
+            <input
+              type="file"
+              multiple
+              accept=".pdf,.doc,.docx"
+              onChange={onFilesSelected}
+              disabled={isUploading}
+              className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 disabled:opacity-50"
+            />
+            {isUploading && (
+              <div className="absolute inset-0 bg-white/70 flex items-center justify-center rounded">
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+              </div>
+            )}
+          </div>
+          {documents.length > 0 && (
+            <p className="text-xs text-gray-500 mt-2">
+              {documents.length} document{documents.length > 1 ? 's' : ''} dans l'enveloppe
+            </p>
+          )}
+        </div>
+
+        <DragDropContext onDragEnd={handleDragEnd}>
+          <Droppable droppableId="recipients">
+            {(provided) => (
+              <div
+                className="space-y-4"
+                ref={provided.innerRef}
+                {...provided.droppableProps}
+              >
+                {recipients.map((recipient, idx) => {
+                  const canPlace = canPlaceSignature(idx);
+                  const hasSignature = hasSignatureOnCurrentDoc(recipient.order);
+                  const emailError = !recipient.email
+                    ? "Email obligatoire"
+                    : /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipient.email)
+                    ? ""
+                    : "Email invalide";
+
+                  return (
+                    <Draggable key={idx} draggableId={`rec-${idx}`} index={idx}>
+                      {(dragProvided) => (
+                        <div
+                          ref={dragProvided.innerRef}
+                          {...dragProvided.draggableProps}
+                          {...dragProvided.dragHandleProps}
+                          className="bg-white border border-gray-200 rounded-lg p-3 lg:p-4 shadow-sm"
+                        >
+                          <div className="flex items-center justify-between mb-3">
+                            <div className="flex items-center space-x-2">
+                              <div className="w-6 h-6 lg:w-8 lg:h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                                <span className="text-xs lg:text-sm font-medium text-blue-700">{idx + 1}</span>
+                              </div>
+                              <span className="font-medium text-gray-900 text-sm lg:text-base">Destinataire #{idx + 1}</span>
+                            </div>
+                            {recipients.length > 1 && (
+                              <button
+                                onClick={() => removeRecipient(idx)}
+                                className="text-red-400 hover:text-red-600 p-1"
+                                title="Supprimer"
+                              >
+                                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                  <path
+                                    fillRule="evenodd"
+                                    d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+                                    clipRule="evenodd"
+                                  />
+                                </svg>
+                              </button>
+                            )}
+                          </div>
+
+                          <div className="space-y-3">
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">Email</label>
+                              <input
+                                type="email"
+                                value={recipient.email}
+                                onChange={e => updateRecipient(idx, 'email', e.target.value)}
+                                className={`w-full px-3 py-2 border rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${emailError ? 'border-red-500' : 'border-gray-300'}`}
+                                placeholder="exemple@email.com"
+                              />
+                              {emailError && (
+                                <p className="text-xs text-red-500 mt-1">{emailError}</p>
+                              )}
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">Nom complet</label>
+                              <input
+                                type="text"
+                                value={recipient.full_name}
+                                onChange={e => updateRecipient(idx, 'full_name', e.target.value)}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                placeholder="Jean Dupont"
+                              />
+                            </div>
+
+                            <div className="pt-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setPlacing({ idx, type: 'signature' });
+                                  if (isMobileView) setCurrentMobileTab('pdf');
+                                }}
+                                disabled={!selectedDocId || !canPlace}
+                                className={`w-full px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                                  placing.idx === idx
+                                    ? 'bg-yellow-100 text-yellow-800 border border-yellow-300'
+                                    : canPlace && selectedDocId
+                                    ? 'bg-blue-600 text-white hover:bg-blue-700'
+                                    : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                                }`}
+                              >
+                                {placing.idx === idx
+                                  ? 'Cliquez sur le PDF pour placer'
+                                  : hasSignature
+                                  ? 'Redéfinir position signature'
+                                  : 'Définir position signature'}
+                              </button>
+
+                              {!selectedDocId && (
+                                <p className="text-xs text-red-500 mt-1">
+                                  Sélectionnez d'abord un document
+                                </p>
+                              )}
+
+                              {selectedDocId && !canPlace && (
+                                <p className="text-xs text-red-500 mt-1">
+                                  Renseignez l'email et le nom complet
+                                </p>
+                              )}
+
+                              {hasSignature && canPlace && selectedDocId && (
+                                <p className="text-xs text-green-600 mt-1">
+                                  ✓ Signature placée sur ce document
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </Draggable>
+                  );
+                })}
+                {provided.placeholder}
+              </div>
+            )}
+          </Droppable>
+        </DragDropContext>
+
+        <button
+          onClick={addRecipient}
+          className="w-full py-3 px-4 border-2 border-dashed border-gray-300 rounded-lg text-gray-600 hover:border-gray-400 hover:bg-gray-50 transition-colors flex items-center justify-center space-x-2 mt-4"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v12m6-6H6" />
+          </svg>
+          <span className="font-medium text-sm lg:text-base">Ajouter un destinataire</span>
+        </button>
+
+        {fields.length > 0 && (
+          <div className="mt-4 lg:mt-6 p-3 lg:p-4 bg-green-50 border border-green-200 rounded-lg">
+            <h3 className="font-medium text-green-900 mb-2 text-sm lg:text-base">Champs configurés</h3>
+            <div className="space-y-1">
+              {fields.map((field, i) => (
+                <div key={i} className="text-sm text-green-700 flex items-center">
+                  <svg className="w-4 h-4 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                  <span className="truncate">Page {field.page} — {field.recipient_name || field.name.replace('Signature ', '')}</span>
+                </div>
+              ))}
             </div>
           </div>
+        )}
 
-          <div className="mb-6 p-4 bg-gray-50 rounded-lg">
-            <h3 className="font-medium mb-3 text-gray-900">Type de signature</h3>
+        <div className="mt-4 mb-2 flex items-center">
+          <input
+            id="includeQr"
+            type="checkbox"
+            className="h-4 w-4 mr-2"
+            checked={includeQr}
+            onChange={(e) => setIncludeQr(e.target.checked)}
+          />
+          <label htmlFor="includeQr" className="text-sm text-gray-700">
+            Intégrer un QR Code de vérification au PDF final
+          </label>
+        </div>
+
+        {/* --- Relances / Échéance --- */}
+        <div className="mb-4 lg:mb-6 p-3 lg:p-4 bg-gray-50 rounded-lg space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Intervalle entre relances (en jours)</label>
+            <p className="text-xs text-gray-500 mt-1">Ex. 1 = tous les jours, 2 = tous les 2 jours, 7 = 1 fois/semaine.</p>
+            <input
+              type="number"
+              min={1}
+              value={reminderDays}
+              onChange={e => setReminderDays(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Échéance</label>
             <div className="space-y-2">
               <label className="flex items-center">
                 <input
                   type="radio"
-                  name="flowType"
-                  value="sequential"
-                  checked={flowType === 'sequential'}
-                  onChange={() => setFlowType('sequential')}
-                  className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+                  name="deadlineMode"
+                  value="days"
+                  checked={deadlineMode === 'days'}
+                  onChange={() => setDeadlineMode('days')}
+                  className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500 flex-shrink-0"
                 />
-                <span className="ml-3 text-sm font-medium text-gray-700">
-                  Séquentielle <span className="text-gray-500 text-xs">(un par un)</span>
-                </span>
+                <span className="ml-3 text-sm text-gray-700">Dans</span>
+                <input
+                  type="number"
+                  min={1}
+                  disabled={deadlineMode !== 'days'}
+                  value={deadlineDays}
+                  onChange={e => setDeadlineDays(e.target.value)}
+                  className="ml-2 w-16 lg:w-20 px-2 py-1 border border-gray-300 rounded-md text-sm disabled:bg-gray-100"
+                />
+                <span className="ml-2 text-sm text-gray-700">jour(s)</span>
               </label>
               <label className="flex items-center">
                 <input
                   type="radio"
-                  name="flowType"
-                  value="parallel"
-                  checked={flowType === 'parallel'}
-                  onChange={() => setFlowType('parallel')}
-                  className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+                  name="deadlineMode"
+                  value="exact"
+                  checked={deadlineMode === 'exact'}
+                  onChange={() => setDeadlineMode('exact')}
+                  className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500 flex-shrink-0"
                 />
-                <span className="ml-3 text-sm font-medium text-gray-700">
-                  Parallèle <span className="text-gray-500 text-xs">(tous en même temps)</span>
-                </span>
+                <span className="ml-3 text-sm text-gray-700">Date exacte</span>
               </label>
-            </div>
-          </div>
-
-          <div className="mb-6">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Ajouter des documents
-            </label>
-            <div className="relative">
               <input
-                type="file"
-                multiple
-                accept=".pdf,.doc,.docx"
-                onChange={onFilesSelected}
-                disabled={isUploading}
-                className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 disabled:opacity-50"
+                type="datetime-local"
+                disabled={deadlineMode !== 'exact'}
+                value={deadlineExact}
+                onChange={e => setDeadlineExact(e.target.value)}
+                className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-md text-sm disabled:bg-gray-100"
               />
-              {isUploading && (
-                <div className="absolute inset-0 bg-white/70 flex items-center justify-center rounded">
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
-                </div>
-              )}
-            </div>
-            {documents.length > 0 && (
-              <p className="text-xs text-gray-500 mt-2">
-                {documents.length} document{documents.length > 1 ? 's' : ''} dans l'enveloppe
+              <Countdown targetIso={deadlineAt} className="text-sm text-gray-700" />
+              <p className="text-xs text-gray-500">
+                Si vide, une échéance par défaut sera appliquée côté serveur.
               </p>
-            )}
+            </div>
           </div>
+        </div>
 
-            <DragDropContext onDragEnd={handleDragEnd}>
-              <Droppable droppableId="recipients">
-                {(provided) => (
-                  <div
-                    className="space-y-4"
-                    ref={provided.innerRef}
-                    {...provided.droppableProps}
-                  >
-                    {recipients.map((recipient, idx) => {
-                      const canPlace = canPlaceSignature(idx);
-                      const hasSignature = hasSignatureOnCurrentDoc(recipient.order);
-                      const emailError = !recipient.email
-                        ? "Email obligatoire"
-                        : /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipient.email)
-                        ? ""
-                        : "Email invalide";
+        <button
+          onClick={handleSubmit}
+          disabled={recipients.some(r => !r.email || !r.full_name) || fields.length === 0}
+          className="w-full mt-4 lg:mt-6 bg-green-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors text-sm lg:text-base"
+        >
+          Envoyer l'enveloppe
+        </button>
+      </div>
+    </div>
+  );
 
-                      return (
-                        <Draggable key={idx} draggableId={`rec-${idx}`} index={idx}>
-                          {(dragProvided) => (
-                            <div
-                              ref={dragProvided.innerRef}
-                              {...dragProvided.draggableProps}
-                              {...dragProvided.dragHandleProps}
-                              className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm"
-                            >
-                              <div className="flex items-center justify-between mb-3">
-                                <div className="flex items-center space-x-2">
-                                  <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-                                    <span className="text-sm font-medium text-blue-700">{idx + 1}</span>
-                                  </div>
-                                  <span className="font-medium text-gray-900">Destinataire #{idx + 1}</span>
-                                </div>
-                                {recipients.length > 1 && (
-                                  <button
-                                    onClick={() => removeRecipient(idx)}
-                                    className="text-red-400 hover:text-red-600 p-1"
-                                    title="Supprimer"
-                                  >
-                                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                                      <path
-                                        fillRule="evenodd"
-                                        d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
-                                        clipRule="evenodd"
-                                      />
-                                    </svg>
-                                  </button>
-                                )}
-                              </div>
+  // Panel des documents
+  const DocumentsPanel = ({ className = "" }) => (
+    <div className={`bg-white shadow-lg overflow-y-auto border-gray-200 ${className}`}>
+      <div className="p-4">
+        <h3 className="font-semibold text-gray-900 mb-4 flex items-center text-sm lg:text-base">
+          <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+          Documents
+        </h3>
 
-                              <div className="space-y-3">
-                                <div>
-                                  <label className="block text-xs font-medium text-gray-700 mb-1">Email</label>
-                                  <input
-                                    type="email"
-                                    value={recipient.email}
-                                    onChange={e => updateRecipient(idx, 'email', e.target.value)}
-                                    className={`w-full px-3 py-2 border rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${emailError ? 'border-red-500' : 'border-gray-300'}`}
-                                    placeholder="exemple@email.com"
-                                  />
-                                  {emailError && (
-                                    <p className="text-xs text-red-500 mt-1">{emailError}</p>
-                                  )}
-                                </div>
-                                <div>
-                                  <label className="block text-xs font-medium text-gray-700 mb-1">Nom complet</label>
-                                  <input
-                                    type="text"
-                                    value={recipient.full_name}
-                                    onChange={e => updateRecipient(idx, 'full_name', e.target.value)}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                    placeholder="Jean Dupont"
-                                  />
-                                </div>
-
-                                <div className="pt-2">
-                                  <button
-                                    type="button"
-                                    onClick={() => setPlacing({ idx, type: 'signature' })}
-                                    disabled={!selectedDocId || !canPlace}
-                                    className={`w-full px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                                      placing.idx === idx
-                                        ? 'bg-yellow-100 text-yellow-800 border border-yellow-300'
-                                        : canPlace && selectedDocId
-                                        ? 'bg-blue-600 text-white hover:bg-blue-700'
-                                        : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                                    }`}
-                                  >
-                                    {placing.idx === idx
-                                      ? 'Cliquez sur le PDF pour placer'
-                                      : hasSignature
-                                      ? 'Redéfinir position signature'
-                                      : 'Définir position signature'}
-                                  </button>
-
-                                  {!selectedDocId && (
-                                    <p className="text-xs text-red-500 mt-1">
-                                      Sélectionnez d'abord un document à droite
-                                    </p>
-                                  )}
-
-                                  {selectedDocId && !canPlace && (
-                                    <p className="text-xs text-red-500 mt-1">
-                                      Renseignez l'email et le nom complet
-                                    </p>
-                                  )}
-
-                                  {hasSignature && canPlace && selectedDocId && (
-                                    <p className="text-xs text-green-600 mt-1">
-                                      ✓ Signature placée sur ce document
-                                    </p>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                          )}
-                        </Draggable>
-                      );
-                    })}
-                    {provided.placeholder}
-                  </div>
-                )}
-              </Droppable>
-            </DragDropContext>
-
-            <button
-              onClick={addRecipient}
-              className="w-full py-3 px-4 border-2 border-dashed border-gray-300 rounded-lg text-gray-600 hover:border-gray-400 hover:bg-gray-50 transition-colors flex items-center justify-center space-x-2"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v12m6-6H6" />
-              </svg>
-              <span className="font-medium">Ajouter un destinataire</span>
-            </button>
+        {documents.length === 0 ? (
+          <div className="text-center py-6 lg:py-8 text-gray-500">
+            <svg className="mx-auto h-6 w-6 lg:h-8 lg:w-8 text-gray-400 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            <p className="text-sm">Aucun document</p>
           </div>
-
-          {fields.length > 0 && (
-            <div className="mt-6 p-4 bg-green-50 border border-green-200 rounded-lg">
-              <h3 className="font-medium text-green-900 mb-2">Champs configurés</h3>
-              <div className="space-y-1">
-                {fields.map((field, i) => (
-                  <div key={i} className="text-sm text-green-700 flex items-center">
-                    <svg className="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                    </svg>
-                    Page {field.page} — {field.recipient_name || field.name.replace('Signature ', '')}
+        ) : (
+          <div className="space-y-2">
+            {documents.map(doc => (
+              <button
+                key={doc.id}
+                onClick={() => selectDocument(doc)}
+                className={`w-full text-left p-3 rounded-lg border transition-all ${
+                  selectedDocId === doc.id
+                    ? 'bg-blue-50 border-blue-200 shadow-sm'
+                    : 'bg-white border-gray-200 hover:bg-gray-50 hover:border-gray-300'
+                }`}
+              >
+                <div className="flex items-start space-x-3">
+                  <div className={`relative mt-0.5 w-6 h-8 lg:w-8 lg:h-10 rounded border-2 flex items-center justify-center ${
+                    selectedDocId === doc.id ? 'border-blue-300 bg-blue-100' : 'border-gray-300 bg-gray-50'
+                  }`}>
+                    {loadingDocId === doc.id ? (
+                      <div className="w-full h-full rounded bg-gray-200 animate-pulse" />
+                    ) : (
+                      <svg
+                        className={`w-3 h-3 lg:w-4 lg:h-4 ${selectedDocId === doc.id ? 'text-blue-600' : 'text-gray-400'}`}
+                        fill="currentColor"
+                        viewBox="0 0 20 20"
+                      >
+                        <path
+                          fillRule="evenodd"
+                          d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
+                    )}
                   </div>
-                ))}
+                  <div className="flex-1 min-w-0">
+                    <p
+                      className={`text-sm font-medium truncate ${
+                        selectedDocId === doc.id ? 'text-blue-900' : 'text-gray-900'
+                      }`}
+                    >
+                      {doc.name || `Document ${doc.id}`}
+                    </p>
+                    <div className="mt-1 flex items-center space-x-2">
+                      <span className="text-xs text-gray-500">PDF</span>
+                      {numPagesByDoc[doc.id] && (
+                        <>
+                          <span className="text-xs text-gray-400">•</span>
+                          <span className="text-xs text-gray-500">
+                            {numPagesByDoc[doc.id]} page{numPagesByDoc[doc.id] > 1 ? 's' : ''}
+                          </span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  // Vue PDF
+  const PDFViewer = ({ className = "" }) => (
+    <div className={`flex-1 flex flex-col bg-gray-100 ${className}`}>
+      <div className="flex-1 flex overflow-hidden">
+        <div className="flex-1 overflow-auto" ref={pdfWrapper}>
+          {pdfUrl ? (
+            <div className="p-2 lg:p-6">
+              <div className={`max-w-[900px] mx-auto ${isMobileView ? 'max-w-full' : ''}`}>
+                <Document
+                  key={String(pdfUrl || 'empty')}
+                  file={pdfUrl}
+                  onLoadSuccess={onDocumentLoad}
+                  onLoadError={onDocumentError}
+                  loading={
+                    <div className="flex items-center justify-center py-20">
+                      <div className="animate-spin rounded-full h-6 w-6 lg:h-8 lg:w-8 border-b-2 border-blue-600"></div>
+                      <span className="ml-3 text-gray-600 text-sm lg:text-base">Chargement du PDF...</span>
+                    </div>
+                  }
+                >
+                  {Array.from({ length: numPagesByDoc[selectedDocId] || 0 }, (_, i) => {
+                    const pageNumber = i + 1;
+                    return (
+                      <div key={pageNumber} className={`relative mb-4 lg:mb-8 bg-white shadow-lg rounded-lg overflow-hidden`}>
+                        <div className="absolute top-2 right-2 bg-black/50 text-white px-2 py-1 rounded text-xs lg:text-sm z-20">
+                          Page {pageNumber}
+                        </div>
+
+                        <Page
+                          pageNumber={pageNumber}
+                          width={pdfWidth}
+                          onLoadSuccess={(page) => onPageLoadSuccess(pageNumber, page)}
+                          renderTextLayer={false}
+                          renderAnnotationLayer={false}
+                        />
+
+                        {/* Champs déjà posés (visibles) */}
+                        {fields
+                          .filter(f => f.document_id === selectedDocId && f.page === pageNumber)
+                          .map(f => renderFieldBox(f, pageNumber))
+                        }
+
+                        {/* Overlay de clic (pour placer) */}
+                        <div
+                          onClick={e => handlePdfClick(e, pageNumber)}
+                          className={`absolute inset-0 z-10 ${placing.idx !== null ? 'cursor-crosshair bg-yellow-200/10' : 'cursor-default'}`}
+                          style={{ pointerEvents: placing.idx !== null ? 'auto' : 'none' }}
+                        />
+                      </div>
+                    );
+                  })}
+                </Document>
+              </div>
+            </div>
+          ) : (
+            <div className="h-full flex items-center justify-center">
+              <div className="text-center p-4">
+                <svg className="mx-auto h-8 w-8 lg:h-12 lg:w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                <h3 className="mt-2 text-sm font-medium text-gray-900">Aucun document sélectionné</h3>
+                <p className="mt-1 text-sm text-gray-500">Sélectionnez un document dans la liste</p>
               </div>
             </div>
           )}
-    <div className="mt-4 mb-2 flex items-center">
-  <input
-    id="includeQr"
-    type="checkbox"
-    className="h-4 w-4 mr-2"
-    checked={includeQr}
-    onChange={(e) => setIncludeQr(e.target.checked)}
-  />
-  <label htmlFor="includeQr" className="text-sm text-gray-700">
-    Intégrer un QR Code de vérification au PDF final
-  </label>
-</div>
-         {/* --- Relances / Échéance --- */}
-          <div className="mb-6 p-4 bg-gray-50 rounded-lg space-y-4">
-            <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Intervalle entre relances (en jours)</label>
- <p className="text-xs text-gray-500 mt-1">Ex. 1 = tous les jours, 2 = tous les 2 jours, 7 = 1 fois/semaine.</p>
-<input
-                type="number"
-                min={1}
-                value={reminderDays}
-                onChange={e => setReminderDays(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Échéance</label>
-              <div className="space-y-2">
-                <label className="flex items-center">
-                  <input
-                    type="radio"
-                    name="deadlineMode"
-                    value="days"
-                    checked={deadlineMode === 'days'}
-                    onChange={() => setDeadlineMode('days')}
-                    className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
-                  />
-                  <span className="ml-3 text-sm text-gray-700">Dans</span>
-                  <input
-                    type="number"
-                    min={1}
-                    disabled={deadlineMode !== 'days'}
-                    value={deadlineDays}
-                    onChange={e => setDeadlineDays(e.target.value)}
-                    className="ml-2 w-20 px-2 py-1 border border-gray-300 rounded-md text-sm disabled:bg-gray-100"
-                  />
-                  <span className="ml-2 text-sm text-gray-700">jour(s)</span>
-                </label>
-                <label className="flex items-center">
-                  <input
-                    type="radio"
-                    name="deadlineMode"
-                    value="exact"
-                    checked={deadlineMode === 'exact'}
-                    onChange={() => setDeadlineMode('exact')}
-                    className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
-                  />
-                  <span className="ml-3 text-sm text-gray-700">Date exacte</span>
-                </label>
-                <input
-                  type="datetime-local"
-                  disabled={deadlineMode !== 'exact'}
-                  value={deadlineExact}
-                  onChange={e => setDeadlineExact(e.target.value)}
-                  className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-md text-sm disabled:bg-gray-100"
-                />
-                <Countdown targetIso={deadlineAt} className="text-sm text-gray-700" />
-                <p className="text-xs text-gray-500">
-                  Si vide, une échéance par défaut sera appliquée côté serveur.
-                </p>
-              </div>
-            </div>
-          </div>
-          <button
-            onClick={handleSubmit}
-            disabled={recipients.some(r => !r.email || !r.full_name) || fields.length === 0}
-            className="w-full mt-6 bg-green-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
-          >
-            Envoyer l'enveloppe
-          </button>
-        </div>
-         
-      
-      {/* Zone centrale - PDF Viewer */}
-      <div className="flex-1 flex flex-col bg-gray-100">
-        <div className="flex-1 flex overflow-hidden">
-          <div className="flex-1 overflow-auto" ref={pdfWrapper}>
-            {pdfUrl ? (
-              <div className="p-6">
-                <div className="max-w-[900px] mx-auto">
-                  <Document
-                    key={String(pdfUrl || 'empty')}
-                    file={pdfUrl}
-                    onLoadSuccess={onDocumentLoad}
-                    onLoadError={onDocumentError}
-                    loading={
-                      <div className="flex items-center justify-center py-20">
-                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                        <span className="ml-3 text-gray-600">Chargement du PDF...</span>
-                      </div>
-                    }
-                  >
-                    {Array.from({ length: numPagesByDoc[selectedDocId] || 0 }, (_, i) => {
-                      const pageNumber = i + 1;
-                      return (
-                        <div key={pageNumber} className="relative mb-8 bg-white shadow-lg rounded-lg overflow-hidden">
-                          <div className="absolute top-2 right-2 bg-black/50 text-white px-2 py-1 rounded text-sm z-20">
-                            Page {pageNumber}
-                          </div>
-
-                          <Page
-                            pageNumber={pageNumber}
-                            width={pdfWidth}
-                            onLoadSuccess={(page) => onPageLoadSuccess(pageNumber, page)}
-                            renderTextLayer={false}
-                            renderAnnotationLayer={false}
-                          />
-
-                          {/* Champs déjà posés (visibles) */}
-                          {fields
-                            .filter(f => f.document_id === selectedDocId && f.page === pageNumber)
-                            .map(f => renderFieldBox(f, pageNumber))
-                          }
-
-                          {/* Overlay de clic (pour placer) */}
-                          <div
-                            onClick={e => handlePdfClick(e, pageNumber)}
-                            className={`absolute inset-0 z-10 ${placing.idx !== null ? 'cursor-crosshair bg-yellow-200/10' : 'cursor-default'}`}
-                            style={{ pointerEvents: placing.idx !== null ? 'auto' : 'none' }}
-                          />
-                        </div>
-                      );
-                    })}
-                  </Document>
-                </div>
-              </div>
-            ) : (
-              <div className="h-full flex items-center justify-center">
-                <div className="text-center">
-                  <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                  <h3 className="mt-2 text-sm font-medium text-gray-900">Aucun document sélectionné</h3>
-                  <p className="mt-1 text-sm text-gray-500">Sélectionnez un document dans la liste</p>
-                </div>
-              </div>
-            )}
-          </div>
         </div>
       </div>
+    </div>
+  );
+
+  // ---- Rendu principal ----
+  if (isMobileView) {
+    // Vue mobile avec navigation par onglets
+    return (
+      <div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
+        <div className="flex-1 overflow-hidden">
+          {currentMobileTab === 'recipients' && (
+            <RecipientsPanel className="h-full border-r" />
+          )}
+          {currentMobileTab === 'pdf' && (
+            <PDFViewer className="h-full" />
+          )}
+          {currentMobileTab === 'documents' && (
+            <DocumentsPanel className="h-full border-l" />
+          )}
+        </div>
+        <MobileNavigation />
+      </div>
+    );
+  }
+
+  // Vue desktop avec sidebars
+  return (
+    <div className="h-screen bg-gray-50 flex overflow-hidden">
+      {/* Sidebar Gauche - Destinataires */}
+      {showLeftSidebar && (
+        <RecipientsPanel className="w-80 border-r" />
+      )}
+
+      {/* Zone centrale - PDF Viewer */}
+      <PDFViewer />
 
       {/* Sidebar Droite - Documents */}
-      <div className="w-72 bg-white shadow-lg overflow-y-auto border-l border-gray-200">
-        <div className="p-4">
-          <h3 className="font-semibold text-gray-900 mb-4 flex items-center">
-            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-            Documents
-          </h3>
+      {showRightSidebar && (
+        <DocumentsPanel className="w-72 border-l" />
+      )}
 
-          {documents.length === 0 ? (
-            <div className="text-center py-8 text-gray-500">
-              <svg className="mx-auto h-8 w-8 text-gray-400 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+      {/* Boutons pour masquer/afficher les sidebars sur desktop */}
+      {!isMobileView && (
+        <>
+          {!showLeftSidebar && (
+            <button
+              onClick={() => setShowLeftSidebar(true)}
+              className="fixed left-4 top-4 z-30 bg-white shadow-lg rounded-lg p-2 hover:bg-gray-50 transition-colors"
+              title="Afficher les destinataires"
+            >
+              <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
               </svg>
-              <p className="text-sm">Aucun document</p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-                {documents.map(doc => (
-                  <button
-                    key={doc.id}
-                    onClick={() => selectDocument(doc)}
-                    className={`w-full text-left p-3 rounded-lg border transition-all ${
-                      selectedDocId === doc.id
-                        ? 'bg-blue-50 border-blue-200 shadow-sm'
-                        : 'bg-white border-gray-200 hover:bg-gray-50 hover:border-gray-300'
-                    }`}
-                  >
-                    <div className="flex items-start space-x-3">
-                      <div className={`relative mt-0.5 w-8 h-10 rounded border-2 flex items-center justify-center ${
-                        selectedDocId === doc.id ? 'border-blue-300 bg-blue-100' : 'border-gray-300 bg-gray-50'
-                      }`}>
-                        {loadingDocId === doc.id ? (
-                          <div className="w-full h-full rounded bg-gray-200 animate-pulse" />
-                        ) : (
-                          <svg
-                            className={`w-4 h-4 ${selectedDocId === doc.id ? 'text-blue-600' : 'text-gray-400'}`}
-                            fill="currentColor"
-                            viewBox="0 0 20 20"
-                          >
-                            <path
-                              fillRule="evenodd"
-                              d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z"
-                              clipRule="evenodd"
-                            />
-                          </svg>
-                        )}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p
-                          className={`text-sm font-medium truncate ${
-                            selectedDocId === doc.id ? 'text-blue-900' : 'text-gray-900'
-                          }`}
-                        >
-                          {doc.name || `Document ${doc.id}`}
-                        </p>
-                        <div className="mt-1 flex items-center space-x-2">
-                          <span className="text-xs text-gray-500">PDF</span>
-                          {numPagesByDoc[doc.id] && (
-                            <>
-                              <span className="text-xs text-gray-400">•</span>
-                              <span className="text-xs text-gray-500">
-                                {numPagesByDoc[doc.id]} page{numPagesByDoc[doc.id] > 1 ? 's' : ''}
-                              </span>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
+            </button>
+          )}
+          {!showRightSidebar && (
+            <button
+              onClick={() => setShowRightSidebar(true)}
+              className="fixed right-4 top-4 z-30 bg-white shadow-lg rounded-lg p-2 hover:bg-gray-50 transition-colors"
+              title="Afficher les documents"
+            >
+              <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+            </button>
+          )}
+          {showLeftSidebar && (
+            <button
+              onClick={() => setShowLeftSidebar(false)}
+              className="fixed left-4 top-4 z-30 bg-white shadow-lg rounded-lg p-2 hover:bg-gray-50 transition-colors"
+              title="Masquer les destinataires"
+            >
+              <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+          )}
+          {showRightSidebar && (
+            <button
+              onClick={() => setShowRightSidebar(false)}
+              className="fixed right-4 top-4 z-30 bg-white shadow-lg rounded-lg p-2 hover:bg-gray-50 transition-colors"
+              title="Masquer les documents"
+            >
+              <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+          )}
+        </>
+      )}
+    </div>
   );
 }

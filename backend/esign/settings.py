@@ -6,15 +6,14 @@ from datetime import timedelta
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-ALLOWED_HOSTS = ['*']
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000","http://localhost:8000",
-]
-CORS_ALLOW_CREDENTIALS = True
-
 env = environ.Env()
 
 environ.Env.read_env(os.path.join(BASE_DIR, ".env"))
+
+ALLOWED_HOSTS = env.list("DJANGO_ALLOWED_HOSTS")
+CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=[])
+CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=[])
+CORS_ALLOW_CREDENTIALS = True
 PDF_SIGNER_DIR = BASE_DIR / "certs"
 # --- Signature / Certs (ton certificat SIGNER) ---
 SELF_SIGN_CERT_FILE = PDF_SIGNER_DIR / "selfsign_cert.pem"   #  cert de signature (PEM)
@@ -29,7 +28,7 @@ FREETSA_TSA    = BASE_DIR / "certs" / "tsa.crt"
 FREETSA_CACERT = BASE_DIR / "certs" / "cacert.pem"
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = env("DJANGO_SECRET_KEY")
-DEBUG = True
+DEBUG = env.bool("DJANGO_DEBUG", default=False)
 # --- Chiffrement/KMS ---
 # settings.py (remplace ces 3 lignes KMS)
 KMS_ACTIVE_KEY_ID = env.int("KMS_ACTIVE_KEY_ID", default=1)

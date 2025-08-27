@@ -23,7 +23,8 @@ import {
   Filter,
   Search,
   Plus,
-  Edit3
+  Edit3,
+  ChevronDown
 } from 'lucide-react';
 
 const DashboardSignature = () => {
@@ -47,6 +48,7 @@ const DashboardSignature = () => {
   const [trend30, setTrend30] = useState([]);
   const [previewLoadingId, setPreviewLoadingId] = useState(null);
   const [actionEnvelopes, setActionEnvelopes] = useState([]);
+  const [expandedCards, setExpandedCards] = useState(new Set());
 
   const filterByDate = (arr) => {
     const now = new Date();
@@ -198,6 +200,16 @@ const DashboardSignature = () => {
     }
   };
 
+  const toggleCardExpansion = (id) => {
+    const newExpanded = new Set(expandedCards);
+    if (newExpanded.has(id)) {
+      newExpanded.delete(id);
+    } else {
+      newExpanded.add(id);
+    }
+    setExpandedCards(newExpanded);
+  };
+
   const StatusBadge = ({ status }) => {
     const config = {
       draft: { label: 'Brouillon', classes: 'bg-gray-100 text-gray-800' },
@@ -208,7 +220,7 @@ const DashboardSignature = () => {
     };
     const { label, classes } = config[status] || config.sent;
     return (
-      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${classes}`}>
+      <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${classes}`}>
         {label}
       </span>
     );
@@ -220,147 +232,152 @@ const DashboardSignature = () => {
     .filter(doc => doc.title.toLowerCase().includes(searchTerm.toLowerCase()));
 
   return (
-    <div className="flex flex-col min-h-screen">
+    <div className="flex flex-col min-h-screen bg-gray-50">
       <SignatureNavbar />
-      <main className="flex-1 bg-gray-50 p-4 sm:p-6 lg:px-8">
-        {/* En-tête */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6 gap-4">
-          <h1 className="text-2xl font-semibold text-gray-900">Tableau de bord</h1>
+      
+      <main className="flex-1 p-3 sm:p-4 lg:p-6 xl:p-8">
+        {/* En-tête responsive */}
+        <div className="flex flex-col space-y-4 sm:flex-row sm:items-center sm:justify-between sm:space-y-0 mb-6">
+          <h1 className="text-xl sm:text-2xl font-semibold text-gray-900">Tableau de bord</h1>
           <Link
             to="/signature/new"
-            className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+            className="inline-flex items-center justify-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors duration-200"
           >
             <Plus className="w-4 h-4 mr-2" />
-            Nouveau document
+            <span className="hidden xs:inline">Nouveau document</span>
+            <span className="xs:hidden">Nouveau</span>
           </Link>
         </div>
 
-        {/* Filtre de date global */}
-        <div className="mb-6 flex flex-wrap items-center gap-2">
+        {/* Filtre de date global responsive */}
+        <div className="mb-6 space-y-3 sm:space-y-0 sm:flex sm:flex-wrap sm:items-center sm:gap-3">
           <select
             value={dateFilter}
             onChange={e => setDateFilter(e.target.value)}
-            className="border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            className="w-full sm:w-auto border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
           >
             <option value="month">Ce mois</option>
             <option value="90days">90 jours</option>
             <option value="custom">Personnalisé</option>
           </select>
+          
           {dateFilter === 'custom' && (
-            <>
+            <div className="flex flex-col space-y-2 sm:flex-row sm:space-y-0 sm:space-x-2">
               <input
                 type="date"
                 value={customRange.start}
                 onChange={e => setCustomRange({ ...customRange, start: e.target.value })}
-                className="border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full sm:w-auto border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+                placeholder="Date début"
               />
               <input
                 type="date"
                 value={customRange.end}
                 onChange={e => setCustomRange({ ...customRange, end: e.target.value })}
-                className="border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full sm:w-auto border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+                placeholder="Date fin"
               />
-            </>
+            </div>
           )}
         </div>
 
-        {/* Statistiques */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 sm:gap-6 mb-8">
+        {/* Statistiques responsive */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4 lg:gap-6 mb-6 sm:mb-8">
           {/* Brouillons */}
           <Link
             to="/signature/envelopes/drafts"
-            className="bg-white shadow rounded-lg p-4 sm:p-5 flex items-center hover:bg-gray-50 transition-colors duration-200"
+            className="bg-white shadow rounded-lg p-3 sm:p-4 lg:p-5 flex flex-col sm:flex-row items-center hover:bg-gray-50 hover:shadow-md transition-all duration-200"
           >
-            <div className="flex-shrink-0">
-              <FileText className="w-6 h-6 sm:w-8 sm:h-8 text-blue-500" />
+            <div className="flex-shrink-0 mb-2 sm:mb-0">
+              <FileText className="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-blue-500" />
             </div>
-            <div className="ml-3 sm:ml-4 min-w-0 flex-1">
+            <div className="sm:ml-3 lg:ml-4 text-center sm:text-left min-w-0 flex-1">
               <p className="text-xs sm:text-sm font-medium text-gray-500 truncate">Brouillons</p>
-              <p className="text-lg sm:text-xl font-semibold text-gray-900">{stats.draft}</p>
+              <p className="text-base sm:text-lg lg:text-xl font-semibold text-gray-900">{stats.draft}</p>
             </div>
           </Link>
 
           {/* Envoyées */}
           <Link
             to="/signature/envelopes/sent"
-            className="bg-white shadow rounded-lg p-4 sm:p-5 flex items-center hover:bg-gray-50 transition-colors duration-200"
+            className="bg-white shadow rounded-lg p-3 sm:p-4 lg:p-5 flex flex-col sm:flex-row items-center hover:bg-gray-50 hover:shadow-md transition-all duration-200"
           >
-            <div className="flex-shrink-0">
-              <Send className="w-6 h-6 sm:w-8 sm:h-8 text-purple-500" />
+            <div className="flex-shrink-0 mb-2 sm:mb-0">
+              <Send className="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-purple-500" />
             </div>
-            <div className="ml-3 sm:ml-4 min-w-0 flex-1">
+            <div className="sm:ml-3 lg:ml-4 text-center sm:text-left min-w-0 flex-1">
               <p className="text-xs sm:text-sm font-medium text-gray-500 truncate">Envoyées</p>
-              <p className="text-lg sm:text-xl font-semibold text-gray-900">{stats.sent}</p>
+              <p className="text-base sm:text-lg lg:text-xl font-semibold text-gray-900">{stats.sent}</p>
             </div>
           </Link>
 
           {/* Complétées */}
           <Link
             to="/signature/envelopes/completed"
-            className="bg-white shadow rounded-lg p-4 sm:p-5 flex items-center hover:bg-gray-50 transition-colors duration-200"
+            className="bg-white shadow rounded-lg p-3 sm:p-4 lg:p-5 flex flex-col sm:flex-row items-center hover:bg-gray-50 hover:shadow-md transition-all duration-200"
           >
-            <div className="flex-shrink-0">
-              <CheckCircle className="w-6 h-6 sm:w-8 sm:h-8 text-green-500" />
+            <div className="flex-shrink-0 mb-2 sm:mb-0">
+              <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-green-500" />
             </div>
-            <div className="ml-3 sm:ml-4 min-w-0 flex-1">
+            <div className="sm:ml-3 lg:ml-4 text-center sm:text-left min-w-0 flex-1">
               <p className="text-xs sm:text-sm font-medium text-gray-500 truncate">Complétées</p>
-              <p className="text-lg sm:text-xl font-semibold text-gray-900">{stats.completed}</p>
+              <p className="text-base sm:text-lg lg:text-xl font-semibold text-gray-900">{stats.completed}</p>
             </div>
           </Link>
 
           {/* Action requise */}
           <Link
             to="/signature/envelopes/action-required"
-            className="bg-white shadow rounded-lg p-4 sm:p-5 flex items-center hover:bg-gray-50 transition-colors duration-200"
+            className="bg-white shadow rounded-lg p-3 sm:p-4 lg:p-5 flex flex-col sm:flex-row items-center hover:bg-gray-50 hover:shadow-md transition-all duration-200"
           >
-            <div className="flex-shrink-0">
-              <AlertCircle className="w-6 h-6 sm:w-8 sm:h-8 text-red-500" />
+            <div className="flex-shrink-0 mb-2 sm:mb-0">
+              <AlertCircle className="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-red-500" />
             </div>
-            <div className="ml-3 sm:ml-4 min-w-0 flex-1">
+            <div className="sm:ml-3 lg:ml-4 text-center sm:text-left min-w-0 flex-1">
               <p className="text-xs sm:text-sm font-medium text-gray-500 truncate">Action requise</p>
-              <p className="text-lg sm:text-xl font-semibold text-gray-900">{stats.actionRequired}</p>
+              <p className="text-base sm:text-lg lg:text-xl font-semibold text-gray-900">{stats.actionRequired}</p>
             </div>
           </Link>
 
           {/* Total période */}
           <Link
             to="/signature/envelopes"
-            className="bg-white shadow rounded-lg p-4 sm:p-5 flex items-center hover:bg-gray-50 transition-colors duration-200"
+            className="bg-white shadow rounded-lg p-3 sm:p-4 lg:p-5 flex flex-col sm:flex-row items-center hover:bg-gray-50 hover:shadow-md transition-all duration-200"
           >
-            <div className="flex-shrink-0">
-              <Calendar className="w-6 h-6 sm:w-8 sm:h-8 text-yellow-500" />
+            <div className="flex-shrink-0 mb-2 sm:mb-0">
+              <Calendar className="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-yellow-500" />
             </div>
-            <div className="ml-3 sm:ml-4 min-w-0 flex-1">
+            <div className="sm:ml-3 lg:ml-4 text-center sm:text-left min-w-0 flex-1">
               <p className="text-xs sm:text-sm font-medium text-gray-500 truncate">Période</p>
-              <p className="text-lg sm:text-xl font-semibold text-gray-900">{stats.totalThisMonth}</p>
+              <p className="text-base sm:text-lg lg:text-xl font-semibold text-gray-900">{stats.totalThisMonth}</p>
             </div>
           </Link>
 
           {/* Taux de completion */}
           <Link
             to="/signature/envelopes"
-            className="bg-white shadow rounded-lg p-4 sm:p-5 flex items-center hover:bg-gray-50 transition-colors duration-200"
+            className="bg-white shadow rounded-lg p-3 sm:p-4 lg:p-5 flex flex-col sm:flex-row items-center hover:bg-gray-50 hover:shadow-md transition-all duration-200"
           >
-            <div className="flex-shrink-0">
-              <TrendingUp className="w-6 h-6 sm:w-8 sm:h-8 text-indigo-500" />
+            <div className="flex-shrink-0 mb-2 sm:mb-0">
+              <TrendingUp className="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-indigo-500" />
             </div>
-            <div className="ml-3 sm:ml-4 min-w-0 flex-1">
+            <div className="sm:ml-3 lg:ml-4 text-center sm:text-left min-w-0 flex-1">
               <p className="text-xs sm:text-sm font-medium text-gray-500 truncate">Taux compl.</p>
-              <p className="text-lg sm:text-xl font-semibold text-gray-900">{stats.completionRate}%</p>
+              <p className="text-base sm:text-lg lg:text-xl font-semibold text-gray-900">{stats.completionRate}%</p>
             </div>
           </Link>
         </div>
 
-        {/* Tendances */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 mb-8">
+        {/* Tendances responsive */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 mb-6 sm:mb-8">
           <div className="bg-white shadow rounded-lg p-4">
-            <p className="text-xs font-medium text-gray-500 mb-2">7 derniers jours</p>
+            <p className="text-xs font-medium text-gray-500 mb-3">7 derniers jours</p>
             <div className="h-8">
               <Sparkline data={trend7} />
             </div>
           </div>
           <div className="bg-white shadow rounded-lg p-4">
-            <p className="text-xs font-medium text-gray-500 mb-2">30 derniers jours</p>
+            <p className="text-xs font-medium text-gray-500 mb-3">30 derniers jours</p>
             <div className="h-8">
               <Sparkline data={trend30} />
             </div>
@@ -369,38 +386,40 @@ const DashboardSignature = () => {
 
         {/* Section principale - Documents récents */}
         <div className="bg-white shadow rounded-lg overflow-hidden">
-          {/* En-tête de la section */}
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between px-4 sm:px-6 py-4 border-b border-gray-200 gap-4">
-            <h2 className="text-lg font-medium text-gray-900">Documents récents</h2>
-            
-            {/* Contrôles de recherche et filtre */}
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-              {/* Filtre */}
-              <div className="flex items-center space-x-2">
-                <Filter className="w-4 h-4 sm:w-5 sm:h-5 text-gray-500 flex-shrink-0" />
-                <select
-                  value={filter}
-                  onChange={e => setFilter(e.target.value)}
-                  className="border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                >
-                  <option value="all">Tous</option>
-                  <option value="draft">Brouillons</option>
-                  <option value="sent">Envoyées</option>
-                  <option value="completed">Complétées</option>
-                  <option value="actionRequired">Action requise</option>
-                </select>
-              </div>
+          {/* En-tête de la section responsive */}
+          <div className="px-4 sm:px-6 py-4 border-b border-gray-200">
+            <div className="flex flex-col space-y-4 sm:space-y-0 sm:flex-row sm:items-center sm:justify-between">
+              <h2 className="text-lg font-medium text-gray-900">Documents récents</h2>
+              
+              {/* Contrôles de recherche et filtre responsive */}
+              <div className="flex flex-col space-y-3 sm:space-y-0 sm:flex-row sm:items-center sm:space-x-4">
+                {/* Filtre */}
+                <div className="flex items-center space-x-2">
+                  <Filter className="w-4 h-4 sm:w-5 sm:h-5 text-gray-500 flex-shrink-0" />
+                  <select
+                    value={filter}
+                    onChange={e => setFilter(e.target.value)}
+                    className="flex-1 sm:flex-none border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+                  >
+                    <option value="all">Tous</option>
+                    <option value="draft">Brouillons</option>
+                    <option value="sent">Envoyées</option>
+                    <option value="completed">Complétées</option>
+                    <option value="actionRequired">Action requise</option>
+                  </select>
+                </div>
 
-              {/* Recherche */}
-              <div className="flex items-center space-x-2 flex-1 sm:flex-initial">
-                <Search className="w-4 h-4 sm:w-5 sm:h-5 text-gray-500 flex-shrink-0" />
-                <input
-                  type="text"
-                  placeholder="Rechercher..."
-                  value={searchTerm}
-                  onChange={e => setSearchTerm(e.target.value)}
-                  className="border border-gray-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-full sm:w-64"
-                />
+                {/* Recherche */}
+                <div className="flex items-center space-x-2">
+                  <Search className="w-4 h-4 sm:w-5 sm:h-5 text-gray-500 flex-shrink-0" />
+                  <input
+                    type="text"
+                    placeholder="Rechercher..."
+                    value={searchTerm}
+                    onChange={e => setSearchTerm(e.target.value)}
+                    className="flex-1 sm:w-64 border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+                  />
+                </div>
               </div>
             </div>
           </div>
@@ -419,53 +438,53 @@ const DashboardSignature = () => {
             </div>
           ) : (
             <>
-              {/* Version desktop - Tableau */}
-              <div className="hidden lg:block overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Titre
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Statut
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Progression
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Signataires
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Créé le
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Échéance
-                      </th>
-                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Actions
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {displayedDocuments.map(doc => (
-                      <tr key={doc.id} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <p className="text-sm font-medium text-gray-900 max-w-xs truncate" title={doc.title}>
-                            {doc.title}
-                          </p>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <StatusBadge status={doc.status} />
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap" title={`${doc.signedBy}/${doc.signers}`}>
-                          <div className="flex items-center space-x-2">
-                            <div className="flex-1">
-                              <div className="flex items-center justify-between mb-1">
-                                <span className="text-xs font-medium text-gray-700">
+              {/* Version desktop/tablette - Table responsive */}
+              <div className="hidden md:block">
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-4 lg:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Titre
+                        </th>
+                        <th className="px-4 lg:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Statut
+                        </th>
+                        <th className="px-4 lg:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-32">
+                          Progression
+                        </th>
+                        <th className="px-4 lg:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Signataires
+                        </th>
+                        <th className="px-4 lg:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Créé le
+                        </th>
+                        <th className="px-4 lg:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Échéance
+                        </th>
+                        <th className="px-4 lg:px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Actions
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {displayedDocuments.map(doc => (
+                        <tr key={doc.id} className="hover:bg-gray-50 transition-colors duration-150">
+                          <td className="px-4 lg:px-6 py-4">
+                            <p className="text-sm font-medium text-gray-900 max-w-xs truncate" title={doc.title}>
+                              {doc.title}
+                            </p>
+                          </td>
+                          <td className="px-4 lg:px-6 py-4 whitespace-nowrap">
+                            <StatusBadge status={doc.status} />
+                          </td>
+                          <td className="px-4 lg:px-6 py-4" title={`${doc.signedBy}/${doc.signers}`}>
+                            <div className="space-y-1 min-w-24">
+                              <div className="flex items-center justify-between text-xs">
+                                <span className="font-medium text-gray-700">
                                   {doc.signedBy}/{doc.signers}
                                 </span>
-                                <span className="text-xs text-gray-500">{doc.progress}%</span>
+                                <span className="text-gray-500">{doc.progress}%</span>
                               </div>
                               <div className="w-full bg-gray-200 rounded-full h-2">
                                 <div
@@ -478,91 +497,90 @@ const DashboardSignature = () => {
                                 />
                               </div>
                             </div>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center">
-                            <Users className="w-4 h-4 text-gray-400 mr-1" />
-                            <span className="text-sm text-gray-900">{doc.signedBy}/{doc.signers}</span>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <p className="text-sm text-gray-500">
-                            {new Date(doc.createdAt).toLocaleDateString('fr-FR')}
-                          </p>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <p className="text-sm text-gray-500">
-                            {doc.deadline ? new Date(doc.deadline).toLocaleDateString('fr-FR') : '-'}
-                          </p>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-right">
-                          <div className="flex items-center justify-end space-x-2">
-                            <button
-                              onClick={() => handlePreview(doc.id)}
-                              disabled={previewLoadingId === doc.id}
-                              className={`text-gray-400 ${previewLoadingId === doc.id ? 'opacity-50 cursor-not-allowed' : 'hover:text-blue-600 transition-colors duration-200'}`}
-                              title="Prévisualiser"
-                            >
-                              <Eye className="w-5 h-5" />
-                            </button>
-                            <button
-                              onClick={() => handleDownload(doc.id, doc.title)}
-                              className="text-gray-400 hover:text-green-600 transition-colors duration-200"
-                              title="Télécharger"
-                            >
-                              <Download className="w-5 h-5" />
-                            </button>
-                            <button className="text-gray-400 hover:text-indigo-600 transition-colors duration-200" title="Modifier">
-                              <Edit3 className="w-5 h-5" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                          </td>
+                          <td className="px-4 lg:px-6 py-4 whitespace-nowrap">
+                            <div className="flex items-center">
+                              <Users className="w-4 h-4 text-gray-400 mr-1" />
+                              <span className="text-sm text-gray-900">{doc.signedBy}/{doc.signers}</span>
+                            </div>
+                          </td>
+                          <td className="px-4 lg:px-6 py-4 whitespace-nowrap">
+                            <p className="text-sm text-gray-500">
+                              {new Date(doc.createdAt).toLocaleDateString('fr-FR', {
+                                day: '2-digit',
+                                month: '2-digit',
+                                year: '2-digit'
+                              })}
+                            </p>
+                          </td>
+                          <td className="px-4 lg:px-6 py-4 whitespace-nowrap">
+                            <p className="text-sm text-gray-500">
+                              {doc.deadline ? new Date(doc.deadline).toLocaleDateString('fr-FR', {
+                                day: '2-digit',
+                                month: '2-digit',
+                                year: '2-digit'
+                              }) : '-'}
+                            </p>
+                          </td>
+                          <td className="px-4 lg:px-6 py-4 whitespace-nowrap text-right">
+                            <div className="flex items-center justify-end space-x-2">
+                              <button
+                                onClick={() => handlePreview(doc.id)}
+                                disabled={previewLoadingId === doc.id}
+                                className={`p-1 text-gray-400 ${previewLoadingId === doc.id ? 'opacity-50 cursor-not-allowed' : 'hover:text-blue-600'} transition-colors duration-200`}
+                                title="Prévisualiser"
+                              >
+                                <Eye className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => handleDownload(doc.id, doc.title)}
+                                className="p-1 text-gray-400 hover:text-green-600 transition-colors duration-200"
+                                title="Télécharger"
+                              >
+                                <Download className="w-4 h-4" />
+                              </button>
+                              <button 
+                                className="p-1 text-gray-400 hover:text-indigo-600 transition-colors duration-200" 
+                                title="Modifier"
+                              >
+                                <Edit3 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
 
-              {/* Version mobile/tablette - Cartes */}
-              <div className="block lg:hidden">
+              {/* Version mobile - Cartes améliorées */}
+              <div className="block md:hidden">
                 <div className="divide-y divide-gray-200">
                   {displayedDocuments.map(doc => (
-                    <div key={doc.id} className="p-4 sm:p-6 hover:bg-gray-50 transition-colors duration-200">
+                    <div key={doc.id} className="p-4 hover:bg-gray-50 transition-colors duration-200">
+                      {/* En-tête de la carte */}
                       <div className="flex items-start justify-between mb-3">
-                        <div className="flex-1 min-w-0">
-                          <h3 className="text-sm font-medium text-gray-900 truncate pr-2" title={doc.title}>
+                        <div className="flex-1 min-w-0 pr-2">
+                          <h3 className="text-sm font-medium text-gray-900 mb-2 line-clamp-2" title={doc.title}>
                             {doc.title}
                           </h3>
-                          <div className="mt-1 flex items-center space-x-2">
-                            <StatusBadge status={doc.status} />
-                          </div>
+                          <StatusBadge status={doc.status} />
                         </div>
                         
-                        {/* Actions mobile */}
-                        <div className="flex items-center space-x-2 flex-shrink-0">
-                          <button
-                            onClick={() => handlePreview(doc.id)}
-                            disabled={previewLoadingId === doc.id}
-                            className={`p-1 text-gray-400 ${previewLoadingId === doc.id ? 'opacity-50 cursor-not-allowed' : 'hover:text-blue-600'} transition-colors duration-200`}
-                            title="Prévisualiser"
-                          >
-                            <Eye className="w-5 h-5" />
-                          </button>
-                          <button
-                            onClick={() => handleDownload(doc.id, doc.title)}
-                            className="p-1 text-gray-400 hover:text-green-600 transition-colors duration-200"
-                            title="Télécharger"
-                          >
-                            <Download className="w-5 h-5" />
-                          </button>
-                          <button className="p-1 text-gray-400 hover:text-indigo-600 transition-colors duration-200" title="Modifier">
-                            <Edit3 className="w-5 h-5" />
-                          </button>
-                        </div>
+                        {/* Bouton d'expansion */}
+                        <button
+                          onClick={() => toggleCardExpansion(doc.id)}
+                          className="p-1 text-gray-400 hover:text-gray-600 transition-colors duration-200"
+                          title={expandedCards.has(doc.id) ? "Réduire" : "Développer"}
+                        >
+                          <ChevronDown 
+                            className={`w-5 h-5 transition-transform duration-200 ${expandedCards.has(doc.id) ? 'rotate-180' : ''}`} 
+                          />
+                        </button>
                       </div>
 
-                      {/* Progression */}
+                      {/* Progression - toujours visible */}
                       <div className="mb-3">
                         <div className="flex items-center justify-between mb-1">
                           <div className="flex items-center text-sm text-gray-600">
@@ -583,14 +601,90 @@ const DashboardSignature = () => {
                         </div>
                       </div>
 
-                      {/* Métadonnées */}
-                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between text-xs text-gray-500 gap-2">
-                        <div className="flex items-center space-x-4">
-                          <span>Créé le {new Date(doc.createdAt).toLocaleDateString('fr-FR')}</span>
-                          {doc.deadline && (
-                            <span>Échéance: {new Date(doc.deadline).toLocaleDateString('fr-FR')}</span>
-                          )}
+                      {/* Informations supplémentaires - conditionnellement visibles */}
+                      <div className={`transition-all duration-300 overflow-hidden ${expandedCards.has(doc.id) ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'}`}>
+                        <div className="space-y-3 pt-3 border-t border-gray-100">
+                          {/* Métadonnées */}
+                          <div className="grid grid-cols-1 gap-2 text-xs text-gray-500">
+                            <div className="flex items-center justify-between">
+                              <span className="flex items-center">
+                                <Calendar className="w-3 h-3 mr-1" />
+                                Créé le
+                              </span>
+                              <span className="font-medium">
+                                {new Date(doc.createdAt).toLocaleDateString('fr-FR')}
+                              </span>
+                            </div>
+                            {doc.deadline && (
+                              <div className="flex items-center justify-between">
+                                <span className="flex items-center">
+                                  <Clock className="w-3 h-3 mr-1" />
+                                  Échéance
+                                </span>
+                                <span className="font-medium">
+                                  {new Date(doc.deadline).toLocaleDateString('fr-FR')}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                          
+                          {/* Actions */}
+                          <div className="flex items-center justify-end space-x-3 pt-2">
+                            <button
+                              onClick={() => handlePreview(doc.id)}
+                              disabled={previewLoadingId === doc.id}
+                              className={`flex items-center space-x-1 px-3 py-2 text-xs font-medium rounded-md transition-colors duration-200 ${
+                                previewLoadingId === doc.id 
+                                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
+                                  : 'bg-blue-50 text-blue-600 hover:bg-blue-100'
+                              }`}
+                              title="Prévisualiser"
+                            >
+                              <Eye className="w-4 h-4" />
+                              <span>Voir</span>
+                            </button>
+                            <button
+                              onClick={() => handleDownload(doc.id, doc.title)}
+                              className="flex items-center space-x-1 px-3 py-2 text-xs font-medium text-green-600 bg-green-50 rounded-md hover:bg-green-100 transition-colors duration-200"
+                              title="Télécharger"
+                            >
+                              <Download className="w-4 h-4" />
+                              <span>Télécharger</span>
+                            </button>
+                            <button 
+                              className="flex items-center space-x-1 px-3 py-2 text-xs font-medium text-indigo-600 bg-indigo-50 rounded-md hover:bg-indigo-100 transition-colors duration-200" 
+                              title="Modifier"
+                            >
+                              <Edit3 className="w-4 h-4" />
+                              <span>Modifier</span>
+                            </button>
+                          </div>
                         </div>
+                      </div>
+
+                      {/* Actions rapides - toujours visibles en mode compact */}
+                      <div className={`flex items-center justify-end space-x-2 mt-3 ${expandedCards.has(doc.id) ? 'hidden' : 'flex'}`}>
+                        <button
+                          onClick={() => handlePreview(doc.id)}
+                          disabled={previewLoadingId === doc.id}
+                          className={`p-2 text-gray-400 ${previewLoadingId === doc.id ? 'opacity-50 cursor-not-allowed' : 'hover:text-blue-600'} transition-colors duration-200`}
+                          title="Prévisualiser"
+                        >
+                          <Eye className="w-5 h-5" />
+                        </button>
+                        <button
+                          onClick={() => handleDownload(doc.id, doc.title)}
+                          className="p-2 text-gray-400 hover:text-green-600 transition-colors duration-200"
+                          title="Télécharger"
+                        >
+                          <Download className="w-5 h-5" />
+                        </button>
+                        <button 
+                          className="p-2 text-gray-400 hover:text-indigo-600 transition-colors duration-200" 
+                          title="Modifier"
+                        >
+                          <Edit3 className="w-5 h-5" />
+                        </button>
                       </div>
                     </div>
                   ))}
@@ -600,9 +694,9 @@ const DashboardSignature = () => {
           )}
         </div>
 
-        {/* Section notifications (optionnelle) */}
+        {/* Section notifications responsive */}
         {notifications.length > 0 && (
-          <div className="mt-8 bg-white shadow rounded-lg">
+          <div className="mt-6 sm:mt-8 bg-white shadow rounded-lg overflow-hidden">
             <div className="px-4 sm:px-6 py-4 border-b border-gray-200">
               <div className="flex items-center">
                 <Bell className="w-5 h-5 text-gray-500 mr-2" />
@@ -611,17 +705,23 @@ const DashboardSignature = () => {
             </div>
             <div className="divide-y divide-gray-200">
               {notifications.map(notif => (
-                <div key={notif.id} className="p-4 sm:p-6">
-                  <div className="flex items-center justify-between">
+                <div key={notif.id} className="p-4 sm:p-6 hover:bg-gray-50 transition-colors duration-200">
+                  <div className="flex items-start justify-between space-x-3">
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900 truncate">
-                        Document "{notif.title}" complété
+                      <p className="text-sm font-medium text-gray-900 mb-1">
+                        Document "<span className="truncate inline-block max-w-xs sm:max-w-none">{notif.title}</span>" complété
                       </p>
-                      <p className="text-xs text-gray-500 mt-1">
-                        {new Date(notif.time).toLocaleString('fr-FR')}
+                      <p className="text-xs text-gray-500">
+                        {new Date(notif.time).toLocaleString('fr-FR', {
+                          day: '2-digit',
+                          month: '2-digit',
+                          year: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        })}
                       </p>
                     </div>
-                    <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0 ml-2" />
+                    <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0" />
                   </div>
                 </div>
               ))}

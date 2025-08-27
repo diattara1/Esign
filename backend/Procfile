@@ -1,0 +1,3 @@
+web: gunicorn esign.wsgi
+worker: celery -A esigworker --loglevel=info
+beat: celery -A esign beat --loglevel=info

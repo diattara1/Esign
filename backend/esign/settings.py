@@ -29,7 +29,7 @@ FREETSA_TSA    = BASE_DIR / "certs" / "tsa.crt"
 FREETSA_CACERT = BASE_DIR / "certs" / "cacert.pem"
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = env("DJANGO_SECRET_KEY")
-DEBUG = True
+DEBUG = env("DJANGO_DEBUG")
 # --- Chiffrement/KMS ---
 # settings.py (remplace ces 3 lignes KMS)
 KMS_ACTIVE_KEY_ID = env.int("KMS_ACTIVE_KEY_ID", default=1)
@@ -61,6 +61,7 @@ MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'signature.middleware.AllowIframeForPDFOnlyMiddleware',
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',

@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.contrib.auth.tokens import default_token_generator
+from django.utils.encoding import force_bytes
 from django.conf import settings
 from django.db import transaction
 from rest_framework.reverse import reverse
@@ -10,9 +11,12 @@ from .models import (SavedSignature, FieldTemplate, BatchSignJob, BatchSignItem,
     NotificationPreference,EnvelopeDocument,
 )
 
+from django.utils.encoding import force_str
+from django.utils.http import urlsafe_base64_decode
 from PyPDF2 import PdfReader
 import io
 import logging
+from django.contrib.auth.password_validation import validate_password
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
@@ -77,51 +81,71 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
 class PasswordResetSerializer(serializers.Serializer):
     email = serializers.EmailField()
 
-    # ❌ Supprimer entièrement validate_email()
-
+    
     def save(self):
         request = self.context.get('request')
         email = self.validated_data['email']
 
-        # Ne révèle pas l’existence du compte
+        # Silencieux si compte inexistant/inactif
         user = User.objects.filter(email=email, is_active=True).first()
         if not user:
-            # On sort silencieusement
             return
 
+        uidb64 = urlsafe_base64_encode(force_bytes(user.pk))
         token = default_token_generator.make_token(user)
-        reset_link = request.build_absolute_uri(f"/reset-password/{user.pk}/{token}/")
 
+        # Lien vers le FRONT
+        base = getattr(settings, 'FRONT_BASE_URL', '').rstrip('/')
+        reset_link = f"{base}/reset-password/{uidb64}/{token}/"
+
+        # Envoi d'email (try/except pour ne rien révéler en cas d'erreur)
         try:
             EmailTemplates.password_reset_email(user, reset_link)
-        except Exception as e:
-            logger.error(f"Erreur envoi email reset password: {e}")
+        except Exception:
+            pass
 
 
+
+# serializers.py - Section ChangePasswordSerializer corrigée
 
 class ChangePasswordSerializer(serializers.Serializer):
-    old_password = serializers.CharField(write_only=True)
-    new_password = serializers.CharField(write_only=True)
+    uid = serializers.CharField()
+    token = serializers.CharField()
+    password = serializers.CharField(write_only=True)
 
-    def validate_old_password(self, value):
-        user = self.context['request'].user
-        if not user.check_password(value):
-            raise serializers.ValidationError("Ancien mot de passe incorrect")
+    def validate_password(self, value):
+        validate_password(value)  # applique les validators Django
         return value
 
-    def validate_new_password(self, value):
-        if len(value) < 5: 
-            raise serializers.ValidationError("Le mot de passe doit contenir au moins 5 caractères.") 
-        return value
+    def validate(self, attrs):
+        uid = attrs.get('uid')
+        token = attrs.get('token')
+        
+        try:
+            # Décoder l'UID base64
+            uid_decoded = urlsafe_base64_decode(uid)
+            uid_str = force_str(uid_decoded)  # Convertir en string
+            
+            # Récupérer l'utilisateur
+            self.user = User.objects.get(pk=uid_str)
+            
+        except (TypeError, ValueError, OverflowError, User.DoesNotExist) as e:
+            # Log pour debugging
+            logger.error(f"Erreur décodage UID '{uid}': {str(e)}")
+            raise serializers.ValidationError({'uid': 'Lien invalide.'})
 
+        # Vérifier le token
+        if not default_token_generator.check_token(self.user, token):
+            logger.error(f"Token invalide pour user {self.user.id}: {token}")
+            raise serializers.ValidationError({'token': 'Lien invalide ou expiré.'})
+            
+        return attrs
 
     def save(self, **kwargs):
-        user = self.context['request'].user
-        user.set_password(self.validated_data['new_password'])
-        user.save()
-        return user
-
-
+        password = self.validated_data['password']
+        self.user.set_password(password)
+        self.user.save()
+        return self.user
 
 class NotificationPreferenceSerializer(serializers.ModelSerializer):
     class Meta:

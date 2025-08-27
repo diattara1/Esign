@@ -21,6 +21,7 @@ const ProfilePage = React.lazy(() => import('./pages/ProfilePage'));
 const SelfSignWizard = React.lazy(() => import('./pages/SelfSignWizard'));
 const BulkSignSameWizard = React.lazy(() => import('./pages/BulkSignSameWizard'));
 const SavedSignaturesPage = React.lazy(() => import('./pages/SavedSignaturesPage'));
+const ResetPasswordConfirmPage = React.lazy(() => import('./pages/ResetPasswordConfirmPage'));
 const SentEnvelopes = React.lazy(() => import('./components/SentEnvelopes'));
 const CompletedEnvelopes = React.lazy(() => import('./components/CompletedEnvelopes'));
 const ActionRequiredEnvelopes = React.lazy(() => import('./components/ActionRequiredEnvelopes'));
@@ -56,6 +57,7 @@ const App = () => {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
       <Route path="/password-reset" element={<PasswordResetPage />} />
+      <Route path="/reset-password/:uid/:token" element={<ResetPasswordConfirmPage />} />
       <Route path="/verify/:uuid" element={<QrVerifyPage />} />
       {/* Signature invitée avec token - ROUTE PUBLIQUE */}
       <Route path="/sign/:id" element={<DocumentSign />} />

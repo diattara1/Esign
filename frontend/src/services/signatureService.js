@@ -45,7 +45,7 @@ export default {
   updateEnvelope: (id, payload) =>
     apiRequest('patch', `${BASE}/envelopes/${id}/`, payload, undefined, "Impossible de mettre à jour l'enveloppe"),
 
-  // NEW: PATCH multipart pour ajouter plusieurs fichiers (champ 'files' répété)
+
   updateEnvelopeFiles: (id, files) => {
     const form = new FormData();
     files.forEach(f => form.append('files', f));
@@ -99,6 +99,10 @@ export default {
 
   getAuthenticatedEnvelope: id =>
     apiRequest('get', `${BASE}/envelopes/${id}/sign-page/`, null, undefined, "Impossible de récupérer l'enveloppe"),
+  
+  
+  changePassword: (uid, token, password) =>
+    apiRequest('post', `${BASE}/change-password/`, { uid, token, password }, undefined, 'Impossible de changer le mot de passe'),
 
   // ─── HSM signing ─────────────────────────────────────────────────────
   hsmSign: (envelopeId, payload) =>

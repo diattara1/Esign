@@ -136,13 +136,14 @@ def user_profile(request):
 def password_reset_request(request):
     serializer = PasswordResetSerializer(data=request.data, context={'request': request})
     if serializer.is_valid():
-        serializer.save()
-        return Response({'detail': 'Email de réinitialisation envoyé'}, status=status.HTTP_200_OK)
+        serializer.save()  # enverra l'email uniquement si le compte existe
+        return Response(status=status.HTTP_204_NO_CONTENT)
+    # on garde un 400 si l'email est mal formé, etc.
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 @api_view(['POST'])
-@permission_classes([IsAuthenticated])
+@permission_classes([AllowAny])
 def change_password(request):
     serializer = ChangePasswordSerializer(data=request.data, context={'request': request})
     if serializer.is_valid():

@@ -21,6 +21,8 @@ const ProfilePage = () => {
     avatar: null,
   });
   const [avatarPreview, setAvatarPreview] = useState(null);
+    const [avatarObjectUrl, setAvatarObjectUrl] = useState(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [message, setMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [passwordData, setPasswordData] = useState({
@@ -51,7 +53,13 @@ const ProfilePage = () => {
     };
     fetchProfile();
   }, []);
-
+useEffect(() => {
+    return () => {
+      if (avatarObjectUrl) {
+        URL.revokeObjectURL(avatarObjectUrl);
+      }
+    };
+  }, [avatarObjectUrl]);
   const handleChange = (e) => {
     const { name, value } = e.target;
     setProfile((prev) => ({ ...prev, [name]: value }));
@@ -62,10 +70,27 @@ const ProfilePage = () => {
 
   const handleFileChange = (e) => {
     const file = e.target.files[0];
-    setProfile((prev) => ({ ...prev, avatar: file }));
-    if (file) {
-      setAvatarPreview(URL.createObjectURL(file));
+    if (!file) return;
+
+    // Réinitialiser l'erreur précédente
+    setErrors((prev) => ({ ...prev, avatar: undefined }));
+
+    // Validation du type et de la taille du fichier (< 5MB)
+    if (!file.type.startsWith('image/')) {
+      setErrors((prev) => ({ ...prev, avatar: 'Seuls les fichiers image sont autorisés' }));
+      return;
     }
+    if (file.size > 5 * 1024 * 1024) {
+      setErrors((prev) => ({ ...prev, avatar: "La taille de l'image doit être inférieure à 5MB" }));
+      return;
+    }
+    setProfile((prev) => ({ ...prev, avatar: file }));
+    if (avatarObjectUrl) {
+      URL.revokeObjectURL(avatarObjectUrl);
+    }
+     const objectUrl = URL.createObjectURL(file);
+    setAvatarPreview(objectUrl);
+    setAvatarObjectUrl(objectUrl);
   };
 
   const handlePasswordChange = (e) => {
@@ -118,7 +143,7 @@ const ProfilePage = () => {
       return;
     }
     setIsLoading(true);
-    
+    setUploadProgress(0);
     const formData = new FormData();
     Object.entries(profile).forEach(([key, value]) => {
       if (value !== null && value !== undefined) {
@@ -127,15 +152,29 @@ const ProfilePage = () => {
     });
     
     try {
-      const res = await api.put('/api/signature/profile/', formData);
+      const res = await api.put('/api/signature/profile/', formData, {
+        onUploadProgress: (progressEvent) => {
+          if (progressEvent.total) {
+            const percent = Math.round(
+              (progressEvent.loaded * 100) / progressEvent.total
+            );
+            setUploadProgress(percent);
+          }
+        },
+      });
       setMessage('Profil mis à jour avec succès');
       if (res.data.avatar) {
+        if (avatarObjectUrl) {
+          URL.revokeObjectURL(avatarObjectUrl);
+          setAvatarObjectUrl(null);
+        }
         setAvatarPreview(`${API_BASE_URL}${res.data.avatar}`);
       }
     } catch (err) {
       setMessage("Erreur lors de la mise à jour du profil");
     } finally {
       setIsLoading(false);
+      setUploadProgress(0);
     }
   };
 
@@ -261,6 +300,20 @@ const ProfilePage = () => {
                   <p className="mt-2 text-sm text-gray-500">
                     JPG, PNG jusqu'à 5MB. Recommandé: 400x400px
                   </p>
+                   {errors.avatar && (
+                    <p className="mt-1 text-sm text-red-600">{errors.avatar}</p>
+                  )}
+                  {uploadProgress > 0 && (
+                    <div className="mt-2">
+                      <div className="w-full bg-gray-200 rounded-full h-2">
+                        <div
+                          className="bg-blue-500 h-2 rounded-full"
+                          style={{ width: `${uploadProgress}%` }}
+                        ></div>
+                      </div>
+                      <p className="text-sm text-gray-500 mt-1">{uploadProgress}%</p>
+                    </div>
+                  )}
                 </div>
               </div>
 

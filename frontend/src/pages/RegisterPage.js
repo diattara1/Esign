@@ -29,6 +29,7 @@ const RegisterPage = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [currentStep, setCurrentStep] = useState(1);
   const [avatarPreview, setAvatarPreview] = useState(null);
+   const [isResendDisabled, setIsResendDisabled] = useState(false);
   const isStep1Valid = registerStep1Schema.isValidSync(form);
   const isStep2Valid = registerStep2Schema.isValidSync(form);
 
@@ -48,7 +49,15 @@ const RegisterPage = () => {
       setAvatarPreview(URL.createObjectURL(file));
     }
   };
-
+ const handleStep2Blur = async (e) => {
+    const { name } = e.target;
+    try {
+      await registerStep2Schema.validateAt(name, form);
+      setErrors((prev) => ({ ...prev, [name]: null }));
+    } catch (err) {
+      setErrors((prev) => ({ ...prev, [name]: err.message }));
+    }
+  };
   const validateStep1 = async () => {
     try {
       await registerStep1Schema.validate(form, { abortEarly: false });
@@ -67,6 +76,10 @@ const RegisterPage = () => {
   const handleNext = async () => {
     if (await validateStep1()) {
       setCurrentStep(2);
+      setTimeout(() => {
+        window.scrollTo(0, 0);
+        document.getElementById('id-titre-etape2')?.focus();
+      }, 0);
     }
   };
 
@@ -103,7 +116,15 @@ const RegisterPage = () => {
       setIsLoading(false);
     }
   };
-
+const handleResendEmail = async () => {
+    if (isResendDisabled) return;
+    setIsResendDisabled(true);
+    try {
+      await api.post('/api/signature/register/resend/', { email: form.email });
+    } catch (err) {
+      console.error('Erreur lors de la réexpédition de l\'email', err);
+    }
+  };
   if (success) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-green-50 via-white to-emerald-100 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
@@ -123,6 +144,16 @@ const RegisterPage = () => {
               <p className="text-sm text-gray-500">
                 Vous n'avez pas reçu l'email ? Vérifiez vos spams.
               </p>
+               <button
+                type="button"
+                onClick={handleResendEmail}
+                disabled={isResendDisabled}
+                className={`inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-xl text-white transition-colors shadow-lg ${
+                  isResendDisabled ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'
+                }`}
+              >
+                Renvoyer l'email
+              </button>
               <Link
                 to="/login"
                 className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-xl text-white bg-blue-600 hover:bg-blue-700 transition-colors shadow-lg"
@@ -270,6 +301,7 @@ const RegisterPage = () => {
                       name="password"
                       value={form.password}
                       onChange={handleChange}
+                      onBlur={handleStep2Blur}
                       className="block w-full pl-10 pr-10 py-3 border border-gray-300 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition-colors"
                       placeholder="Minimum 5 caractères"
                     />
@@ -308,8 +340,7 @@ const RegisterPage = () => {
 
             {currentStep === 2 && (
               <div className="space-y-6">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-medium text-gray-900">Informations personnelles</h3>
+                <div className="flex items-center justify-between"><h3 id="id-titre-etape2" className="text-lg font-medium text-gray-900">Informations personnelles</h3>
                   <button
                     type="button"
                     onClick={() => setCurrentStep(1)}
@@ -332,6 +363,7 @@ const RegisterPage = () => {
                       name="first_name"
                       value={form.first_name}
                       onChange={handleChange}
+                      onBlur={handleStep2Blur}
                       className="block w-full px-3 py-3 border border-gray-300 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition-colors"
                       placeholder="Votre prénom"
                     />
@@ -350,6 +382,7 @@ const RegisterPage = () => {
                       name="last_name"
                       value={form.last_name}
                       onChange={handleChange}
+                      onBlur={handleStep2Blur}
                       className="block w-full px-3 py-3 border border-gray-300 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition-colors"
                       placeholder="Votre nom"
                     />
@@ -375,6 +408,7 @@ const RegisterPage = () => {
                         name="birth_date"
                         value={form.birth_date}
                         onChange={handleChange}
+                        onBlur={handleStep2Blur}
                         className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition-colors"
                       />
                       {errors.birth_date && (

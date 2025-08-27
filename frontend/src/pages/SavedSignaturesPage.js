@@ -105,8 +105,10 @@ const SavedSignaturesPage = () => {
             <div key={sig.id} className="border p-2 rounded relative">
               <img
   src={sig.data_url || sig.image_url}
-  alt="signature"
+  alt={sig.kind || 'signature'}
+  style={{ maxHeight: 80 }}
 />
+
 
               <button
                 onClick={() => remove(sig.id)}

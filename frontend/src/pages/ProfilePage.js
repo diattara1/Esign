@@ -1,5 +1,5 @@
 // src/pages/ProfilePage.js
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { api, API_BASE_URL } from '../services/apiUtils';
 import logService from '../services/logService';
 import {
@@ -36,6 +36,8 @@ const ProfilePage = () => {
   const [showOldPassword, setShowOldPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [activeTab, setActiveTab] = useState('profile');
+  const profileTitleRef = useRef(null);
+  const passwordTitleRef = useRef(null);
   const isProfileValid = profileSchema.isValidSync(profile);
   const isPwdValid = passwordChangeSchema.isValidSync(passwordData);
 
@@ -216,7 +218,10 @@ useEffect(() => {
           <div className="border-b border-gray-200">
             <nav className="flex px-6">
               <button
-                onClick={() => setActiveTab('profile')}
+                onClick={() => {
+                  setActiveTab('profile');
+                  setTimeout(() => profileTitleRef.current?.focus(), 0);
+                }}
                 className={`py-4 px-6 text-sm font-medium border-b-2 transition-colors ${
                   activeTab === 'profile'
                     ? 'border-blue-500 text-blue-600'
@@ -227,7 +232,10 @@ useEffect(() => {
                 Informations personnelles
               </button>
               <button
-                onClick={() => setActiveTab('password')}
+                onClick={() => {
+                  setActiveTab('password');
+                  setTimeout(() => passwordTitleRef.current?.focus(), 0);
+                }}
                 className={`py-4 px-6 text-sm font-medium border-b-2 transition-colors ${
                   activeTab === 'password'
                     ? 'border-blue-500 text-blue-600'
@@ -238,6 +246,11 @@ useEffect(() => {
                 Sécurité
               </button>
             </nav>
+            <div aria-live="polite" className="sr-only">
+              {activeTab === 'profile'
+                ? 'Onglet informations personnelles actif'
+                : 'Onglet sécurité actif'}
+            </div>
           </div>
         </div>
 
@@ -245,8 +258,13 @@ useEffect(() => {
         {activeTab === 'profile' && (
           <div className="bg-white shadow-sm rounded-2xl p-6">
             <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-semibold text-gray-900">Modifier mon profil</h2>
-              <Edit3 className="h-5 w-5 text-gray-400" />
+              <h2
+                ref={profileTitleRef}
+                tabIndex={-1}
+                className="text-xl font-semibold text-gray-900"
+              >
+                Modifier mon profil
+              </h2><Edit3 className="h-5 w-5 text-gray-400" />
             </div>
 
             {/* Message de statut */}
@@ -486,8 +504,13 @@ useEffect(() => {
           <div className="bg-white shadow-sm rounded-2xl p-6">
             <div className="flex items-center justify-between mb-6">
               <div>
-                <h2 className="text-xl font-semibold text-gray-900">Changer le mot de passe</h2>
-                <p className="text-sm text-gray-500 mt-1">
+                 <h2
+                  ref={passwordTitleRef}
+                  tabIndex={-1}
+                  className="text-xl font-semibold text-gray-900"
+                >
+                  Changer le mot de passe
+                </h2><p className="text-sm text-gray-500 mt-1">
                   Assurez-vous d'utiliser un mot de passe fort et unique
                 </p>
               </div>

@@ -30,7 +30,8 @@ logger = logging.getLogger(__name__)
 
 class CookieTokenObtainPairView(TokenObtainPairView):
     """Issue JWTs and store them in HttpOnly cookies."""
-
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "login"
     def post(self, request, *args, **kwargs):
         response = super().post(request, *args, **kwargs)
         access = response.data.get('access')

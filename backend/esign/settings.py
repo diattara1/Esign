@@ -8,7 +8,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 ALLOWED_HOSTS = ['*']
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",
+    "http://localhost:3000","http://localhost:8000",
 ]
 CORS_ALLOW_CREDENTIALS = True
 
@@ -100,7 +100,7 @@ WSGI_APPLICATION = 'esign.wsgi.application'
 
 CORS_ALLOW_HEADERS = [
     'accept',
-    'accept-encoding',
+    'accept-encoding', 
     'authorization',
     'content-type',
     'dnt',
@@ -108,7 +108,7 @@ CORS_ALLOW_HEADERS = [
     'user-agent',
     'x-csrftoken',
     'x-requested-with',
-    'x-signature-token',  # Add the custom header
+    'x-signature-token',
 ]
 # Database
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
@@ -140,9 +140,10 @@ REST_FRAMEWORK = {
         'rest_framework.throttling.ScopedRateThrottle'
     ],
     'DEFAULT_THROTTLE_RATES': {
-        'anon': '50/minute',
-        'user': '50/minute',
-        'verify-token': '25/minute'
+        'anon': '40/minute',
+        'user': '40/minute',
+        'verify-token': '25/minute',
+        'login': '5/minute'
     },
 }
 

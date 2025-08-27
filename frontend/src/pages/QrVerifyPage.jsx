@@ -176,7 +176,20 @@ export default function QrVerifyPage() {
   const cn = subject.CN || cert.common_name;
   const org = subject.O || cert.organization;
   const country = subject.C || cert.country;
-
+  const handleDownloadProof = async () => {
+    try {
+      const proof = await signatureService.verifyQRCodeWithSig(uuid, sig);
+      const blob = new Blob([JSON.stringify(proof, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'preuve.json';
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      logService.error(e);
+    }
+  };
   return (
     <div className="min-h-screen bg-gray-50 py-8 px-4">
       <div className="max-w-6xl mx-auto space-y-6">
@@ -197,14 +210,22 @@ export default function QrVerifyPage() {
               Signataires : <span className="font-medium">{signerNames}</span>
             </p>
           </div>
-          <a
-            href={pdfHref}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-          >
-            <ExternalLink className="w-4 h-4" /> Ouvrir dans un onglet
-          </a>
+           <div className="flex flex-col gap-2">
+            <a
+              href={pdfHref}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+            >
+              <ExternalLink className="w-4 h-4" /> Ouvrir dans un onglet
+            </a>
+            <button
+              onClick={handleDownloadProof}
+              className="inline-flex items-center gap-2 px-3 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700"
+            >
+              Télécharger la preuve JSON
+            </button>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

@@ -1,5 +1,5 @@
 // src/pages/PasswordResetPage.js
-import React, { useState } from 'react';
+import React, { useState,useEffect  } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../services/apiUtils';
 import { Mail, ArrowLeft, CheckCircle, XCircle, Send, Loader2 } from 'lucide-react';
@@ -10,6 +10,8 @@ const PasswordResetPage = () => {
   const [message, setMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [sentEmail, setSentEmail] = useState('');
+  const [timer, setTimer] = useState(0);
   const [errors, setErrors] = useState({});
   const isValid = passwordResetSchema.isValidSync({ email });
 
@@ -29,6 +31,8 @@ const PasswordResetPage = () => {
       await api.post('/api/signature/password-reset/', { email });
       setMessage('Si un compte existe pour cet email, un lien de réinitialisation a été envoyé.');
       setIsSuccess(true);
+       setSentEmail(email);
+      setTimer(60)
       setEmail('');
     } catch (err) {
       setMessage('Erreur lors de la demande.');
@@ -37,7 +41,37 @@ const PasswordResetPage = () => {
       setIsLoading(false);
     }
   };
+useEffect(() => {
+    if (!timer) return;
+    const interval = setInterval(() => {
+      setTimer((t) => (t > 0 ? t - 1 : 0));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [timer]);
 
+  const handleResend = async () => {
+    if (!sentEmail) return;
+    setMessage('');
+    setIsLoading(true);
+    // PasswordResetPage.js (extrait)
+try {
+  const resp = await api.post('/api/signature/password-reset/', { email });
+  // Si ton client ne jette pas pour 204, rien à changer. Sinon :
+  // if (resp.status === 204) { /* traiter comme succès */ }
+  setMessage('Si un compte existe pour cet email, un lien de réinitialisation a été envoyé.');
+  setIsSuccess(true);
+  setSentEmail(email);
+  setTimer(60);
+  setEmail('');
+} catch (err) {
+  // Option 1: garder une erreur générique UI (sans rien révéler)
+  setMessage('Erreur lors de la demande.');
+  setIsSuccess(false);
+}
+ finally {
+      setIsLoading(false);
+    }
+  };
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-100 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
@@ -58,29 +92,53 @@ const PasswordResetPage = () => {
         <div className="bg-white py-8 px-4 shadow-xl sm:rounded-2xl sm:px-10 border border-gray-100">
           {/* Message de statut */}
           {message && (
-            <div className={`mb-6 p-4 rounded-xl flex items-start space-x-3 ${
-              isSuccess 
-                ? 'bg-green-50 border border-green-200' 
-                : 'bg-red-50 border border-red-200'
-            }`}>
-              {isSuccess ? (
-                <CheckCircle className="h-5 w-5 text-green-500 mt-0.5 flex-shrink-0" />
-              ) : (
-                <XCircle className="h-5 w-5 text-red-500 mt-0.5 flex-shrink-0" />
-              )}
-              <div>
-                <p className={`text-sm font-medium ${
-                  isSuccess ? 'text-green-800' : 'text-red-800'
-                }`}>
-                  {isSuccess ? 'Email envoyé' : 'Erreur'}
-                </p>
-                <p className={`text-sm ${
-                  isSuccess ? 'text-green-700' : 'text-red-700'
-                }`}>
-                  {message}
-                </p>
+                   <>
+              <div
+                className={`mb-2 p-4 rounded-xl flex items-start space-x-3 ${
+                  isSuccess
+                    ? 'bg-green-50 border border-green-200'
+                    : 'bg-red-50 border border-red-200'
+                }`}
+              >
+                {isSuccess ? (
+                  <CheckCircle className="h-5 w-5 text-green-500 mt-0.5 flex-shrink-0" />
+                ) : (
+                  <XCircle className="h-5 w-5 text-red-500 mt-0.5 flex-shrink-0" />
+                )}
+                <div aria-live="polite">
+                  <p
+                    className={`text-sm font-medium ${
+                      isSuccess ? 'text-green-800' : 'text-red-800'
+                    }`}
+                  >
+                    {isSuccess ? 'Email envoyé' : 'Erreur'}
+                  </p>
+                  <p
+                    className={`text-sm ${
+                      isSuccess ? 'text-green-700' : 'text-red-700'
+                    }`}
+                  >
+                    {message}
+                  </p>
+                </div>
               </div>
-            </div>
+              {isSuccess && sentEmail && (
+                timer > 0 ? (
+                  <p className="mb-6 text-sm text-gray-600 text-center">
+                    Vous pourrez renvoyer l'email dans {timer}s
+                  </p>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleResend}
+                    disabled={isLoading}
+                    className="mb-6 w-full flex justify-center py-2 px-4 border border-blue-300 text-sm font-medium rounded-xl text-blue-700 bg-blue-50 hover:bg-blue-100 disabled:opacity-50"
+                  >
+                    Renvoyer l'email
+                  </button>
+                )
+              )}
+            </>
           )}
 
           <form onSubmit={handleSubmit} className="space-y-6">

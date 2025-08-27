@@ -72,31 +72,31 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         return user
 
 
+# serializers.py
+
 class PasswordResetSerializer(serializers.Serializer):
     email = serializers.EmailField()
 
-    def validate_email(self, value):
-        if not User.objects.filter(email=value).exists():
-            raise serializers.ValidationError('Utilisateur introuvable')
-        return value
+    # ❌ Supprimer entièrement validate_email()
 
     def save(self):
         request = self.context.get('request')
         email = self.validated_data['email']
-        user = User.objects.get(email=email)
+
+        # Ne révèle pas l’existence du compte
+        user = User.objects.filter(email=email, is_active=True).first()
+        if not user:
+            # On sort silencieusement
+            return
+
         token = default_token_generator.make_token(user)
-        
-        # Construire le lien de réinitialisation
         reset_link = request.build_absolute_uri(f"/reset-password/{user.pk}/{token}/")
-        
-        # Utiliser le nouveau template d'email
+
         try:
             EmailTemplates.password_reset_email(user, reset_link)
         except Exception as e:
-            # Log l'erreur mais ne pas échouer la requête
-            import logging
-            logger = logging.getLogger(__name__)
             logger.error(f"Erreur envoi email reset password: {e}")
+
 
 
 class ChangePasswordSerializer(serializers.Serializer):

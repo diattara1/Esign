@@ -57,7 +57,7 @@ KMS_RSA_PRIVATE_KEYS = json.loads(env.str("KMS_RSA_PRIVATE_KEYS", default="{}"))
 
 # Use custom EncryptedFileSystemStorage
 DEFAULT_FILE_STORAGE = 'signature.storages.EncryptedFileSystemStorage'
-CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOW_ALL_ORIGINS = False
 AUTH_USER_MODEL = 'signature.CustomUser'
 # Application definition
 

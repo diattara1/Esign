@@ -53,8 +53,8 @@ class CookieTokenObtainPairView(TokenObtainPairView):
             refresh_max_age = int(timedelta(days=30).total_seconds())
 
         response = Response({'detail': 'Login successful'}, status=status.HTTP_200_OK)
-        response.set_cookie('access_token', str(access_token), httponly=True, secure=True, samesite='Lax', max_age=access_max_age)
-        response.set_cookie('refresh_token', str(refresh), httponly=True, secure=True, samesite='Lax', max_age=refresh_max_age)
+        response.set_cookie('access_token', str(access_token), httponly=True, secure=True, samesite='None', max_age=access_max_age)
+        response.set_cookie('refresh_token', str(refresh), httponly=True, secure=True, samesite='None', max_age=refresh_max_age)
         return response
 
 
@@ -70,9 +70,9 @@ class CookieTokenRefreshView(TokenRefreshView):
         access = response.data.get('access')
         refresh = response.data.get('refresh')
         if access:
-            response.set_cookie('access_token', access, httponly=True, secure=True, samesite='Lax')
+            response.set_cookie('access_token', access, httponly=True, secure=True, samesite='None')
         if refresh:
-            response.set_cookie('refresh_token', refresh, httponly=True, secure=True, samesite='Lax')
+            response.set_cookie('refresh_token', refresh, httponly=True, secure=True, samesite='None')
         response.data = {'detail': 'Token refreshed'}
         return response
 

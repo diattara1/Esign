@@ -3,6 +3,7 @@ import React, { Suspense } from 'react';
 import { useAuth } from './AuthContext';
 import { Routes, Route, Navigate, Outlet,useLocation } from 'react-router-dom';
 import LoadingSkeleton from './components/LoadingSkeleton';
+import GuestRoute from './GuestRoute';
 
 const DashboardSignature = React.lazy(() => import('./pages/DashboardSignature'));
 const DocumentDetail = React.lazy(() => import('./pages/DocumentDetail'));
@@ -55,9 +56,11 @@ const App = () => {
       
       {/* LOGIN */}
       <Route path="/login" element={<LoginPage />} />
-      <Route path="/register" element={<RegisterPage />} />
-      <Route path="/password-reset" element={<PasswordResetPage />} />
-      <Route path="/reset-password/:uid/:token" element={<ResetPasswordConfirmPage />} />
+      <Route element={<GuestRoute />}>
+        <Route path="/register" element={<RegisterPage />} />
+        <Route path="/password-reset" element={<PasswordResetPage />} />
+        <Route path="/reset-password/:uid/:token" element={<ResetPasswordConfirmPage />} />
+      </Route>
       <Route path="/verify/:uuid" element={<QrVerifyPage />} />
       {/* Signature invitée avec token - ROUTE PUBLIQUE */}
       <Route path="/sign/:id" element={<DocumentSign />} />

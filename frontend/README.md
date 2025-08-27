@@ -15,7 +15,7 @@ The frontend expects `REACT_APP_API_BASE_URL` to point to the backend API. Creat
 - `.env.production`:
 
   ```
-  REACT_APP_API_BASE_URL=https://api.example.com
+  REACT_APP_API_BASE_URL=https://esign-5mbk.onrender.com/
   ```
 
 The application will throw an error at startup if this variable is not defined.

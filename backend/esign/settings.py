@@ -256,8 +256,17 @@ STORAGES = {
 
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
-SECURE_SSL_REDIRECT = not DEBUG
-SESSION_COOKIE_SECURE = not DEBUG
+
+
+
+# cookies sécurisés derrière HTTPS
+SESSION_COOKIE_SECURE = True
+CSRF_COOKIE_SECURE = True
+SESSION_COOKIE_SAMESITE = "None"
+CSRF_COOKIE_SAMESITE = "None"
+
+
+
 
 CSRF_TRUSTED_ORIGINS = [
     "https://*.onrender.com",

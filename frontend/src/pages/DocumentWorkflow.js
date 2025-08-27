@@ -958,6 +958,7 @@ export default function DocumentWorkflow() {
     // Vue mobile avec navigation par onglets
     return (
       <div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
+      <MobileNavigation />
         <div className="flex-1 overflow-hidden">
           {currentMobileTab === 'recipients' && (
             <RecipientsPanel className="h-full border-r" />
@@ -969,7 +970,7 @@ export default function DocumentWorkflow() {
             <DocumentsPanel className="h-full border-l" />
           )}
         </div>
-        <MobileNavigation />
+        
       </div>
     );
   }

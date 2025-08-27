@@ -5,6 +5,7 @@ import signatureService from '../services/signatureService';
 import { toast } from 'react-toastify';
 import slugify from 'slugify';
 import logService from '../services/logService';
+import Sparkline from '../components/Sparkline';
 
 import {
   FileText,
@@ -39,6 +40,100 @@ const DashboardSignature = () => {
   const [recentDocuments, setRecentDocuments] = useState([]);
   const [filter, setFilter] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
+  const [allEnvelopes, setAllEnvelopes] = useState([]);
+  const [dateFilter, setDateFilter] = useState('month');
+  const [customRange, setCustomRange] = useState({ start: '', end: '' });
+  const [trend7, setTrend7] = useState([]);
+  const [trend30, setTrend30] = useState([]);
+  const [previewLoadingId, setPreviewLoadingId] = useState(null);
+  const [actionEnvelopes, setActionEnvelopes] = useState([]);
+
+  const filterByDate = (arr) => {
+    const now = new Date();
+    let start;
+    let end = now;
+    if (dateFilter === 'month') {
+      start = new Date(now.getFullYear(), now.getMonth(), 1);
+    } else if (dateFilter === '90days') {
+      start = new Date(now.getTime() - 89 * 24 * 60 * 60 * 1000);
+    } else if (dateFilter === 'custom' && customRange.start && customRange.end) {
+      start = new Date(customRange.start);
+      end = new Date(customRange.end);
+    } else {
+      return arr;
+    }
+    return arr.filter(e => {
+      const d = new Date(e.created_at);
+      return d >= start && d <= end;
+    });
+  };
+
+  const generateTrend = (arr, days) => {
+    const now = new Date();
+    const res = Array(days).fill(0);
+    arr.forEach(e => {
+      const diff = Math.floor((now - new Date(e.created_at)) / (1000 * 60 * 60 * 24));
+      if (diff >= 0 && diff < days) res[days - diff - 1] += 1;
+    });
+    return res;
+  };
+
+  const applyFilters = () => {
+    const filtered = filterByDate(allEnvelopes);
+    const filteredAction = filterByDate(actionEnvelopes);
+
+    const drafts = filtered.filter(e => e.status === 'draft');
+    const sent = filtered.filter(e => e.status === 'sent');
+    const completed = filtered.filter(e => e.status === 'completed');
+
+    const total = filtered.length;
+    const compCount = completed.length;
+    const completionRate = total ? ((compCount / total) * 100).toFixed(1) : 0;
+
+    const avgTime = completed.length
+      ? (
+          completed.reduce((sum, e) => {
+            const created = new Date(e.created_at);
+            const doneAt = new Date(e.updated_at);
+            return sum + (doneAt - created) / (1000 * 3600 * 24);
+          }, 0) / completed.length
+        ).toFixed(1)
+      : '0.0';
+
+    const notifs = completed
+      .slice(-5)
+      .map(e => ({ id: e.id, title: e.title, type: 'normal', time: e.updated_at }));
+
+    const recents = filtered
+      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+      .slice(0, 5)
+      .map(e => ({
+        id: e.id,
+        title: e.title,
+        status: e.status === 'action_required' ? 'actionRequired' : e.status,
+        progress: (
+          (e.recipients.filter(r => r.signed).length / e.recipients.length) * 100
+        ).toFixed(0),
+        signers: e.recipients.length,
+        signedBy: e.recipients.filter(r => r.signed).length,
+        createdAt: e.created_at,
+        deadline: e.deadline_at
+      }));
+
+    setStats({
+      draft: drafts.length,
+      sent: sent.length,
+      completed: compCount,
+      actionRequired: filteredAction.length,
+      totalThisMonth: filtered.length,
+      completionRate,
+      avgSigningTime: avgTime
+    });
+    setNotifications(notifs);
+    setRecentDocuments(recents);
+    setTrend7(generateTrend(filtered, 7));
+    setTrend30(generateTrend(filtered, 30));
+  };
 
   useEffect(() => {
     const loadData = async () => {
@@ -49,53 +144,8 @@ const DashboardSignature = () => {
           signatureService.getCompletedEnvelopes(),
           signatureService.getReceivedEnvelopes()
         ]);
-        const all = [...drafts, ...sent, ...completed];
-
-        const now = new Date();
-        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-        const thisMonth = all.filter(e => new Date(e.created_at) >= monthStart);
-
-        const total = all.length;
-        const compCount = completed.length;
-        const completionRate = total ? ((compCount / total) * 100).toFixed(1) : 0;
-
-        const avgTime = completed.length
-          ? (completed.reduce((sum, e) => {
-              const created = new Date(e.created_at);
-              const doneAt = new Date(e.updated_at);
-              return sum + (doneAt - created) / (1000 * 3600 * 24);
-            }, 0) / completed.length).toFixed(1)
-          : '0.0';
-
-        const notifs = completed
-          .slice(-5)
-          .map(e => ({ id: e.id, title: e.title, type: 'normal', time: e.updated_at }));
-
-        const recents = all
-          .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
-          .slice(0, 5)
-          .map(e => ({
-            id: e.id,
-            title: e.title,
-            status: e.status === 'action_required' ? 'actionRequired' : e.status,
-            progress: ((e.recipients.filter(r => r.signed).length / e.recipients.length) * 100).toFixed(0),
-            signers: e.recipients.length,
-            signedBy: e.recipients.filter(r => r.signed).length,
-            createdAt: e.created_at,
-            deadline: e.deadline_at
-          }));
-
-        setStats({
-          draft: drafts.length,
-          sent: sent.length,
-          completed: compCount,
-          actionRequired: actionReq.length,
-          totalThisMonth: thisMonth.length,
-          completionRate,
-          avgSigningTime: avgTime
-        });
-        setNotifications(notifs);
-        setRecentDocuments(recents);
+        setAllEnvelopes([...drafts, ...sent, ...completed]);
+        setActionEnvelopes(actionReq);
       } catch (err) {
         logService.error('Erreur chargement dashboard:', err);
         toast.error('Échec du chargement du tableau de bord');
@@ -104,14 +154,21 @@ const DashboardSignature = () => {
     loadData();
   }, []);
 
+  useEffect(() => {
+    applyFilters();
+  }, [allEnvelopes, actionEnvelopes, dateFilter, customRange]);
+
   // Preview decrypted PDF in a new tab
   const handlePreview = async (id) => {
+    setPreviewLoadingId(id);
     try {
       const { download_url } = await signatureService.downloadEnvelope(id);
       window.open(download_url, '_blank');
     } catch (error) {
       logService.error('Erreur lors de la prévisualisation du PDF:', error);
       toast.error('Impossible de prévisualiser le PDF');
+    } finally {
+      setPreviewLoadingId(null);
     }
   };
 
@@ -141,6 +198,22 @@ const DashboardSignature = () => {
     }
   };
 
+  const StatusBadge = ({ status }) => {
+    const config = {
+      draft: { label: 'Brouillon', classes: 'bg-gray-100 text-gray-800' },
+      completed: { label: 'Terminé', classes: 'bg-green-100 text-green-800' },
+      actionRequired: { label: 'Action requise', classes: 'bg-red-100 text-red-800' },
+      sent: { label: 'En cours', classes: 'bg-yellow-100 text-yellow-800' },
+      pending: { label: 'En cours', classes: 'bg-yellow-100 text-yellow-800' }
+    };
+    const { label, classes } = config[status] || config.sent;
+    return (
+      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${classes}`}>
+        {label}
+      </span>
+    );
+  };
+
   // Applique filtre et recherche
   const displayedDocuments = recentDocuments
     .filter(doc => filter === 'all' || doc.status === filter)
@@ -160,6 +233,35 @@ const DashboardSignature = () => {
             <Plus className="w-4 h-4 mr-2" />
             Nouveau document
           </Link>
+        </div>
+
+        {/* Filtre de date global */}
+        <div className="mb-6 flex flex-wrap items-center gap-2">
+          <select
+            value={dateFilter}
+            onChange={e => setDateFilter(e.target.value)}
+            className="border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          >
+            <option value="month">Ce mois</option>
+            <option value="90days">90 jours</option>
+            <option value="custom">Personnalisé</option>
+          </select>
+          {dateFilter === 'custom' && (
+            <>
+              <input
+                type="date"
+                value={customRange.start}
+                onChange={e => setCustomRange({ ...customRange, start: e.target.value })}
+                className="border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+              <input
+                type="date"
+                value={customRange.end}
+                onChange={e => setCustomRange({ ...customRange, end: e.target.value })}
+                className="border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </>
+          )}
         </div>
 
         {/* Statistiques */}
@@ -220,7 +322,7 @@ const DashboardSignature = () => {
             </div>
           </Link>
 
-          {/* Ce mois-ci */}
+          {/* Total période */}
           <Link
             to="/signature/envelopes"
             className="bg-white shadow rounded-lg p-4 sm:p-5 flex items-center hover:bg-gray-50 transition-colors duration-200"
@@ -229,7 +331,7 @@ const DashboardSignature = () => {
               <Calendar className="w-6 h-6 sm:w-8 sm:h-8 text-yellow-500" />
             </div>
             <div className="ml-3 sm:ml-4 min-w-0 flex-1">
-              <p className="text-xs sm:text-sm font-medium text-gray-500 truncate">Ce mois-ci</p>
+              <p className="text-xs sm:text-sm font-medium text-gray-500 truncate">Période</p>
               <p className="text-lg sm:text-xl font-semibold text-gray-900">{stats.totalThisMonth}</p>
             </div>
           </Link>
@@ -247,6 +349,22 @@ const DashboardSignature = () => {
               <p className="text-lg sm:text-xl font-semibold text-gray-900">{stats.completionRate}%</p>
             </div>
           </Link>
+        </div>
+
+        {/* Tendances */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 mb-8">
+          <div className="bg-white shadow rounded-lg p-4">
+            <p className="text-xs font-medium text-gray-500 mb-2">7 derniers jours</p>
+            <div className="h-8">
+              <Sparkline data={trend7} />
+            </div>
+          </div>
+          <div className="bg-white shadow rounded-lg p-4">
+            <p className="text-xs font-medium text-gray-500 mb-2">30 derniers jours</p>
+            <div className="h-8">
+              <Sparkline data={trend30} />
+            </div>
+          </div>
         </div>
 
         {/* Section principale - Documents récents */}
@@ -338,33 +456,9 @@ const DashboardSignature = () => {
                           </p>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          {(['pending','sent'].includes(doc.status)) && (
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                              En cours
-                            </span>
-                          )}
-                          {doc.status === 'completed' && (
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                              Terminé
-                            </span>
-                          )}
-                          {doc.status === 'draft' && (
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-                              Brouillon
-                            </span>
-                          )}
-                          {doc.status === 'actionRequired' && (
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                              Action requise
-                            </span>
-                          )}
-                          {(!['pending','sent','completed','draft','actionRequired'].includes(doc.status)) && (
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-                              {String(doc.status).replace(/([A-Z])/g, ' $1')}
-                            </span>
-                          )}
+                          <StatusBadge status={doc.status} />
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
+                        <td className="px-6 py-4 whitespace-nowrap" title={`${doc.signedBy}/${doc.signers}`}>
                           <div className="flex items-center space-x-2">
                             <div className="flex-1">
                               <div className="flex items-center justify-between mb-1">
@@ -406,7 +500,8 @@ const DashboardSignature = () => {
                           <div className="flex items-center justify-end space-x-2">
                             <button
                               onClick={() => handlePreview(doc.id)}
-                              className="text-gray-400 hover:text-blue-600 transition-colors duration-200"
+                              disabled={previewLoadingId === doc.id}
+                              className={`text-gray-400 ${previewLoadingId === doc.id ? 'opacity-50 cursor-not-allowed' : 'hover:text-blue-600 transition-colors duration-200'}`}
                               title="Prévisualiser"
                             >
                               <Eye className="w-5 h-5" />
@@ -440,26 +535,7 @@ const DashboardSignature = () => {
                             {doc.title}
                           </h3>
                           <div className="mt-1 flex items-center space-x-2">
-                            {(['pending','sent'].includes(doc.status)) && (
-                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                                En cours
-                              </span>
-                            )}
-                            {doc.status === 'completed' && (
-                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                                Terminé
-                              </span>
-                            )}
-                            {doc.status === 'draft' && (
-                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-                                Brouillon
-                              </span>
-                            )}
-                            {doc.status === 'actionRequired' && (
-                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                                Action requise
-                              </span>
-                            )}
+                            <StatusBadge status={doc.status} />
                           </div>
                         </div>
                         
@@ -467,7 +543,8 @@ const DashboardSignature = () => {
                         <div className="flex items-center space-x-2 flex-shrink-0">
                           <button
                             onClick={() => handlePreview(doc.id)}
-                            className="p-1 text-gray-400 hover:text-blue-600 transition-colors duration-200"
+                            disabled={previewLoadingId === doc.id}
+                            className={`p-1 text-gray-400 ${previewLoadingId === doc.id ? 'opacity-50 cursor-not-allowed' : 'hover:text-blue-600'} transition-colors duration-200`}
                             title="Prévisualiser"
                           >
                             <Eye className="w-5 h-5" />
@@ -494,7 +571,7 @@ const DashboardSignature = () => {
                           </div>
                           <span className="text-sm font-medium text-gray-900">{doc.progress}%</span>
                         </div>
-                        <div className="w-full bg-gray-200 rounded-full h-2">
+                        <div className="w-full bg-gray-200 rounded-full h-2" title={`${doc.signedBy}/${doc.signers}`}">
                           <div
                             className="h-2 rounded-full bg-blue-600 transition-all duration-300"
                             style={{ width: `${doc.progress}%` }}

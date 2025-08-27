@@ -6,6 +6,7 @@ import {
   User, Mail, Calendar, Phone, MapPin, Upload, Eye, EyeOff,
   Save, Lock, CheckCircle, XCircle, Camera, Edit3, Shield
 } from 'lucide-react';
+import PasswordStrengthIndicator from '../components/PasswordStrengthIndicator';
 import { profileSchema, passwordChangeSchema } from '../validation/schemas';
 
 const ProfilePage = () => {
@@ -561,6 +562,8 @@ useEffect(() => {
                     type="button"
                     className="absolute inset-y-0 right-0 pr-3 flex items-center"
                     onClick={() => setShowOldPassword(!showOldPassword)}
+                    aria-pressed={showOldPassword}
+                    aria-label={showOldPassword ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
                   >
                     {showOldPassword ? (
                       <EyeOff className="h-5 w-5 text-gray-400 hover:text-gray-600" />
@@ -594,6 +597,8 @@ useEffect(() => {
                     type="button"
                     className="absolute inset-y-0 right-0 pr-3 flex items-center"
                     onClick={() => setShowNewPassword(!showNewPassword)}
+                    aria-pressed={showNewPassword}
+                    aria-label={showNewPassword ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
                   >
                     {showNewPassword ? (
                       <EyeOff className="h-5 w-5 text-gray-400 hover:text-gray-600" />
@@ -602,6 +607,7 @@ useEffect(() => {
                     )}
                   </button>
                 </div>
+                <PasswordStrengthIndicator password={passwordData.new_password} />
                 <p className="mt-2 text-sm text-gray-500">
                   Le mot de passe doit contenir au moins 5 caractères
                 </p>

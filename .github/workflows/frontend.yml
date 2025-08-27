@@ -17,7 +17,7 @@ jobs:
       run:
         working-directory: frontend
     env:
-      REACT_APP_API_BASE_URL: http://localhost:8000
+      REACT_APP_API_BASE_URL: https://esign-5mbk.onrender.com
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

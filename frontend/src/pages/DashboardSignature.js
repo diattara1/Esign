@@ -571,7 +571,7 @@ const DashboardSignature = () => {
                           </div>
                           <span className="text-sm font-medium text-gray-900">{doc.progress}%</span>
                         </div>
-                        <div className="w-full bg-gray-200 rounded-full h-2" title={`${doc.signedBy}/${doc.signers}`}">
+                        <div className="w-full bg-gray-200 rounded-full h-2" title={`${doc.signedBy}/${doc.signers}`}>
                           <div
                             className="h-2 rounded-full bg-blue-600 transition-all duration-300"
                             style={{ width: `${doc.progress}%` }}

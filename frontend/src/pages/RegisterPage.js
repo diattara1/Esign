@@ -49,15 +49,19 @@ const RegisterPage = () => {
       setAvatarPreview(URL.createObjectURL(file));
     }
   };
- const handleStep2Blur = async (e) => {
-    const { name } = e.target;
-    try {
-      await registerStep2Schema.validateAt(name, form);
-      setErrors((prev) => ({ ...prev, [name]: null }));
-    } catch (err) {
-      setErrors((prev) => ({ ...prev, [name]: err.message }));
-    }
-  };
+const handleStep2Blur = async (e) => {
+  const { name } = e.target;
+
+  const step1Fields = new Set(['username', 'email', 'password']);
+  const schema = step1Fields.has(name) ? registerStep1Schema : registerStep2Schema;
+
+  try {
+    await schema.validateAt(name, form);
+    setErrors((prev) => ({ ...prev, [name]: null }));
+  } catch (err) {
+    setErrors((prev) => ({ ...prev, [name]: err.message }));
+  }
+};
   const validateStep1 = async () => {
     try {
       await registerStep1Schema.validate(form, { abortEarly: false });

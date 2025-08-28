@@ -9,539 +9,355 @@ import 'react-pdf/dist/Page/TextLayer.css';
 import logService from '../services/logService';
 import sanitize from '../utils/sanitize';
 import Countdown from '../components/Countdown';
+
 pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js';
 
-export default function DocumentWorkflow() {
-  const { id } = useParams();
-  const navigate = useNavigate();
+/* =========================
+   COMPOSANT SIGNATURE DRAGGABLE
+   ========================= */
+const DraggableSignature = React.memo(function DraggableSignature({
+  field,
+  factor,
+  isMobileView,
+  onUpdate,
+  onDelete
+}) {
+  const [isDragging, setIsDragging] = useState(false);
+  const [isResizing, setIsResizing] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0, fieldX: 0, fieldY: 0 });
+  const [resizeStart, setResizeStart] = useState({ x: 0, y: 0, width: 0, height: 0 });
+  const elementRef = useRef(null);
 
-  const [envelope, setEnvelope] = useState(null);
-  const [flowType, setFlowType] = useState('sequential');
-  const [reminderDays, setReminderDays] = useState(1);
-  const [deadlineMode, setDeadlineMode] = useState('days'); // 'days' | 'exact'
-  const [deadlineDays, setDeadlineDays] = useState(7);
-  const [deadlineExact, setDeadlineExact] = useState('');   // 'YYYY-MM-DDTHH:mm' (local)
+  const style = useMemo(() => ({
+    position: 'absolute',
+    left: field.position.x * factor,
+    top: field.position.y * factor,
+    width: field.position.width * factor,
+    height: field.position.height * factor,
+    borderRadius: 8,
+    boxShadow: '0 0 0 1px rgba(0,0,0,.20), 0 2px 6px rgba(0,0,0,.08)',
+    background: '#fff',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 15,
+    cursor: isDragging ? 'grabbing' : 'grab',
+    border: '2px solid transparent',
+    userSelect: 'none',
+  }), [field.position, factor, isDragging]);
 
-  const [documents, setDocuments] = useState([]);
-  const [selectedDocId, setSelectedDocId] = useState(null);
-  const [pdfUrl, setPdfUrl] = useState(null);
-
-  // États pour la responsivité
-  const [isMobileView, setIsMobileView] = useState(false);
-  const [showLeftSidebar, setShowLeftSidebar] = useState(true);
-  const [showRightSidebar, setShowRightSidebar] = useState(true);
-  const [currentMobileTab, setCurrentMobileTab] = useState('recipients'); // 'recipients' | 'pdf' | 'documents'
-
-  // largeur stable (on rend par width, pas par scale)
-  const [pdfWidth, setPdfWidth] = useState(800);
-
-  const [numPagesByDoc, setNumPagesByDoc] = useState({});
-  // viewport (scale=1) par doc et par page
-  const [pageDimensions, setPageDimensions] = useState({}); // { [docId]: { [page]: {width,height} } }
-
-  const [recipients, setRecipients] = useState([
-    { id: undefined, email: '', full_name: '', order: 1 }
-  ]);
-  const [fields, setFields] = useState([]); // champs posés
-  const [placing, setPlacing] = useState({ idx: null, type: 'signature' });
-  const [isUploading, setIsUploading] = useState(false);
-  const [includeQr, setIncludeQr] = useState(false);
-  const [loadingDocId, setLoadingDocId] = useState(null);
-
-  const deadlineAt = useMemo(() => {
-    if (deadlineMode === 'exact' && deadlineExact) {
-      return new Date(deadlineExact).toISOString();
-    }
-    if (deadlineMode === 'days' && deadlineDays) {
-      const d = new Date();
-      d.setDate(d.getDate() + Number(deadlineDays));
-      return d.toISOString();
-    }
-    return null;
-  }, [deadlineMode, deadlineExact, deadlineDays]);
-
-  const pdfWrapper = useRef(null);
-  const prevUrlRef = useRef(null);
-
-  // Détection de la taille d'écran
-  useEffect(() => {
-    const checkScreenSize = () => {
-      const isMobile = window.innerWidth < 1024; // lg breakpoint
-      setIsMobileView(isMobile);
-      
-      if (isMobile) {
-        setShowLeftSidebar(false);
-        setShowRightSidebar(false);
-      } else {
-        setShowLeftSidebar(true);
-        setShowRightSidebar(true);
-      }
-    };
-
-    checkScreenSize();
-    window.addEventListener('resize', checkScreenSize);
-    return () => window.removeEventListener('resize', checkScreenSize);
-  }, []);
-
-  useEffect(() => {
-    const prev = prevUrlRef.current;
-    prevUrlRef.current = pdfUrl;
-    return () => {
-      try {
-        if (prev && typeof prev === 'string' && prev.startsWith('blob:')) {
-          URL.revokeObjectURL(prev);
-        }
-      } catch {}
-    };
-  }, [pdfUrl]);
-
-  // ---- Upload ----
-  const uploadFiles = useCallback(async (files) => {
-    try {
-      setIsUploading(true);
-      await signatureService.updateEnvelopeFiles(id, files);
-      toast.success('Fichiers ajoutés');
-      await reloadEnvelope(); // recharge tout
-    } catch (e) {
-      logService.error(e);
-      toast.error("Échec de l'upload");
-    } finally {
-      setIsUploading(false);
-    }
-  }, [id]);
-
-  // ---- Charger l'enveloppe et initialiser l'affichage ----
-  const reloadEnvelope = useCallback(async () => {
-    const env = await signatureService.getEnvelope(id);
-    setEnvelope(env);
-    setFlowType(env.flow_type || 'sequential');
-    setReminderDays(env.reminder_days ?? 1);
-    // Si une deadline existe déjà, on bascule l'UI en "date exacte"
-    if (env.deadline_at) {
-      setDeadlineMode('exact');
-      const d = new Date(env.deadline_at);
-      const pad = n => String(n).padStart(2, '0');
-      const local = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-      setDeadlineExact(local);
-    } else {
-      setDeadlineMode('days');
-      setDeadlineExact('');
-      setDeadlineDays(7);
-    }
-
-    const docs = env.documents || [];
-    setDocuments(docs);
-
-    // hydrate destinataires/champs existants
-    if (env.recipients?.length) setRecipients(env.recipients);
-    if (env.fields?.length) setFields(env.fields);
-
-    if (docs.length > 0) {
-      // auto-sélection du 1er doc
-      const first = docs[0];
-      setSelectedDocId(first.id);
-      const blobUrl = await signatureService.fetchDocumentBlob(id, first.id);
-      setPdfUrl(blobUrl);
-    } else {
-      // enveloppe "simple" (un seul PDF global)
-      const res = await signatureService.downloadEnvelope(id);
-      setSelectedDocId('single');            // IMPORTANT : une clé pour le viewer
-      setPdfUrl(res.download_url);
-    }
-  }, [id]);
-
-  useEffect(() => {
-    (async () => {
-      try { await reloadEnvelope(); }
-      catch { toast.error('Impossible de charger le dossier'); }
-    })();
-  }, [id, reloadEnvelope]);
-
-  // ---- Largeur stable (anti tremblement) ----
-  useEffect(() => {
-    if (!pdfWrapper.current) return;
-
-    let last = -1;
-    let raf = 0;
-
-    const compute = () => {
-      const node = pdfWrapper.current;
-      if (!node) return;
-      const padding = isMobileView ? 16 : 48; // Moins de padding sur mobile
-      const container = node.clientWidth || 0;
-      const maxWidth = isMobileView ? 600 : 900;
-      const minWidth = isMobileView ? 280 : 320;
-      const next = Math.min(Math.max(container - padding, minWidth), maxWidth);
-      if (Math.abs(next - last) > 1) {
-        last = next;
-        setPdfWidth(next);
-      }
-    };
-
-    const ro = new ResizeObserver(() => {
-      cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(compute);
-    });
-
-    ro.observe(pdfWrapper.current);
-    compute();
-
-    return () => {
-      cancelAnimationFrame(raf);
-      ro.disconnect();
-    };
-  }, [isMobileView]);
-
-  // ---- Callbacks PDF ----
-  const onDocumentLoad = useCallback(({ numPages }) => {
-    if (!selectedDocId) return;
-    setNumPagesByDoc(prev =>
-      prev[selectedDocId] === numPages ? prev : { ...prev, [selectedDocId]: numPages }
-    );
-  }, [selectedDocId]);
-
-  const onPageLoadSuccess = useCallback((pageNumber, page) => {
-    if (!selectedDocId) return;
-    const vp = page.getViewport({ scale: 1 });
-    setPageDimensions(prev => {
-      const current = prev[selectedDocId]?.[pageNumber];
-      if (current?.width === vp.width && current?.height === vp.height) return prev;
-      return {
-        ...prev,
-        [selectedDocId]: {
-          ...prev[selectedDocId],
-          [pageNumber]: { width: vp.width, height: vp.height }
-        }
-      };
-    });
-  }, [selectedDocId]);
-
-  const onDocumentError = useCallback((err) => {
-    logService.error('PDF Error:', err);
-    toast.error('Erreur lors du chargement du PDF');
-  }, []);
-
-  // ---- Sélection d'un document dans la colonne de droite ----
-  const selectDocument = useCallback(async (doc) => {
-    if (selectedDocId === doc.id) return;
-
-    let cancelled = false;
-    setLoadingDocId(doc.id);
-    try {
-      // 1) on télécharge d'abord le nouveau PDF
-      const blobUrl = await signatureService.fetchDocumentBlob(id, doc.id);
-      if (cancelled) return;
-
-      // 2) swap atomique : on change l'id et l'URL en même temps
-      setPdfUrl(blobUrl); // 1) d'abord l'URL du nouveau PDF
-      setSelectedDocId(doc.id); // 2) puis l'ID (affichage, badges, etc.)
-      setNumPagesByDoc(prev => ({ ...prev, [doc.id]: undefined }));
-      
-      // Sur mobile, passer automatiquement à la vue PDF
-      if (isMobileView) {
-        setCurrentMobileTab('pdf');
-      }
-    } catch (e) {
-      logService.error(e);
-      toast.error('Impossible de charger ce PDF');
-    } finally {
-      setLoadingDocId(null);
-    }
-
-    // cleanup si le composant est démonté pendant l'async
-    return () => { cancelled = true; };
-  }, [selectedDocId, id, isMobileView]);
-
-  // ---- Vérifier si un destinataire peut placer sa signature ----
-  const canPlaceSignature = useCallback((recipientIdx) => {
-    const recipient = recipients[recipientIdx];
-    return recipient && recipient.email.trim() && recipient.full_name.trim();
-  }, [recipients]);
-
-  // ---- Placement : clic → coordonnées PDF (scale=1) ----
-  const handlePdfClick = useCallback((e, pageNumber) => {
-    if (placing.idx === null || !selectedDocId) return;
-
-    const recipient = recipients[placing.idx];
-    if (!canPlaceSignature(placing.idx)) {
-      toast.error('Veuillez renseigner l\'email et le nom du destinataire avant de placer sa signature');
-      return;
-    }
-
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-
-    const vp = pageDimensions[selectedDocId]?.[pageNumber] || { width: 600, height: 800 };
-    const factor = pdfWidth / vp.width;
-
-    const normalized = {
-      x: x / factor,
-      y: y / factor,
-      width: 150 / factor,
-      height: 50 / factor
-    };
-
-    // Supprimer l'ancienne signature de ce destinataire sur ce document s'il y en a une
-    setFields(prev => prev.filter(field => 
-      !(field.recipient_id === recipient.order && field.document_id === selectedDocId && field.field_type === 'signature')
-    ));
-
-    const safeName = sanitize(recipient.full_name);
-    const newField = {
-      recipient_id: recipient.order,
-      document_id: selectedDocId,
-      field_type: placing.type,
-      page: pageNumber,
-      position: normalized,
-      name: `Signature ${safeName}`,
-      required: true,
-      recipient_name: safeName // Stocker le nom pour l'affichage
-    };
-
-    setFields(prev => [...prev, newField]);
-    setPlacing({ idx: null, type: 'signature' });
-
-    const docName = sanitize((documents.find(d => d.id === selectedDocId) || {}).name || `Document ${selectedDocId}`);
-    toast.success(`Signature de ${safeName} placée sur ${docName} (page ${pageNumber})`);
-  }, [placing.idx, placing.type, selectedDocId, pageDimensions, pdfWidth, recipients, documents, canPlaceSignature]);
-
-  // ---- Fichiers ----
-  const onFilesSelected = useCallback((e) => {
-    const files = Array.from(e.target.files || []);
-    if (!files.length) return;
-    uploadFiles(files);
-    e.target.value = '';
-  }, [uploadFiles]);
-
-  // ---- Destinataires ----
-  const updateRecipient = useCallback((idx, field, value) => {
-    setRecipients(prev => {
-      const updated = [...prev];
-      updated[idx] = { ...updated[idx], [field]: value };
-      
-      // Si on modifie le nom, mettre à jour les champs existants
-      if (field === 'full_name') {
-        setFields(prevFields => prevFields.map(fieldItem => {
-          if (fieldItem.recipient_id === updated[idx].order) {
-            return {
-              ...fieldItem,
-              name: `Signature ${value}`,
-              recipient_name: value
-            };
-          }
-          return fieldItem;
-        }));
-      }
-      
-      return updated;
-    });
-  }, []);
-
-  const addRecipient = useCallback(() => {
-    setRecipients(prev => [
-      ...prev,
-      { id: undefined, email: '', full_name: '', order: prev.length + 1 }
-    ]);
-  }, []);
-
-  const removeRecipient = useCallback((idx) => {
-    if (recipients.length <= 1) return;
-    
-    const recipientToRemove = recipients[idx];
-    
-    // Supprimer tous les champs associés à ce destinataire
-    setFields(prev => prev.filter(field => field.recipient_id !== recipientToRemove.order));
-    
-    // Supprimer le destinataire
-    setRecipients(prev => prev.filter((_, i) => i !== idx));
-    
-    // Annuler le placement si c'était ce destinataire qui était en cours de placement
-    if (placing.idx === idx) {
-      setPlacing({ idx: null, type: 'signature' });
-    }
-  }, [recipients, placing.idx]);
-
-  const handleDragEnd = useCallback((result) => {
-    if (!result.destination) return;
-    setRecipients(prev => {
-      const items = Array.from(prev);
-      const [moved] = items.splice(result.source.index, 1);
-      items.splice(result.destination.index, 0, moved);
-      const orderMap = {};
-      const updated = items.map((rec, i) => {
-        orderMap[rec.order] = i + 1;
-        return { ...rec, order: i + 1 };
-      });
-      setFields(prevFields =>
-        prevFields.map(f =>
-          orderMap[f.recipient_id]
-            ? { ...f, recipient_id: orderMap[f.recipient_id] }
-            : f
-        )
-      );
-      return updated;
-    });
-  }, [setFields]);
-
-  // ---- Envoi ----
-  const handleSubmit = useCallback(async (e) => {
+  const handleMouseDown = useCallback((e) => {
+    if (e.target.classList.contains('resize-handle')) return;
     e.preventDefault();
-    try {
-     // Construit payload avec échéance choisie
-      const payload = {
-        recipients,
-        fields,
-        flow_type: flowType,
-        include_qr_code: includeQr,
-        reminder_days: Number(reminderDays) || 1,
-        deadline_at: deadlineAt,
-      };
-      if (payload.deadline_at && new Date(payload.deadline_at) < new Date()) {
-        toast.error("L'échéance est déjà passée");
-        return;// pas d'échéance explicite -> géré par le backend si besoin
+    e.stopPropagation();
+    setIsDragging(true);
+    setDragStart({
+      x: e.clientX,
+      y: e.clientY,
+      fieldX: field.position.x,
+      fieldY: field.position.y
+    });
+  }, [field.position]);
+
+  const handleResizeStart = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsResizing(true);
+    setResizeStart({
+      x: e.clientX,
+      y: e.clientY,
+      width: field.position.width,
+      height: field.position.height
+    });
+  }, [field.position]);
+
+  useEffect(() => {
+    if (!isDragging && !isResizing) return;
+
+    const handleMouseMove = (e) => {
+      if (isDragging) {
+        const deltaX = (e.clientX - dragStart.x) / factor;
+        const deltaY = (e.clientY - dragStart.y) / factor;
+        const newPosition = {
+          ...field.position,
+          x: Math.max(0, dragStart.fieldX + deltaX),
+          y: Math.max(0, dragStart.fieldY + deltaY)
+        };
+        onUpdate(field, { position: newPosition });
+      } else if (isResizing) {
+        const deltaX = (e.clientX - resizeStart.x) / factor;
+        const deltaY = (e.clientY - resizeStart.y) / factor;
+        const newPosition = {
+          ...field.position,
+          width: Math.max(50 / factor, resizeStart.width + deltaX),
+          height: Math.max(20 / factor, resizeStart.height + deltaY)
+        };
+        onUpdate(field, { position: newPosition });
       }
-
-      // 1) On sauvegarde l'enveloppe avec les nouveaux champs
-      await signatureService.updateEnvelope(id, payload);
-      // 2) Puis on envoie (le backend lit include_qr_code et utilisera deadline_at déjà posé)
-      await signatureService.sendEnvelope(id, { include_qr_code: includeQr, reminder_days: payload.reminder_days, deadline_at: payload.deadline_at });
-
-      
-      toast.success('Enveloppe envoyée');
-      navigate(`/signature/sent/${id}`);
-    } catch (err) {
-      logService.error(err);
-      toast.error("Échec de l'envoi");
-    }
-  }, [id, recipients, fields, flowType, includeQr, reminderDays, deadlineAt, navigate]);
-
-  // ---- Vérifier si un destinataire a déjà une signature sur le document sélectionné ----
-  const hasSignatureOnCurrentDoc = useCallback((recipientOrder) => {
-    return fields.some(field => 
-      field.recipient_id === recipientOrder && 
-      field.document_id === selectedDocId && 
-      field.field_type === 'signature'
-    );
-  }, [fields, selectedDocId]);
-
-  // ---- Rendu visuel d'un champ posé ----
-  const renderFieldBox = (field, pageNumber) => {
-    if (field.page !== pageNumber || field.document_id !== selectedDocId) return null;
-
-    const vp = pageDimensions[selectedDocId]?.[pageNumber] || { width: 600, height: 800 };
-    const factor = pdfWidth / vp.width;
-
-    const style = {
-      position: 'absolute',
-      left: field.position.x * factor,
-      top: field.position.y * factor,
-      width: field.position.width * factor,
-      height: field.position.height * factor,
-      borderRadius: 8,
-      boxShadow: '0 0 0 1px rgba(0,0,0,.20), 0 2px 6px rgba(0,0,0,.08)',
-      background: '#fff',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      zIndex: 15
     };
 
-    return (
-      <div key={`${pageNumber}-${field.name}-${field.position.x}-${field.position.y}`} style={style}>
-        <div style={{ textAlign: 'center', fontSize: isMobileView ? 10 : 12, lineHeight: 1.1, color: '#374151' }}>
-          <div style={{ fontWeight: 700, marginBottom: 2 }}>Signature</div>
-          <div>{field.recipient_name || field.name.replace('Signature ', '')}</div>
-        </div>
-      </div>
-    );
-  };
+    const handleMouseUp = () => {
+      setIsDragging(false);
+      setIsResizing(false);
+    };
 
-  // Navigation mobile
-  const MobileNavigation = () => (
-    <div className="lg:hidden bg-white border-t border-gray-200 px-4 py-2">
-      <div className="flex space-x-1">
-        <button
-          onClick={() => setCurrentMobileTab('recipients')}
-          className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-            currentMobileTab === 'recipients'
-              ? 'bg-blue-100 text-blue-700'
-              : 'text-gray-600 hover:bg-gray-100'
-          }`}
-        >
-          Destinataires
-        </button>
-        <button
-          onClick={() => setCurrentMobileTab('pdf')}
-          className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-            currentMobileTab === 'pdf'
-              ? 'bg-blue-100 text-blue-700'
-              : 'text-gray-600 hover:bg-gray-100'
-          }`}
-        >
-          PDF
-        </button>
-        <button
-          onClick={() => setCurrentMobileTab('documents')}
-          className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-            currentMobileTab === 'documents'
-              ? 'bg-blue-100 text-blue-700'
-              : 'text-gray-600 hover:bg-gray-100'
-          }`}
-        >
-          Documents
-        </button>
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDragging, isResizing, dragStart, resizeStart, factor, field, onUpdate]);
+
+  return (
+    <div
+      ref={elementRef}
+      style={style}
+      onMouseDown={handleMouseDown}
+      className={`signature-field ${isDragging ? 'dragging' : ''} hover:shadow-lg transition-shadow`}
+    >
+      <div
+        style={{
+          textAlign: 'center',
+          fontSize: isMobileView ? 10 : 12,
+          lineHeight: 1.1,
+          color: '#374151',
+          pointerEvents: 'none'
+        }}
+      >
+        <div style={{ fontWeight: 700, marginBottom: 2 }}>Signature</div>
+        <div>{field.recipient_name || field.name.replace('Signature ', '')}</div>
+      </div>
+
+      <div
+        className="resize-handle"
+        onMouseDown={handleResizeStart}
+        style={{
+          position: 'absolute',
+          bottom: -4,
+          right: -4,
+          width: 12,
+          height: 12,
+          background: '#3b82f6',
+          borderRadius: '50%',
+          cursor: 'se-resize',
+          border: '2px solid white',
+          boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+        }}
+      />
+
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          onDelete(field);
+        }}
+        style={{
+          position: 'absolute',
+          top: -8,
+          right: -8,
+          width: 20,
+          height: 20,
+          background: '#ef4444',
+          borderRadius: '50%',
+          border: '2px solid white',
+          color: 'white',
+          fontSize: 12,
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+        }}
+      >
+        ×
+      </button>
+    </div>
+  );
+});
+
+/* =========================
+   PDF VIEWER
+   ========================= */
+const PDFViewer = React.memo(function PDFViewer({
+  className = '',
+  pdfUrl,
+  pdfWidth,
+  selectedDocId,
+  numPagesByDoc,
+  pageDimensions,
+  fields,
+  placing,
+  onDocumentLoad,
+  onPageLoadSuccess,
+  onDocumentError,
+  handlePdfClick,
+  onUpdateField,
+  onDeleteField,
+  isMobileView,
+  pdfWrapper,
+}) {
+  const pagesCount = numPagesByDoc[selectedDocId] || 0;
+
+  const documentKey = useMemo(() => {
+    return `${selectedDocId}-${pdfUrl}`;
+  }, [selectedDocId, pdfUrl]);
+
+  return (
+    <div className={`flex-1 flex flex-col bg-gray-100 ${className}`}>
+      <div className="flex-1 flex overflow-hidden">
+        <div className="flex-1 overflow-auto" ref={pdfWrapper}>
+          {pdfUrl ? (
+            <div className="p-2 lg:p-6">
+              <div className={`max-w-[900px] mx-auto ${isMobileView ? 'max-w-full' : ''}`}>
+                <Document
+                  key={documentKey}
+                  file={pdfUrl}
+                  onLoadSuccess={onDocumentLoad}
+                  onLoadError={onDocumentError}
+                  loading={
+                    <div className="flex items-center justify-center py-20">
+                      <div className="animate-spin rounded-full h-6 w-6 lg:h-8 lg:w-8 border-b-2 border-blue-600"></div>
+                      <span className="ml-3 text-gray-600 text-sm lg:text-base">
+                        Chargement du PDF...
+                      </span>
+                    </div>
+                  }
+                >
+                  {Array.from({ length: pagesCount }, (_, i) => {
+                    const pageNumber = i + 1;
+                    const pageFields = fields.filter(
+                      (f) => f.document_id === selectedDocId && f.page === pageNumber
+                    );
+                    return (
+                      <div
+                        key={pageNumber}
+                        className="relative mb-4 lg:mb-8 bg-white shadow-lg rounded-lg overflow-hidden"
+                      >
+                        <div className="absolute top-2 right-2 bg-black/50 text-white px-2 py-1 rounded text-xs lg:text-sm z-20">
+                          Page {pageNumber}
+                        </div>
+                        <Page
+                          pageNumber={pageNumber}
+                          width={pdfWidth}
+                          onLoadSuccess={(page) => onPageLoadSuccess(pageNumber, page)}
+                          renderTextLayer={false}
+                          renderAnnotationLayer={false}
+                        />
+                        {pageFields.map((field) => {
+                          const vp = pageDimensions[selectedDocId]?.[pageNumber] || {
+                            width: 600,
+                            height: 800,
+                          };
+                          const factor = pdfWidth / vp.width;
+                          return (
+                            <DraggableSignature
+                              key={`${field.recipient_id}-${field.document_id}-${field.page}-${field.field_type}`}
+                              field={field}
+                              factor={factor}
+                              isMobileView={isMobileView}
+                              onUpdate={onUpdateField}
+                              onDelete={onDeleteField}
+                            />
+                          );
+                        })}
+                        <div
+                          onClick={(e) => handlePdfClick(e, pageNumber)}
+                          className={`absolute inset-0 z-10 ${
+                            placing.idx !== null ? 'cursor-crosshair bg-yellow-200/10' : 'cursor-default'
+                          }`}
+                          style={{ pointerEvents: placing.idx !== null ? 'auto' : 'none' }}
+                        />
+                      </div>
+                    );
+                  })}
+                </Document>
+              </div>
+            </div>
+          ) : (
+            <div className="h-full flex items-center justify-center">
+              <div className="text-center p-4">
+                <svg
+                  className="mx-auto h-8 w-8 lg:h-12 lg:w-12 text-gray-400"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                  />
+                </svg>
+                <h3 className="mt-2 text-sm font-medium text-gray-900">Aucun document sélectionné</h3>
+                <p className="mt-1 text-sm text-gray-500">Sélectionnez un document dans la liste</p>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
+});
 
-  // Sidebar des destinataires
-  const RecipientsPanel = ({ className = "" }) => (
+/* =========================
+   PANEL DES DESTINATAIRES
+   ========================= */
+const RecipientsPanel = React.memo(({
+  className = '',
+  flowType,
+  setFlowType,
+  includeQr,
+  setIncludeQr,
+  reminderDays,
+  setReminderDays,
+  deadlineEnabled,
+  setDeadlineEnabled,
+  deadlineExact,
+  setDeadlineExact,
+  deadlineAt,
+  documents,
+  selectedDocId,
+  isUploading,
+  onFilesSelected,
+  recipients,
+  updateRecipient,
+  addRecipient,
+  removeRecipient,
+  handleDragEnd,
+  fields,
+  placing,
+  setPlacing,
+  isMobileView,
+  canPlaceSignature,
+  hasSignatureOnDoc,
+  handleSubmit,
+  handlePlaceSignature 
+}) => {
+   const [open, setOpen] = React.useState(true);
+  return (
     <div className={`bg-white shadow-lg overflow-y-auto border-gray-200 ${className}`}>
-      <div className="p-4 lg:p-6">
-        <div className="flex items-center justify-between mb-4 lg:mb-6">
-          <h2 className="text-lg lg:text-xl font-bold text-gray-900">Destinataires</h2>
-          <div className="text-sm text-gray-500">
-            {recipients.length} signataire{recipients.length > 1 ? 's' : ''}
-          </div>
+     <div className="p-4 lg:p-6">
+        
+           <div className="mb-4 lg:mb-5 p-3 bg-gray-50 rounded-md">
+          <label htmlFor="flowType" className="block text-sm font-medium text-gray-800 mb-2">
+            Type de signatures
+          </label>
+          <select
+            id="flowType"
+            value={flowType}
+            onChange={(e) => setFlowType(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+          >
+            <option value="sequential">Séquentielle (un par un)</option>
+            <option value="parallel">Parallèle (tous en même temps)</option>
+          </select>
         </div>
 
-        <div className="mb-4 lg:mb-6 p-3 lg:p-4 bg-gray-50 rounded-lg">
-          <h3 className="font-medium mb-3 text-gray-900 text-sm lg:text-base">Type de signature</h3>
-          <div className="space-y-2">
-            <label className="flex items-center">
-              <input
-                type="radio"
-                name="flowType"
-                value="sequential"
-                checked={flowType === 'sequential'}
-                onChange={() => setFlowType('sequential')}
-                className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
-              />
-              <span className="ml-3 text-sm font-medium text-gray-700">
-                Séquentielle <span className="text-gray-500 text-xs">(un par un)</span>
-              </span>
-            </label>
-            <label className="flex items-center">
-              <input
-                type="radio"
-                name="flowType"
-                value="parallel"
-                checked={flowType === 'parallel'}
-                onChange={() => setFlowType('parallel')}
-                className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
-              />
-              <span className="ml-3 text-sm font-medium text-gray-700">
-                Parallèle <span className="text-gray-500 text-xs">(tous en même temps)</span>
-              </span>
-            </label>
-          </div>
-        </div>
 
         <div className="mb-4 lg:mb-6">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Ajouter des documents
-          </label>
+          <label className="block text-sm font-medium text-gray-700 mb-2">Ajouter des documents</label>
           <div className="relative">
             <input
               type="file"
@@ -559,48 +375,82 @@ export default function DocumentWorkflow() {
           </div>
           {documents.length > 0 && (
             <p className="text-xs text-gray-500 mt-2">
-              {documents.length} document{documents.length > 1 ? 's' : ''} dans l'enveloppe
+              {documents.length} document{documents.length > 1 ? 's' : ''}
             </p>
           )}
         </div>
-
-        <DragDropContext onDragEnd={handleDragEnd}>
-          <Droppable droppableId="recipients">
-            {(provided) => (
-              <div
-                className="space-y-4"
-                ref={provided.innerRef}
-                {...provided.droppableProps}
+        <div className="mb-3 lg:mb-4">
+          <div className="flex items-center justify-between bg-gray-100 rounded-md px-3 py-2">
+            <div className="flex items-center space-x-2">
+              {/* petite icône “signature” */}
+              <svg className="w-5 h-5 text-gray-700" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
+                  d="M3 20h18M7 16c1.5-3 3.5-3 5-1s3.5 2 5-1M14 7l3 3M11 10l3-3" />
+              </svg>
+              <span className="font-semibold text-gray-900">Signataires</span>
+              <span className="inline-flex items-center justify-center px-2 py-0.5 rounded text-xs font-medium bg-white text-gray-800 border border-gray-200">
+                {recipients.length}
+              </span>
+            </div>
+            <div className="flex items-center space-x-2">
+              <button
+                type="button"
+                onClick={addRecipient}
+                className="w-8 h-8 rounded-full border border-gray-300 bg-white flex items-center justify-center hover:bg-gray-50"
+                title="Ajouter un signataire"
               >
-                {recipients.map((recipient, idx) => {
+                <span className="text-xl leading-none">+</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setOpen(v => !v)}
+                className="w-8 h-8 rounded-full border border-gray-300 bg-white flex items-center justify-center hover:bg-gray-50"
+                aria-expanded={open}
+                title={open ? 'Replier' : 'Déplier'}
+              >
+                <svg className={`w-4 h-4 transform transition-transform ${open ? '' : '-rotate-90'}`} viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.06l3.71-3.83a.75.75 0 011.08 1.04l-4.24 4.38a.75.75 0 01-1.08 0L5.21 8.27a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+        {open && (
+          <DragDropContext onDragEnd={handleDragEnd}>
+            <Droppable droppableId="recipients">
+              {(provided) => (
+                <div className="divide-y divide-gray-200" ref={provided.innerRef} {...provided.droppableProps}>
+                  {recipients.map((recipient, idx) => {
                   const canPlace = canPlaceSignature(idx);
-                  const hasSignature = hasSignatureOnCurrentDoc(recipient.order);
+                  const hasSignature = hasSignatureOnDoc(recipient.order);
                   const emailError = !recipient.email
-                    ? "Email obligatoire"
+                    ? 'Email obligatoire'
                     : /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipient.email)
-                    ? ""
-                    : "Email invalide";
-
+                    ? ''
+                    : 'Email invalide';
                   return (
-                    <Draggable key={idx} draggableId={`rec-${idx}`} index={idx}>
+                    <Draggable key={`recipient-${recipient.order}`} draggableId={`rec-${recipient.order}`} index={idx}>
                       {(dragProvided) => (
-                        <div
-                          ref={dragProvided.innerRef}
-                          {...dragProvided.draggableProps}
-                          {...dragProvided.dragHandleProps}
-                          className="bg-white border border-gray-200 rounded-lg p-3 lg:p-4 shadow-sm"
-                        >
-                          <div className="flex items-center justify-between mb-3">
-                            <div className="flex items-center space-x-2">
-                              <div className="w-6 h-6 lg:w-8 lg:h-8 bg-blue-100 rounded-full flex items-center justify-center">
-                                <span className="text-xs lg:text-sm font-medium text-blue-700">{idx + 1}</span>
-                              </div>
-                              <span className="font-medium text-gray-900 text-sm lg:text-base">Destinataire #{idx + 1}</span>
-                            </div>
+                       <div ref={dragProvided.innerRef} {...dragProvided.draggableProps} className="py-3">
+                          <div className="flex items-center justify-between">
+                           <div className="flex items-center space-x-2">
+                              <button
+                                type="button"
+                                 className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center cursor-grab active:cursor-grabbing"
+                                 aria-label={`Réordonner destinataire ${idx + 1}`}
+                                {...dragProvided.dragHandleProps}
+                                onMouseDown={(e) => e.stopPropagation()}
+                              >
+                                <span className="text-xs font-medium text-blue-700">{idx + 1}</span>
+                               </button>
+                               <span className="font-medium text-gray-900 text-sm">
+                                {recipient.full_name || `Destinataire #${idx + 1}`}
+                              </span>
+                             </div>
                             {recipients.length > 1 && (
                               <button
                                 onClick={() => removeRecipient(idx)}
-                                className="text-red-400 hover:text-red-600 p-1"
+                                 className="text-red-400 hover:text-red-600 p-1"
                                 title="Supprimer"
                               >
                                 <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
@@ -613,39 +463,38 @@ export default function DocumentWorkflow() {
                               </button>
                             )}
                           </div>
-
-                          <div className="space-y-3">
+                           <div className="mt-2 space-y-2">
                             <div>
                               <label className="block text-xs font-medium text-gray-700 mb-1">Email</label>
-                              <input
+                               <input
+                                key={`email-${recipient.order}`}
                                 type="email"
                                 value={recipient.email}
-                                onChange={e => updateRecipient(idx, 'email', e.target.value)}
-                                className={`w-full px-3 py-2 border rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${emailError ? 'border-red-500' : 'border-gray-300'}`}
+                                onChange={(e) => updateRecipient(idx, 'email', e.target.value)}
+                                onMouseDown={(e) => e.stopPropagation()}
+                                onPointerDown={(e) => e.stopPropagation()}
+                                 className={`w-full px-3 py-2 border rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${emailError ? 'border-red-500' : 'border-gray-200'}`}
+                                
                                 placeholder="exemple@email.com"
                               />
-                              {emailError && (
-                                <p className="text-xs text-red-500 mt-1">{emailError}</p>
-                              )}
+                              {emailError && <p className="text-xs text-red-500 mt-1">{emailError}</p>}
                             </div>
                             <div>
                               <label className="block text-xs font-medium text-gray-700 mb-1">Nom complet</label>
                               <input
+                                key={`fullname-${recipient.order}`}
                                 type="text"
                                 value={recipient.full_name}
-                                onChange={e => updateRecipient(idx, 'full_name', e.target.value)}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                placeholder="Jean Dupont"
-                              />
+                                onChange={(e) => updateRecipient(idx, 'full_name', e.target.value)}
+                                onMouseDown={(e) => e.stopPropagation()}
+                                onPointerDown={(e) => e.stopPropagation()}
+                                className="w-full px-3 py-2 border border-gray-200 rounded-md"
+                               />
                             </div>
-
-                            <div className="pt-2">
+                            <div className="pt-1">
                               <button
                                 type="button"
-                                onClick={() => {
-                                  setPlacing({ idx, type: 'signature' });
-                                  if (isMobileView) setCurrentMobileTab('pdf');
-                                }}
+                                onClick={() => handlePlaceSignature(idx)}
                                 disabled={!selectedDocId || !canPlace}
                                 className={`w-full px-4 py-2 rounded-md text-sm font-medium transition-colors ${
                                   placing.idx === idx
@@ -661,23 +510,14 @@ export default function DocumentWorkflow() {
                                   ? 'Redéfinir position signature'
                                   : 'Définir position signature'}
                               </button>
-
                               {!selectedDocId && (
-                                <p className="text-xs text-red-500 mt-1">
-                                  Sélectionnez d'abord un document
-                                </p>
+                                <p className="text-xs text-red-500 mt-1">Sélectionnez d'abord un document</p>
                               )}
-
                               {selectedDocId && !canPlace && (
-                                <p className="text-xs text-red-500 mt-1">
-                                  Renseignez l'email et le nom complet
-                                </p>
+                                <p className="text-xs text-red-500 mt-1">Renseignez l'email et le nom complet</p>
                               )}
-
                               {hasSignature && canPlace && selectedDocId && (
-                                <p className="text-xs text-green-600 mt-1">
-                                  ✓ Signature placée sur ce document
-                                </p>
+                                <p className="text-xs text-green-600 mt-1">✓ Signature placée sur ce document</p>
                               )}
                             </div>
                           </div>
@@ -686,38 +526,14 @@ export default function DocumentWorkflow() {
                     </Draggable>
                   );
                 })}
-                {provided.placeholder}
+                     {provided.placeholder}
               </div>
             )}
           </Droppable>
         </DragDropContext>
-
-        <button
-          onClick={addRecipient}
-          className="w-full py-3 px-4 border-2 border-dashed border-gray-300 rounded-lg text-gray-600 hover:border-gray-400 hover:bg-gray-50 transition-colors flex items-center justify-center space-x-2 mt-4"
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v12m6-6H6" />
-          </svg>
-          <span className="font-medium text-sm lg:text-base">Ajouter un destinataire</span>
-        </button>
-
-        {fields.length > 0 && (
-          <div className="mt-4 lg:mt-6 p-3 lg:p-4 bg-green-50 border border-green-200 rounded-lg">
-            <h3 className="font-medium text-green-900 mb-2 text-sm lg:text-base">Champs configurés</h3>
-            <div className="space-y-1">
-              {fields.map((field, i) => (
-                <div key={i} className="text-sm text-green-700 flex items-center">
-                  <svg className="w-4 h-4 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                  </svg>
-                  <span className="truncate">Page {field.page} — {field.recipient_name || field.name.replace('Signature ', '')}</span>
-                </div>
-              ))}
-            </div>
-          </div>
         )}
-
+       
+        
         <div className="mt-4 mb-2 flex items-center">
           <input
             id="includeQr"
@@ -730,72 +546,39 @@ export default function DocumentWorkflow() {
             Intégrer un QR Code de vérification au PDF final
           </label>
         </div>
-
-        {/* --- Relances / Échéance --- */}
-        <div className="mb-4 lg:mb-6 p-3 lg:p-4 bg-gray-50 rounded-lg space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Intervalle entre relances (en jours)</label>
-            <p className="text-xs text-gray-500 mt-1">Ex. 1 = tous les jours, 2 = tous les 2 jours, 7 = 1 fois/semaine.</p>
-            <input
-              type="number"
-              min={1}
-              value={reminderDays}
-              onChange={e => setReminderDays(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Échéance</label>
-            <div className="space-y-2">
-              <label className="flex items-center">
-                <input
-                  type="radio"
-                  name="deadlineMode"
-                  value="days"
-                  checked={deadlineMode === 'days'}
-                  onChange={() => setDeadlineMode('days')}
-                  className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500 flex-shrink-0"
-                />
-                <span className="ml-3 text-sm text-gray-700">Dans</span>
-                <input
-                  type="number"
-                  min={1}
-                  disabled={deadlineMode !== 'days'}
-                  value={deadlineDays}
-                  onChange={e => setDeadlineDays(e.target.value)}
-                  className="ml-2 w-16 lg:w-20 px-2 py-1 border border-gray-300 rounded-md text-sm disabled:bg-gray-100"
-                />
-                <span className="ml-2 text-sm text-gray-700">jour(s)</span>
-              </label>
-              <label className="flex items-center">
-                <input
-                  type="radio"
-                  name="deadlineMode"
-                  value="exact"
-                  checked={deadlineMode === 'exact'}
-                  onChange={() => setDeadlineMode('exact')}
-                  className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500 flex-shrink-0"
-                />
-                <span className="ml-3 text-sm text-gray-700">Date exacte</span>
-              </label>
-              <input
-                type="datetime-local"
-                disabled={deadlineMode !== 'exact'}
-                value={deadlineExact}
-                onChange={e => setDeadlineExact(e.target.value)}
-                className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-md text-sm disabled:bg-gray-100"
-              />
-              <Countdown targetIso={deadlineAt} className="text-sm text-gray-700" />
-              <p className="text-xs text-gray-500">
-                Si vide, une échéance par défaut sera appliquée côté serveur.
-              </p>
-            </div>
-          </div>
-        </div>
-
+       <div className="mb-4 lg:mb-5 p-3 bg-gray-50 rounded-md">
+   <div className="flex items-center justify-between">
+     <label className="flex items-center text-sm font-medium text-gray-800">
+       <input
+         id="deadlineEnabled"
+         type="checkbox"
+         className="h-4 w-4 mr-2"
+         checked={deadlineEnabled}
+         onChange={(e) => setDeadlineEnabled(e.target.checked)}
+       />
+       Définir une échéance
+     </label>
+     {deadlineAt && (
+       <span className="text-xs text-gray-600">
+         <Countdown targetIso={deadlineAt} />
+       </span>
+     )}
+   </div>
+   {deadlineEnabled && (
+     <div className="mt-2">
+       <input
+         type="datetime-local"
+         value={deadlineExact}
+         onChange={(e) => setDeadlineExact(e.target.value)}
+         className="w-full px-2.5 py-2 border border-gray-300 rounded text-sm"
+       />
+     </div>
+   )}
+   
+ </div>
         <button
           onClick={handleSubmit}
-          disabled={recipients.some(r => !r.email || !r.full_name) || fields.length === 0}
+          disabled={recipients.some((r) => !r.email || !r.full_name) || fields.length === 0}
           className="w-full mt-4 lg:mt-6 bg-green-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors text-sm lg:text-base"
         >
           Envoyer l'enveloppe
@@ -803,9 +586,20 @@ export default function DocumentWorkflow() {
       </div>
     </div>
   );
+});
 
-  // Panel des documents
-  const DocumentsPanel = ({ className = "" }) => (
+/* =========================
+   PANEL DES DOCUMENTS
+   ========================= */
+const DocumentsPanel = React.memo(({ 
+  className = '',
+  documents,
+  selectedDocId,
+  loadingDocId,
+  numPagesByDoc,
+  selectDocument 
+}) => {
+  return (
     <div className={`bg-white shadow-lg overflow-y-auto border-gray-200 ${className}`}>
       <div className="p-4">
         <h3 className="font-semibold text-gray-900 mb-4 flex items-center text-sm lg:text-base">
@@ -814,7 +608,6 @@ export default function DocumentWorkflow() {
           </svg>
           Documents
         </h3>
-
         {documents.length === 0 ? (
           <div className="text-center py-6 lg:py-8 text-gray-500">
             <svg className="mx-auto h-6 w-6 lg:h-8 lg:w-8 text-gray-400 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -824,7 +617,7 @@ export default function DocumentWorkflow() {
           </div>
         ) : (
           <div className="space-y-2">
-            {documents.map(doc => (
+            {documents.map((doc) => (
               <button
                 key={doc.id}
                 onClick={() => selectDocument(doc)}
@@ -835,14 +628,18 @@ export default function DocumentWorkflow() {
                 }`}
               >
                 <div className="flex items-start space-x-3">
-                  <div className={`relative mt-0.5 w-6 h-8 lg:w-8 lg:h-10 rounded border-2 flex items-center justify-center ${
-                    selectedDocId === doc.id ? 'border-blue-300 bg-blue-100' : 'border-gray-300 bg-gray-50'
-                  }`}>
+                  <div
+                    className={`relative mt-0.5 w-6 h-8 lg:w-8 lg:h-10 rounded border-2 flex items-center justify-center ${
+                      selectedDocId === doc.id ? 'border-blue-300 bg-blue-100' : 'border-gray-300 bg-gray-50'
+                    }`}
+                  >
                     {loadingDocId === doc.id ? (
                       <div className="w-full h-full rounded bg-gray-200 animate-pulse" />
                     ) : (
                       <svg
-                        className={`w-3 h-3 lg:w-4 lg:h-4 ${selectedDocId === doc.id ? 'text-blue-600' : 'text-gray-400'}`}
+                        className={`w-3 h-3 lg:w-4 lg:h-4 ${
+                          selectedDocId === doc.id ? 'text-blue-600' : 'text-gray-400'
+                        }`}
                         fill="currentColor"
                         viewBox="0 0 20 20"
                       >
@@ -882,116 +679,579 @@ export default function DocumentWorkflow() {
       </div>
     </div>
   );
+});
 
-  // Vue PDF
-  const PDFViewer = ({ className = "" }) => (
-    <div className={`flex-1 flex flex-col bg-gray-100 ${className}`}>
-      <div className="flex-1 flex overflow-hidden">
-        <div className="flex-1 overflow-auto" ref={pdfWrapper}>
-          {pdfUrl ? (
-            <div className="p-2 lg:p-6">
-              <div className={`max-w-[900px] mx-auto ${isMobileView ? 'max-w-full' : ''}`}>
-                <Document
-                  key={String(pdfUrl || 'empty')}
-                  file={pdfUrl}
-                  onLoadSuccess={onDocumentLoad}
-                  onLoadError={onDocumentError}
-                  loading={
-                    <div className="flex items-center justify-center py-20">
-                      <div className="animate-spin rounded-full h-6 w-6 lg:h-8 lg:w-8 border-b-2 border-blue-600"></div>
-                      <span className="ml-3 text-gray-600 text-sm lg:text-base">Chargement du PDF...</span>
-                    </div>
-                  }
-                >
-                  {Array.from({ length: numPagesByDoc[selectedDocId] || 0 }, (_, i) => {
-                    const pageNumber = i + 1;
-                    return (
-                      <div key={pageNumber} className={`relative mb-4 lg:mb-8 bg-white shadow-lg rounded-lg overflow-hidden`}>
-                        <div className="absolute top-2 right-2 bg-black/50 text-white px-2 py-1 rounded text-xs lg:text-sm z-20">
-                          Page {pageNumber}
-                        </div>
+/* =========================
+   COMPOSANT PRINCIPAL
+   ========================= */
+export default function DocumentWorkflow() {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const [envelope, setEnvelope] = useState(null);
+  const [flowType, setFlowType] = useState('sequential');
+  const [reminderDays, setReminderDays] = useState(1);
+  const [deadlineEnabled, setDeadlineEnabled] = useState(false);
+  const [deadlineExact, setDeadlineExact] = useState('');const [documents, setDocuments] = useState([]);
+  const [selectedDocId, setSelectedDocId] = useState(null);
+  const [pdfUrl, setPdfUrl] = useState(null);
+  const [isMobileView, setIsMobileView] = useState(false);
+  const [showLeftSidebar, setShowLeftSidebar] = useState(true);
+  const [showRightSidebar, setShowRightSidebar] = useState(true);
+  const [currentMobileTab, setCurrentMobileTab] = useState('recipients');
+  const [pdfWidth, setPdfWidth] = useState(800);
+  const [numPagesByDoc, setNumPagesByDoc] = useState({});
+  const [pageDimensions, setPageDimensions] = useState({});
+  const [recipients, setRecipients] = useState([{ id: undefined, email: '', full_name: '', order: 1 }]);
+  const [fields, setFields] = useState([]);
+  const [placing, setPlacing] = useState({ idx: null, type: 'signature' });
+  const [isUploading, setIsUploading] = useState(false);
+  const [includeQr, setIncludeQr] = useState(false);
+  const [loadingDocId, setLoadingDocId] = useState(null);
 
-                        <Page
-                          pageNumber={pageNumber}
-                          width={pdfWidth}
-                          onLoadSuccess={(page) => onPageLoadSuccess(pageNumber, page)}
-                          renderTextLayer={false}
-                          renderAnnotationLayer={false}
-                        />
+  const pdfWrapper = useRef(null);
+  const prevUrlRef = useRef(null);
+const handleUpdateField = useCallback((field, updates) => {
+    setFields(prev => prev.map(f => {
+      if (f.recipient_id === field.recipient_id &&
+          f.document_id === field.document_id &&
+          f.page === field.page &&
+          f.field_type === field.field_type) {
+        return { ...f, ...updates };
+      }
+      return f;
+    }));
+  }, []);
 
-                        {/* Champs déjà posés (visibles) */}
-                        {fields
-                          .filter(f => f.document_id === selectedDocId && f.page === pageNumber)
-                          .map(f => renderFieldBox(f, pageNumber))
-                        }
+  const handleDeleteField = useCallback((field) => {
+    setFields(prev => prev.filter(f => !(
+      f.recipient_id === field.recipient_id &&
+      f.document_id === field.document_id &&
+      f.page === field.page &&
+      f.field_type === field.field_type
+    )));
+    toast.success('Signature supprimée');
+  }, []);
+  // Calcul de deadlineAt
+   const deadlineAt = useMemo(() => {
+   if (!deadlineEnabled || !deadlineExact) return null; // -> serveur appliquera le défaut
+   return new Date(deadlineExact).toISOString();
+ }, [deadlineEnabled, deadlineExact]);
 
-                        {/* Overlay de clic (pour placer) */}
-                        <div
-                          onClick={e => handlePdfClick(e, pageNumber)}
-                          className={`absolute inset-0 z-10 ${placing.idx !== null ? 'cursor-crosshair bg-yellow-200/10' : 'cursor-default'}`}
-                          style={{ pointerEvents: placing.idx !== null ? 'auto' : 'none' }}
-                        />
-                      </div>
-                    );
-                  })}
-                </Document>
-              </div>
-            </div>
-          ) : (
-            <div className="h-full flex items-center justify-center">
-              <div className="text-center p-4">
-                <svg className="mx-auto h-8 w-8 lg:h-12 lg:w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-                <h3 className="mt-2 text-sm font-medium text-gray-900">Aucun document sélectionné</h3>
-                <p className="mt-1 text-sm text-gray-500">Sélectionnez un document dans la liste</p>
-              </div>
-            </div>
-          )}
-        </div>
+  // -----------------------------
+  //   HOOKS STABLES
+  // -----------------------------
+
+  const stablePdfUrl = useRef(pdfUrl);
+  const stableSelectedDocId = useRef(selectedDocId);
+
+  useEffect(() => {
+    stablePdfUrl.current = pdfUrl;
+    stableSelectedDocId.current = selectedDocId;
+  }, [pdfUrl, selectedDocId]);
+
+  // Détection de la taille d'écran
+  useEffect(() => {
+    const checkScreenSize = () => {
+      const isMobile = window.innerWidth < 1024;
+      setIsMobileView(isMobile);
+      if (isMobile) {
+        setShowLeftSidebar(false);
+        setShowRightSidebar(false);
+      } else {
+        setShowLeftSidebar(true);
+        setShowRightSidebar(true);
+      }
+    };
+    checkScreenSize();
+    const debouncedResize = debounce(checkScreenSize, 100);
+    window.addEventListener('resize', debouncedResize);
+    return () => window.removeEventListener('resize', debouncedResize);
+  }, []);
+
+  function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+      const later = () => {
+        clearTimeout(timeout);
+        func(...args);
+      };
+      clearTimeout(timeout);
+      timeout = setTimeout(later, wait);
+    };
+  }
+
+  useEffect(() => {
+    const prev = prevUrlRef.current;
+    prevUrlRef.current = pdfUrl;
+    return () => {
+      try {
+        if (prev && typeof prev === 'string' && prev.startsWith('blob:')) {
+          URL.revokeObjectURL(prev);
+        }
+      } catch {}
+    };
+  }, [pdfUrl]);
+
+  // -----------------------------
+  //   CALLBACKS
+  // -----------------------------
+
+  const uploadFiles = useCallback(async (files) => {
+    try {
+      setIsUploading(true);
+      await signatureService.updateEnvelopeFiles(id, files);
+      toast.success('Fichiers ajoutés');
+      await reloadEnvelope();
+    } catch (e) {
+      logService.error(e);
+      toast.error("Échec de l'upload");
+    } finally {
+      setIsUploading(false);
+    }
+  }, [id]);
+
+  const reloadEnvelope = useCallback(async () => {
+    const env = await signatureService.getEnvelope(id);
+    setEnvelope(env);
+    setFlowType(env.flow_type || 'sequential');
+    setReminderDays(env.reminder_days ?? 1);
+    if (env.deadline_at) {
+    setDeadlineEnabled(true);
+      const d = new Date(env.deadline_at);
+      const pad = (n) => String(n).padStart(2, '0');
+      const local = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+      setDeadlineExact(local);
+    } else {
+      setDeadlineEnabled(false);
+    setDeadlineExact('');
+    }
+    const docs = env.documents || [];
+    setDocuments(docs);
+    if (env.recipients?.length) setRecipients(env.recipients);
+    if (env.fields?.length) setFields(env.fields);
+    if (docs.length > 0) {
+      const first = docs[0];
+      if (stableSelectedDocId.current !== first.id) {
+        setSelectedDocId(first.id);
+        const blobUrl = await signatureService.fetchDocumentBlob(id, first.id);
+        setPdfUrl(blobUrl);
+      }
+    } else {
+      const res = await signatureService.downloadEnvelope(id);
+      if (stableSelectedDocId.current !== 'single') {
+        setSelectedDocId('single');
+        setPdfUrl(res.download_url);
+      }
+    }
+  }, [id]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        await reloadEnvelope();
+      } catch {
+        toast.error('Impossible de charger le dossier');
+      }
+    })();
+  }, [id, reloadEnvelope]);
+
+  // Largeur PDF
+  useEffect(() => {
+    if (!pdfWrapper.current) return;
+    let lastWidth = -1;
+    const MIN_DELTA = 8;
+    const computeWidth = debounce(() => {
+      const node = pdfWrapper.current;
+      if (!node) return;
+      const padding = isMobileView ? 16 : 48;
+      const container = node.clientWidth || 0;
+      const maxWidth = isMobileView ? 600 : 900;
+      const minWidth = isMobileView ? 280 : 320;
+      const nextWidth = Math.min(Math.max(container - padding, minWidth), maxWidth);
+      if (Math.abs(nextWidth - lastWidth) >= MIN_DELTA) {
+        lastWidth = nextWidth;
+        setPdfWidth(nextWidth);
+      }
+    }, 50);
+    const ro = new ResizeObserver(computeWidth);
+    ro.observe(pdfWrapper.current);
+    computeWidth();
+    return () => ro.disconnect();
+  }, [isMobileView]);
+
+  // Gestionnaire pour placer une signature
+  const handlePlaceSignature = useCallback((idx) => {
+    setPlacing({ idx, type: 'signature' });
+    if (isMobileView) {
+      setCurrentMobileTab('pdf');
+    }
+  }, [isMobileView, setPlacing, setCurrentMobileTab]);
+
+  // Autres callbacks...
+  const onDocumentLoad = useCallback(({ numPages }) => {
+    if (!stableSelectedDocId.current) return;
+    setNumPagesByDoc((prev) =>
+      prev[stableSelectedDocId.current] === numPages ? prev : { ...prev, [stableSelectedDocId.current]: numPages }
+    );
+  }, []);
+
+  const onPageLoadSuccess = useCallback((pageNumber, page) => {
+    if (!stableSelectedDocId.current) return;
+    const vp = page.getViewport({ scale: 1 });
+    setPageDimensions((prev) => {
+      const current = prev[stableSelectedDocId.current]?.[pageNumber];
+      if (current?.width === vp.width && current?.height === vp.height) return prev;
+      return {
+        ...prev,
+        [stableSelectedDocId.current]: {
+          ...prev[stableSelectedDocId.current],
+          [pageNumber]: { width: vp.width, height: vp.height },
+        },
+      };
+    });
+  }, []);
+
+  const onDocumentError = useCallback((err) => {
+    logService.error('PDF Error:', err);
+    toast.error('Erreur lors du chargement du PDF');
+  }, []);
+
+  const selectDocument = useCallback(async (doc) => {
+    if (selectedDocId === doc.id) return;
+    let cancelled = false;
+    setLoadingDocId(doc.id);
+    try {
+      const blobUrl = await signatureService.fetchDocumentBlob(id, doc.id);
+      if (cancelled) return;
+      setPdfUrl(blobUrl);
+      setSelectedDocId(doc.id);
+      setNumPagesByDoc((prev) => ({ ...prev, [doc.id]: undefined }));
+      if (isMobileView) {
+        setCurrentMobileTab('pdf');
+      }
+    } catch (e) {
+      logService.error(e);
+      toast.error('Impossible de charger ce PDF');
+    } finally {
+      setLoadingDocId(null);
+    }
+    return () => { cancelled = true; };
+  }, [selectedDocId, id, isMobileView]);
+
+  const canPlaceSignature = useCallback((recipientIdx) => {
+    const recipient = recipients[recipientIdx];
+    return recipient && recipient.email.trim() && recipient.full_name.trim();
+  }, [recipients]);
+
+  const handlePdfClick = useCallback((e, pageNumber) => {
+    if (placing.idx === null || !selectedDocId) return;
+    const recipient = recipients[placing.idx];
+    if (!canPlaceSignature(placing.idx)) {
+      toast.error("Veuillez renseigner l'email et le nom du destinataire avant de placer sa signature");
+      return;
+    }
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const vp = pageDimensions[selectedDocId]?.[pageNumber] || { width: 600, height: 800 };
+    const factor = pdfWidth / vp.width;
+    const normalized = {
+      x: x / factor,
+      y: y / factor,
+      width: 150 / factor,
+      height: 50 / factor,
+    };
+    setFields((prev) =>
+      prev.filter(
+        (field) =>
+          !(field.recipient_id === recipient.order &&
+            field.document_id === selectedDocId &&
+            field.field_type === 'signature')
+      )
+    );
+    const safeName = sanitize(recipient.full_name);
+    const newField = {
+      recipient_id: recipient.order,
+      document_id: selectedDocId,
+      field_type: 'signature',
+      page: pageNumber,
+      position: normalized,
+      name: `Signature ${safeName}`,
+      required: true,
+      recipient_name: safeName,
+    };
+    setFields((prev) => [...prev, newField]);
+    setPlacing({ idx: null, type: 'signature' });
+    const docName = sanitize((documents.find((d) => d.id === selectedDocId) || {}).name || `Document ${selectedDocId}`);
+    toast.success(`Signature de ${safeName} placée sur ${docName} (page ${pageNumber})`);
+  }, [placing.idx, selectedDocId, pageDimensions, pdfWidth, recipients, documents, canPlaceSignature]);
+
+  const updateRecipient = useCallback((idx, field, value) => {
+    setRecipients((prev) => {
+      const updated = [...prev];
+      updated[idx] = { ...updated[idx], [field]: value };
+      if (field === 'full_name') {
+        setFields((prevFields) =>
+          prevFields.map((fieldItem) => {
+            if (fieldItem.recipient_id === updated[idx].order) {
+              return {
+                ...fieldItem,
+                name: `Signature ${value}`,
+                recipient_name: value,
+              };
+            }
+            return fieldItem;
+          })
+        );
+      }
+      return updated;
+    });
+  }, []);
+
+  const addRecipient = useCallback(() => {
+    setRecipients((prev) => [...prev, { id: undefined, email: '', full_name: '', order: prev.length + 1 }]);
+  }, []);
+
+  const removeRecipient = useCallback((idx) => {
+    if (recipients.length <= 1) return;
+    const recipientToRemove = recipients[idx];
+    setFields((prev) => prev.filter((field) => field.recipient_id !== recipientToRemove.order));
+    setRecipients((prev) => prev.filter((_, i) => i !== idx));
+    if (placing.idx === idx) {
+      setPlacing({ idx: null, type: 'signature' });
+    }
+  }, [recipients, placing.idx]);
+
+  const handleDragEnd = useCallback((result) => {
+    if (!result.destination) return;
+    setRecipients((prev) => {
+      const items = Array.from(prev);
+      const [moved] = items.splice(result.source.index, 1);
+      items.splice(result.destination.index, 0, moved);
+      const orderMap = {};
+      const updated = items.map((rec, i) => {
+        orderMap[rec.order] = i + 1;
+        return { ...rec, order: i + 1 };
+      });
+      setFields((prevFields) =>
+        prevFields.map((f) => (orderMap[f.recipient_id] ? { ...f, recipient_id: orderMap[f.recipient_id] } : f))
+      );
+      return updated;
+    });
+  }, [setFields]);
+
+  const onFilesSelected = useCallback((e) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    uploadFiles(files);
+    e.target.value = '';
+  }, [uploadFiles]);
+
+  const handleSubmit = useCallback(async (e) => {
+    e.preventDefault();
+    try {
+      const payload = {
+        recipients,
+        fields,
+        flow_type: flowType,
+        include_qr_code: includeQr,
+        reminder_days: Number(reminderDays) || 1,
+        deadline_at: deadlineAt,
+      };
+      if (payload.deadline_at && new Date(payload.deadline_at) < new Date()) {
+        toast.error("L'échéance est déjà passée");
+        return;
+      }
+      await signatureService.updateEnvelope(id, payload);
+      await signatureService.sendEnvelope(id, {
+        include_qr_code: includeQr,
+        reminder_days: payload.reminder_days,
+        deadline_at: payload.deadline_at,
+      });
+      toast.success('Enveloppe envoyée');
+      navigate(`/signature/sent/${id}`);
+    } catch (err) {
+      logService.error(err);
+      toast.error("Échec de l'envoi");
+    }
+  }, [id, recipients, fields, flowType, includeQr, reminderDays, deadlineAt, navigate]);
+
+  const hasSignatureOnDoc = useCallback((recipientOrder) =>
+    fields.some((f) => f.recipient_id === recipientOrder && f.document_id === selectedDocId && f.field_type === 'signature'),
+    [fields, selectedDocId]
+  );
+
+  const MobileNavigation = () => (
+    <div className="lg:hidden bg-white border-t border-gray-200 px-4 py-2">
+      <div className="flex space-x-1">
+        <button
+          onClick={() => setCurrentMobileTab('recipients')}
+          className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+            currentMobileTab === 'recipients' ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:bg-gray-100'
+          }`}
+        >
+          Destinataires
+        </button>
+        <button
+          onClick={() => setCurrentMobileTab('pdf')}
+          className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+            currentMobileTab === 'pdf' ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:bg-gray-100'
+          }`}
+        >
+          PDF
+        </button>
+        <button
+          onClick={() => setCurrentMobileTab('documents')}
+          className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+            currentMobileTab === 'documents' ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:bg-gray-100'
+          }`}
+        >
+          Documents
+        </button>
       </div>
     </div>
   );
 
-  // ---- Rendu principal ----
+  // -----------------------------
+  //   RENDU
+  // -----------------------------
+
   if (isMobileView) {
-    // Vue mobile avec navigation par onglets
     return (
       <div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
-      <MobileNavigation />
+        <MobileNavigation />
         <div className="flex-1 overflow-hidden">
           {currentMobileTab === 'recipients' && (
-            <RecipientsPanel className="h-full border-r" />
+            <RecipientsPanel
+              className="h-full border-r"
+              flowType={flowType}
+              setFlowType={setFlowType}
+              includeQr={includeQr}
+              setIncludeQr={setIncludeQr}
+              reminderDays={reminderDays}
+              setReminderDays={setReminderDays}
+              deadlineEnabled={deadlineEnabled}
+              setDeadlineEnabled={setDeadlineEnabled}
+              deadlineExact={deadlineExact}
+              setDeadlineExact={setDeadlineExact}
+              deadlineAt={deadlineAt}
+              documents={documents}
+              selectedDocId={selectedDocId}
+              isUploading={isUploading}
+              onFilesSelected={onFilesSelected}
+              recipients={recipients}
+              updateRecipient={updateRecipient}
+              addRecipient={addRecipient}
+              removeRecipient={removeRecipient}
+              handleDragEnd={handleDragEnd}
+              fields={fields}
+              placing={placing}
+              setPlacing={setPlacing}
+              isMobileView={isMobileView}
+              canPlaceSignature={canPlaceSignature}
+              hasSignatureOnDoc={hasSignatureOnDoc}
+              handleSubmit={handleSubmit}
+              handlePlaceSignature={handlePlaceSignature} // 👈 passé ici
+            />
           )}
           {currentMobileTab === 'pdf' && (
-            <PDFViewer className="h-full" />
+            <PDFViewer
+              className="h-full"
+              pdfUrl={pdfUrl}
+              pdfWidth={pdfWidth}
+              selectedDocId={selectedDocId}
+              numPagesByDoc={numPagesByDoc}
+              pageDimensions={pageDimensions}
+              fields={fields}
+              placing={placing}
+              onDocumentLoad={onDocumentLoad}
+              onPageLoadSuccess={onPageLoadSuccess}
+              onDocumentError={onDocumentError}
+              handlePdfClick={handlePdfClick}
+              onUpdateField={handleUpdateField}
+              onDeleteField={handleDeleteField}
+              isMobileView={isMobileView}
+              pdfWrapper={pdfWrapper}
+            />
           )}
           {currentMobileTab === 'documents' && (
-            <DocumentsPanel className="h-full border-l" />
+            <DocumentsPanel
+              className="h-full border-l"
+              documents={documents}
+              selectedDocId={selectedDocId}
+              loadingDocId={loadingDocId}
+              numPagesByDoc={numPagesByDoc}
+              selectDocument={selectDocument}
+            />
           )}
         </div>
-        
       </div>
     );
   }
 
-  // Vue desktop avec sidebars
   return (
     <div className="h-screen bg-gray-50 flex overflow-hidden">
-      {/* Sidebar Gauche - Destinataires */}
       {showLeftSidebar && (
-        <RecipientsPanel className="w-80 border-r" />
+        <RecipientsPanel
+          className="w-80 border-r"
+          flowType={flowType}
+          setFlowType={setFlowType}
+          includeQr={includeQr}
+          setIncludeQr={setIncludeQr}
+          reminderDays={reminderDays}
+          setReminderDays={setReminderDays}
+          deadlineEnabled={deadlineEnabled}
+          setDeadlineEnabled={setDeadlineEnabled}
+          deadlineExact={deadlineExact}
+          setDeadlineExact={setDeadlineExact}
+          deadlineAt={deadlineAt}
+          documents={documents}
+          selectedDocId={selectedDocId}
+          isUploading={isUploading}
+          onFilesSelected={onFilesSelected}
+          recipients={recipients}
+          updateRecipient={updateRecipient}
+          addRecipient={addRecipient}
+          removeRecipient={removeRecipient}
+          handleDragEnd={handleDragEnd}
+          fields={fields}
+          placing={placing}
+          setPlacing={setPlacing}
+          isMobileView={isMobileView}
+          canPlaceSignature={canPlaceSignature}
+          hasSignatureOnDoc={hasSignatureOnDoc}
+          handleSubmit={handleSubmit}
+          handlePlaceSignature={handlePlaceSignature}
+        />
       )}
-
-      {/* Zone centrale - PDF Viewer */}
-      <PDFViewer />
-
-      {/* Sidebar Droite - Documents */}
+      <PDFViewer
+        pdfUrl={pdfUrl}
+        pdfWidth={pdfWidth}
+        selectedDocId={selectedDocId}
+        numPagesByDoc={numPagesByDoc}
+        pageDimensions={pageDimensions}
+        fields={fields}
+        placing={placing}
+        onDocumentLoad={onDocumentLoad}
+        onPageLoadSuccess={onPageLoadSuccess}
+        onDocumentError={onDocumentError}
+        handlePdfClick={handlePdfClick}
+        onUpdateField={handleUpdateField}
+        onDeleteField={handleDeleteField}
+        isMobileView={isMobileView}
+        pdfWrapper={pdfWrapper}
+      />
       {showRightSidebar && (
-        <DocumentsPanel className="w-72 border-l" />
+        <DocumentsPanel
+          className="w-72 border-l"
+          documents={documents}
+          selectedDocId={selectedDocId}
+          loadingDocId={loadingDocId}
+          numPagesByDoc={numPagesByDoc}
+          selectDocument={selectDocument}
+        />
       )}
-
-      {/* Boutons pour masquer/afficher les sidebars sur desktop */}
+      {/* Boutons de visibilité desktop */}
       {!isMobileView && (
         <>
           {!showLeftSidebar && (

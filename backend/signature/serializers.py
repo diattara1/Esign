@@ -12,7 +12,7 @@ from .models import (SavedSignature, FieldTemplate, BatchSignJob, BatchSignItem,
 )
 
 from django.utils.encoding import force_str
-from django.utils.http import urlsafe_base64_decode
+from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
 from PyPDF2 import PdfReader
 import io
 import logging

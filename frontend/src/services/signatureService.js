@@ -96,6 +96,15 @@ export default {
   sign(id, body, token) {
     return token ? this.signGuest(id, body, token) : this.signAuthenticated(id, body);
   },
+// Demande d'email de réinitialisation
+requestPasswordReset: (email) =>
+  apiRequest(
+    'post',
+    `${BASE}/password-reset/`,
+    { email },
+    undefined,
+    "Impossible d'envoyer l'email de réinitialisation"
+  ),
 
   getAuthenticatedEnvelope: id =>
     apiRequest('get', `${BASE}/envelopes/${id}/sign-page/`, null, undefined, "Impossible de récupérer l'enveloppe"),

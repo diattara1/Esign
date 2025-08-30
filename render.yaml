@@ -10,9 +10,10 @@ services:
         value: esign.settings
       - key: CELERY_BROKER_URL
         fromService:
-          name: esign-redis        # référence le service Key Value ci-dessous
+          name: esign-redis
+          type: keyvalue
           property: connectionString
-      # … tes autres VARs (POSTGRES_*, DJANGO_SECRET_KEY, etc.)
+      # … autres VARs (POSTGRES_*, DJANGO_SECRET_KEY, etc.)
 
   - type: worker
     name: esign-celery-worker
@@ -26,6 +27,7 @@ services:
       - key: CELERY_BROKER_URL
         fromService:
           name: esign-redis
+          type: keyvalue
           property: connectionString
 
   - type: worker
@@ -40,13 +42,13 @@ services:
       - key: CELERY_BROKER_URL
         fromService:
           name: esign-redis
+          type: keyvalue
           property: connectionString
 
-  # Instance Render Key Value (Redis®-compatible)
-  - type: keyvalue               # (alias déprécié possible: redis)
+  # Render Key Value (Redis®-compatible)
+  - type: keyvalue
     name: esign-redis
     region: oregon
-    plan: free                   # ou starter/pro, selon ton besoin
-    ipAllowList: []              # vide = accès interne uniquement (préféré)
-    # Optionnel: désactive l’éviction si tu veux éviter la perte de jobs
-    # maxmemoryPolicy: noeviction
+    plan: free          # OK pour Key Value
+    ipAllowList: []     # requis pour Key Value; [] = accès interne uniquement
+    # maxmemoryPolicy: noeviction  # optionnel ; par défaut allkeys-lru

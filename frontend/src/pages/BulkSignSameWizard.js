@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useLayoutEffect, useCallback, useMemo } from 'react';
 import { Document, Page } from 'react-pdf';
 import { toast } from 'react-toastify';
-import { FiLayers, FiDownload, FiMove, FiFile, FiX, FiMenu } from 'react-icons/fi';
+import { FiLayers, FiDownload, FiMove, FiFile, FiX, FiMenu, FiTrash2 } from 'react-icons/fi';
 import signatureService from '../services/signatureService';
 import { api } from '../services/apiUtils';
 import Modal from 'react-modal';
@@ -13,6 +13,7 @@ import 'react-pdf/dist/Page/TextLayer.css';
 
 const savedSignatureImageUrl = (id) => `${(api?.defaults?.baseURL || '').replace(/\/$/, '')}/api/signature/saved-signatures/${id}/image/`;
 
+// Rasterise n’importe quel blob en data:image/png;base64,...
 const blobToPngDataURL = async (blob) => {
   try {
     const bmp = await createImageBitmap(blob);
@@ -38,6 +39,7 @@ const blobToPngDataURL = async (blob) => {
   }
 };
 
+// Convertit un File d'image en data:image/png;base64
 const fileToPngDataURL = async (file) => {
   try {
     const bmp = await createImageBitmap(file);
@@ -63,6 +65,7 @@ const fileToPngDataURL = async (file) => {
   }
 };
 
+// Charge l’image d’une signature enregistrée → dataURL PNG
 const fetchSavedSignatureAsDataURL = async (sig) => {
   if (sig?.data_url) return sig.data_url;
   const res = await fetch(savedSignatureImageUrl(sig.id), { credentials: 'include' });
@@ -70,11 +73,30 @@ const fetchSavedSignatureAsDataURL = async (sig) => {
   return blobToPngDataURL(await res.blob());
 };
 
-// NEW: convertir une dataURL en Blob pour envoyer un "vrai fichier" à l'API
+// Normalise n'importe quelle dataURL (png/jpg/svg) en **PNG** dataURL
+const ensurePngDataURL = async (dataUrl) => {
+  if (!dataUrl) return '';
+  if (dataUrl.startsWith('data:image/png')) return dataUrl;
+  const img = await new Promise((resolve, reject) => {
+    const i = new Image();
+    i.onload = () => resolve(i);
+    i.onerror = reject;
+    i.src = dataUrl;
+  });
+  const c = document.createElement('canvas');
+  c.width = img.naturalWidth || img.width || 800;
+  c.height = img.naturalHeight || img.height || 300;
+  const ctx = c.getContext('2d');
+  ctx.clearRect(0, 0, c.width, c.height);
+  ctx.drawImage(img, 0, 0);
+  return c.toDataURL('image/png');
+};
+
+// Convertit dataURL -> Blob (fichier)
 const dataURLtoBlob = (dataUrl) => {
   const [meta, b64] = dataUrl.split(',');
-  const mime = (meta.match(/data:(.*?);base64/) || [])[1] || 'image/png';
-  const bin = atob(b64);
+  const mime = (meta?.match(/data:(.*?);base64/) || [])[1] || 'image/png';
+  const bin = atob(b64 || '');
   const len = bin.length;
   const u8 = new Uint8Array(len);
   for (let i = 0; i < len; i++) u8[i] = bin.charCodeAt(i);
@@ -202,9 +224,7 @@ function SignatureModal({ isOpen, onClose, onConfirm, savedSignatures }) {
   const [tempDataUrl, setTempDataUrl] = useState('');
   const [savedSelectedId, setSavedSelectedId] = useState(null);
 
-  useEffect(() => {
-    if (isOpen) { setMode('draw'); setTempDataUrl(''); setSavedSelectedId(null); }
-  }, [isOpen]);
+  useEffect(() => { if (isOpen) { setMode('draw'); setTempDataUrl(''); setSavedSelectedId(null); } }, [isOpen]);
 
   const handleUpload = async (ev) => {
     const f = ev.target.files?.[0];
@@ -265,7 +285,7 @@ function SignatureModal({ isOpen, onClose, onConfirm, savedSignatures }) {
 
       <div className="mt-4 flex justify-end gap-2">
         <button onClick={onClose} className="px-4 py-2 rounded bg-gray-200">Annuler</button>
-        {/* PASSER AUSSI l'ID sauvegardé quand pertinent */}
+        {/* Passe aussi l'ID sauvegardé si sélectionné */}
         <button onClick={()=> { if(!tempDataUrl) return toast.error('Veuillez fournir une signature'); onConfirm(tempDataUrl, savedSelectedId); }} className="px-4 py-2 rounded bg-blue-600 text-white">Valider</button>
       </div>
     </Modal>
@@ -282,7 +302,7 @@ export default function BulkSignSameWizard() {
   const [placement, setPlacement] = useState(null); // {page,x,y,width,height}
 
   const [sigDataUrl, setSigDataUrl] = useState('');
-  const [sigSavedId, setSigSavedId] = useState(null); // NEW: id signature enregistrée
+  const [sigSavedId, setSigSavedId] = useState(null); // id signature enregistrée
   const [savedSignatures, setSavedSignatures] = useState([]);
 
   const [pdfUrl, setPdfUrl] = useState(null);
@@ -291,7 +311,7 @@ export default function BulkSignSameWizard() {
   const [docKey, setDocKey] = useState(0);
   const viewerRef = useRef(null);
   const [viewerWidth, setViewerWidth] = useState(0);
-  const pollingRef = useRef(null);
+  const pdfsInputRef = useRef(null);
   const [isProcessing, setIsProcessing] = useState(false);
 
   // responsive UI
@@ -299,34 +319,26 @@ export default function BulkSignSameWizard() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const toggleSidebar = useCallback(() => setSidebarOpen((o) => !o), []);
 
-  // refs pour reset inputs
-  const pdfsInputRef = useRef(null);
-
-  // ---- layout measure (simplifié : pas de RAF, arrondi, 1 seul listener) ----
+  /* ---------------- layout & responsive (aligné sur SelfSign) ---------------- */
   useLayoutEffect(() => {
-    const measure = () => {
-      const w = Math.floor(viewerRef.current?.getBoundingClientRect().width ?? 600);
-      setViewerWidth((prev) => (prev !== w ? w : prev));
-    };
-    const setBp = () => setIsMobile(window.innerWidth < 1024);
-
-    measure(); setBp();
-
+    const measure = () => setViewerWidth(viewerRef.current?.clientWidth || 600);
+    const onResize = () => setIsMobile(window.innerWidth < 768);
+    measure(); onResize();
     const ro = new ResizeObserver(measure);
     if (viewerRef.current) ro.observe(viewerRef.current);
-
-    window.addEventListener('resize', setBp);
-    return () => { ro.disconnect(); window.removeEventListener('resize', setBp); };
+    window.addEventListener('resize', measure);
+    window.addEventListener('resize', onResize);
+    return () => { ro.disconnect(); window.removeEventListener('resize', measure); window.removeEventListener('resize', onResize); };
   }, []);
 
-  // Échap pour fermer le panneau mobile
+  // Échap ferme le panneau mobile
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') setSidebarOpen(false); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  // lock scroll when drawer open
+  // Empêche le scroll derrière le drawer
   useEffect(() => {
     if (!isMobile) return;
     const prev = document.body.style.overflow;
@@ -337,17 +349,10 @@ export default function BulkSignSameWizard() {
   // Charger les signatures enregistrées
   useEffect(() => { signatureService.listSavedSignatures().then(setSavedSignatures).catch(()=>{}); }, []);
 
-  // Revoke objectURL on unmount / change
+  // Nettoyage URL objet
   useEffect(() => () => pdfUrl && URL.revokeObjectURL(pdfUrl), [pdfUrl]);
 
-  // ---- helpers ----
-  const pageScale = (n) => {
-    const padding = isMobile ? 24 : 32; // p-4
-    // FIX: retirer le plancher 320px, garder une limite haute pour desktop
-    const w = Math.min(viewerWidth - padding, 900);
-    return w / (pageDims[n]?.width || w || 1);
-  };
-
+  // ---- uploads ----
   const onFiles = (e) => {
     const arr = Array.from(e.target.files || []).filter((f) => f.type === 'application/pdf');
     if (!arr.length) { setFiles([]); setPdfUrl(null); setDocKey(k=>k+1); return; }
@@ -362,18 +367,28 @@ export default function BulkSignSameWizard() {
     if (isMobile) setSidebarOpen(false);
   };
 
+  // react-pdf
   const onDocLoad = ({ numPages }) => setNumPages(numPages);
   const onPageLoad = (n, page) => {
     const vp = page.getViewport({ scale: 1 });
     setPageDims((d) => ({ ...d, [n]: { width: vp.width, height: vp.height } }));
   };
 
+  // Calcul d’échelle façon SelfSign
+  const pageScale = (pageNumber) => {
+    const containerPadding = isMobile ? 24 : 48; // p-3 / md:p-6
+    const pageWidth = Math.min(Math.max((viewerWidth || 600) - containerPadding, 320), 900);
+    const natural = pageDims[pageNumber]?.width || 1;
+    return pageWidth / natural;
+  };
+
+  // Placement zone
   const handleOverlayClick = (e, pageNumber) => {
     if (!placing) return;
     const rect = e.currentTarget.getBoundingClientRect();
-    const s = pageScale(pageNumber);
-    const x = (e.clientX - rect.left) / s;
-    const y = (e.clientY - rect.top) / s;
+    const scale = pageScale(pageNumber);
+    const x = (e.clientX - rect.left) / scale;
+    const y = (e.clientY - rect.top) / scale;
     setPlacement({ page: pageNumber, x, y, width: 160, height: 50 });
     setPlacing(false);
     toast.success(`Zone définie (page ${pageNumber}) — appliquée à tous les documents`);
@@ -383,7 +398,6 @@ export default function BulkSignSameWizard() {
 
   const [modalOpen, setModalOpen] = useState(false);
   const openSignatureModal = () => { if (!placement) return toast.info('Définis d’abord la zone'); setModalOpen(true); };
-  // FIX: récupérer aussi l'ID de signature enregistrée
   const handleModalConfirm = (dataUrl, savedId = null) => { setSigDataUrl(dataUrl); setSigSavedId(savedId); setModalOpen(false); toast.success('Signature ajoutée'); };
 
   // ---- submit + polling ----
@@ -393,17 +407,18 @@ export default function BulkSignSameWizard() {
     if (!sigDataUrl && !sigSavedId) return toast.error('Ajoute une image de signature');
 
     const fd = new FormData();
-    files.forEach((f) => fd.append('files', f));
+    files.forEach((f) => fd.append('files[]', f)); // aligné avec SelfSign
     fd.append('mode', 'bulk_same_spot');
     fd.append('placements', JSON.stringify([placement]));
     fd.append('include_qr', includeQr ? 'true' : 'false');
 
-    // FIX: si une signature enregistrée est sélectionnée => utiliser use_saved_signature_id
     if (sigSavedId) {
       fd.append('use_saved_signature_id', String(sigSavedId));
     } else {
-      // sinon on envoie un FICHIER image (Blob), pas une dataURL string
-      fd.append('signature_image', dataURLtoBlob(sigDataUrl), 'signature.png');
+      const pngDataUrl = await ensurePngDataURL(sigDataUrl);
+      const blob = dataURLtoBlob(pngDataUrl.replace(/^data:image\/[^;]+/, 'data:image/png'));
+      if (!blob || !blob.size) return toast.error('Signature vide — revalide ta signature ou réessaie.');
+      fd.append('signature_image', blob, 'signature.png');
     }
 
     setIsProcessing(true);
@@ -425,10 +440,16 @@ export default function BulkSignSameWizard() {
       pollingRef.current = setInterval(poll, 2000);
     } catch (e) {
       setIsProcessing(false);
-      toast.error(e?.response?.data?.error || 'Erreur au lancement du job');
+      const err = e?.response?.data;
+      if (err instanceof Blob) {
+        try { const t = await err.text(); const j = JSON.parse(t); toast.error(j?.error || t); } catch { toast.error('Erreur inconnue'); }
+      } else {
+        toast.error(e?.response?.data?.error || 'Erreur au lancement du job');
+      }
     }
   };
 
+  const pollingRef = useRef(null);
   useEffect(() => () => pollingRef.current && clearInterval(pollingRef.current), []);
 
   const resetAll = () => {
@@ -442,22 +463,22 @@ export default function BulkSignSameWizard() {
 
   const Sidebar = () => (
     <div className="h-full flex flex-col">
-      <div className="p-4 lg:p-6 border-b border-gray-200 flex items-center justify-between">
-        <div className="flex items-center"><FiLayers className="w-6 h-6 text-blue-600 mr-3" /><h1 className="text-xl lg:text-2xl font-bold text-gray-800">Signature masse</h1></div>
+      <div className="p-4 md:p-6 border-b border-gray-200 flex items-center justify-between">
+        <div className="flex items-center gap-3"><FiLayers className="w-6 h-6 text-blue-600" /><h1 className="text-lg md:text-xl font-bold text-gray-800">Signature en lot</h1></div>
         {(files.length || placement || sigDataUrl) && (
-          <button onClick={resetAll} className="text-gray-500 hover:text-gray-700 text-sm flex items-center gap-1" title="Réinitialiser"><FiX className="w-4 h-4" /> Reset</button>
+          <button onClick={resetAll} className="text-gray-500 hover:text-gray-700 text-sm flex items-center gap-1" title="Réinitialiser"><FiTrash2 className="w-4 h-4" /> Reset</button>
         )}
       </div>
 
-      <div className="p-4 lg:p-6">
-        <p className="text-sm text-gray-600 mb-6">Définis une zone sur le premier PDF, elle sera appliquée à tous les autres.</p>
+      <div className="p-4 md:p-6">
+        <p className="text-sm text-gray-600 mb-6">Définis une zone sur le premier PDF, elle sera appliquée à tous.</p>
 
         {/* Upload PDFs */}
         <div className="mb-6">
           <label className="block font-medium mb-2 text-gray-700">PDF(s)</label>
           <input ref={pdfsInputRef} type="file" accept="application/pdf" multiple onChange={onFiles}
                  className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" />
-          <p className="text-xs text-gray-500 mt-1">Sélectionne plusieurs PDF (même emplacement de signature).</p>
+          <p className="text-xs text-gray-500 mt-1">Sélectionne plusieurs PDF (même emplacement).</p>
         </div>
 
         {/* Files list */}
@@ -515,24 +536,24 @@ export default function BulkSignSameWizard() {
 
   return (
     <div className="h-screen bg-gray-50 flex" style={containerOverlayStyle}>
-      {/* Overlay mobile (fluide, intégré) */}
+      {/* Overlay mobile */}
       {isMobile && (
         <div className={`fixed inset-0 bg-black/50 z-30 transition-opacity duration-200 ${sidebarOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} onClick={() => setSidebarOpen(false)} />
       )}
 
       {/* Sidebar (drawer intégré) */}
-      <aside id="mobile-panel" className={`${isMobile ? `fixed inset-y-0 left-0 z-40 w-full max-w-sm transform transition-transform duration-300 ease-in-out will-change-transform ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}` : 'w-full lg:w-1/3'} bg-white border-r border-gray-200`} aria-hidden={!sidebarOpen && isMobile}>
+      <aside id="mobile-panel" className={`${isMobile ? `fixed inset-y-0 left-0 z-40 w-full max-w-sm transform transition-transform duration-300 ease-in-out will-change-transform ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}` : 'w-full lg:w-1/3 max-w-md'} bg-white border-r border-gray-200`} aria-hidden={!sidebarOpen && isMobile}>
         <div className="relative z-40 bg-white h-full overflow-auto"><Sidebar /></div>
       </aside>
 
       {/* Viewer */}
       <div className="flex-1 flex flex-col" ref={viewerRef} style={isProcessing ? { pointerEvents: 'none', filter: 'grayscale(0.2)', opacity: 0.7 } : {}}>
-        <div className="bg-white border-b border-gray-200 px-4 lg:px-6 py-3 sticky top-0 z-10">
+        <div className="bg-white border-b border-gray-200 px-4 md:px-6 py-3 sticky top-0 z-10">
           <div className="flex items-center justify-between gap-3">
-            <h2 className="text-base lg:text-lg font-semibold text-gray-900 truncate">{files[0]?.name || 'Aperçu PDF'}</h2>
+            <h2 className="text-base md:text-lg font-semibold text-gray-900 truncate">{files[0]?.name || 'Aperçu PDF'}</h2>
             <div className="flex items-center gap-2">
-              {placement && <span className="hidden lg:inline px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded-full">Zone p.{placement.page}</span>}
-              {placing && <span className="px-3 py-1 bg-yellow-100 text-yellow-800 text-xs lg:text-sm rounded-full animate-pulse">Placement actif</span>}
+              {placement && <span className="hidden md:inline px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded-full">Zone p.{placement.page}</span>}
+              {placing && <span className="px-3 py-1 bg-yellow-100 text-yellow-800 text-xs md:text-sm rounded-full animate-pulse">Placement actif</span>}
               {isMobile && (
                 <button onClick={toggleSidebar} aria-expanded={sidebarOpen} aria-controls="mobile-panel" className="p-2 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 active:scale-95 transition" title={sidebarOpen ? 'Fermer le panneau' : 'Ouvrir le panneau'}>
                   {sidebarOpen ? <FiX className="w-5 h-5" /> : <FiMenu className="w-5 h-5" />}
@@ -542,70 +563,71 @@ export default function BulkSignSameWizard() {
           </div>
         </div>
 
-        <div className="flex-1 overflow-auto p-4" style={{ scrollbarGutter: 'stable both-edges', overscrollBehavior: 'contain' }}>
+        <div className="flex-1 overflow-auto bg-gray-100">
           {!pdfUrl ? (
-            <div className="flex items-center justify-center h-full text-center text-gray-500">
+            <div className="flex items-center justify-center h-full p-6 text-center">
               <div>
-                <FiLayers className="w-12 h-12 mx-auto mb-4 text-gray-300" />
-                <p className="text-lg font-medium">Ajoute des PDF pour commencer</p>
-                <p className="text-sm">La zone choisie sera appliquée à tous les documents</p>
+                <FiLayers className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+                <p className="text-gray-600 text-lg">Ajoute des PDF pour commencer</p>
+                <p className="text-gray-400 text-sm mt-2">La zone choisie sera appliquée à tous les documents</p>
                 {isMobile && <button onClick={toggleSidebar} className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg">Ouvrir les options</button>}
               </div>
             </div>
           ) : (
-            <div className="bg-white rounded-lg shadow-sm">
-              <div className="p-4 border-b border-gray-200 bg-gray-50 rounded-t-lg">
-                <h3 className="font-medium text-gray-800">Aperçu du premier document</h3>
-                <p className="text-sm text-gray-600">Définis la zone de signature qui sera appliquée sur {files.length} document(s)</p>
-              </div>
-              <div className="p-4">
-                <Document key={docKey} file={pdfUrl} onLoadSuccess={onDocLoad}
-                          loading={<div className="flex items-center justify-center p-8"><div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" /></div>}
-                          error={<div className="text-red-500 text-center p-8">Erreur lors du chargement du PDF</div>}>
-                  {Array.from({ length: numPages }, (_, i) => {
-                    const n = i + 1;
-                    const padding = isMobile ? 24 : 32; // p-4
-                    // FIX: retire min 320 et utilise conteneur fluide
-                    const pageMaxWidth = Math.min(viewerWidth - padding, 900);
-                    const s = pageMaxWidth / (pageDims[n]?.width || 1);
+            <div className="p-3 md:p-6">
+              <div className="bg-white rounded-lg shadow-sm">
+                <div className="p-4 border-b border-gray-200 bg-gray-50 rounded-t-lg">
+                  <h3 className="font-medium text-gray-800">Aperçu du premier document</h3>
+                  <p className="text-sm text-gray-600">Définis la zone de signature qui sera appliquée sur {files.length} document(s)</p>
+                </div>
+                <div className="p-3 md:p-6">
+                  <Document key={docKey} file={pdfUrl} onLoadSuccess={onDocLoad}
+                            loading={<div className="flex items-center justify-center p-8"><div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" /></div>}
+                            error={<div className="text-red-500 text-center p-8">Erreur lors du chargement du PDF</div>}>
+                    {Array.from({ length: numPages }, (_, i) => {
+                      const n = i + 1;
+                      const containerPadding = isMobile ? 24 : 48; // p-3/md:p-6
+                      const pageWidth = Math.min(Math.max((viewerWidth || 600) - containerPadding, 320), 900);
+                      const s = pageWidth / (pageDims[n]?.width || 1);
 
-                    const fieldObj = placement && placement.page === n ? { position: { x: placement.x, y: placement.y, width: placement.width, height: placement.height } } : null;
+                      const fieldObj = placement && placement.page === n ? { position: { x: placement.x, y: placement.y, width: placement.width, height: placement.height } } : null;
 
-                    return (
-                      <div key={i} className="relative mb-6 last:mb-0" style={{ width: '100%', maxWidth: pageMaxWidth, margin: '0 auto' }}>
-                        <Page
-                          pageNumber={n}
-                          width={pageMaxWidth}
-                          renderTextLayer={false}
-                          renderAnnotationLayer={false}
-                          onLoadSuccess={(p) => onPageLoad(n, p)}
-                          className="border border-gray-200 rounded-lg shadow-sm"
-                        />
-                        {pageDims[n] && (
-                          <div
-                            onClick={(e) => handleOverlayClick(e, n)}
-                            className="absolute top-0 left-0 rounded-lg"
-                            style={{ width: '100%', height: pageDims[n].height * s, cursor: placing ? 'crosshair' : 'default', zIndex: 10, backgroundColor: placing ? 'rgba(59,130,246,.06)' : 'transparent' }}
+                      return (
+                        <div key={i} className="relative mb-6 bg-white shadow rounded-lg overflow-hidden">
+                          <Page
+                            pageNumber={n}
+                            width={pageWidth}
+                            renderTextLayer={false}
+                            renderAnnotationLayer={false}
+                            onLoadSuccess={(p) => onPageLoad(n, p)}
+                            className="mx-auto"
                           />
-                        )}
+                          {pageDims[n] && (
+                            <div
+                              onClick={(e) => handleOverlayClick(e, n)}
+                              className="absolute top-0 left-1/2 -translate-x-1/2"
+                              style={{ width: pageWidth, height: pageDims[n].height * s, cursor: placing ? 'crosshair' : 'default', zIndex: 10, backgroundColor: placing ? 'rgba(59,130,246,.06)' : 'transparent' }}
+                            />
+                          )}
 
-                        {fieldObj && (
-                          <DraggableSignature
-                            field={fieldObj}
-                            factor={s}
-                            isMobileView={isMobile}
-                            onUpdate={(field, { position }) => setPlacement(p => ({ ...p, ...position }))}
-                            onDelete={() => { setPlacement(null); setSigDataUrl(''); setSigSavedId(null); }}
-                            onOpenModal={openSignatureModal}
-                            image={sigDataUrl}
-                          />
-                        )}
+                          {fieldObj && (
+                            <DraggableSignature
+                              field={fieldObj}
+                              factor={s}
+                              isMobileView={isMobile}
+                              onUpdate={(field, { position }) => setPlacement(p => ({ ...p, ...position }))}
+                              onDelete={() => { setPlacement(null); setSigDataUrl(''); setSigSavedId(null); }}
+                              onOpenModal={openSignatureModal}
+                              image={sigDataUrl}
+                            />
+                          )}
 
-                        <div className="absolute bottom-2 right-2 bg-gray-900/75 text-white text-xs px-2 py-1 rounded">Page {n}/{numPages}</div>
-                      </div>
-                    );
-                  })}
-                </Document>
+                          <div className="absolute bottom-2 right-2 bg-gray-900/75 text-white text-xs px-2 py-1 rounded">Page {n}/{numPages}</div>
+                        </div>
+                      );
+                    })}
+                  </Document>
+                </div>
               </div>
             </div>
           )}
@@ -616,7 +638,7 @@ export default function BulkSignSameWizard() {
             <div className="bg-white rounded-xl shadow-xl p-6 w-80 text-center">
               <div className="mx-auto mb-4 w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
               <h3 className="text-lg font-semibold text-gray-900">Traitement en cours…</h3>
-              <p className="text-sm text-gray-600 mt-1">Nous lançons la signature en lot, cela peut prendre un moment.</p>
+              <p className="text-sm text-gray-600 mt-1">Signature en lot — quelques secondes.</p>
             </div>
           </div>
         )}

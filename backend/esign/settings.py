@@ -21,6 +21,15 @@ SECRET_KEY = env("DJANGO_SECRET_KEY")
 DEBUG = env.bool("DJANGO_DEBUG", default=True)
 
 # Hosts
+
+ALLOWED_HOSTS = [
+    "localhost",
+    "127.0.0.1",
+    "esign-5mbk.onrender.com", 
+]
+
+
+
 BACKEND_BASE_URL = os.getenv("BACKEND_BASE_URL", "http://localhost:8000")
 
 # Apps

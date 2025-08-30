@@ -2,7 +2,7 @@ services:
   - type: web
     name: esign-web
     runtime: python
-    region: oregon # par ex., mets la même que Redis
+    region: oregon
     buildCommand: pip install -r requirements.txt
     startCommand: gunicorn esign.wsgi:application
     envVars:
@@ -10,9 +10,8 @@ services:
         value: esign.settings
       - key: CELERY_BROKER_URL
         fromService:
-          type: key-value
-          name: esign-redis           # remplace par le nom de ton instance
-          property: connectionString  # Internal URL
+          name: esign-redis        # référence le service Key Value ci-dessous
+          property: connectionString
       # … tes autres VARs (POSTGRES_*, DJANGO_SECRET_KEY, etc.)
 
   - type: worker
@@ -26,10 +25,8 @@ services:
         value: esign.settings
       - key: CELERY_BROKER_URL
         fromService:
-          type: key-value
           name: esign-redis
           property: connectionString
-      # mêmes VARs que le web si nécessaire (ex: EMAIL_*)
 
   - type: worker
     name: esign-celery-beat
@@ -42,10 +39,14 @@ services:
         value: esign.settings
       - key: CELERY_BROKER_URL
         fromService:
-          type: key-value
           name: esign-redis
           property: connectionString
 
-  - type: key-value
+  # Instance Render Key Value (Redis®-compatible)
+  - type: keyvalue               # (alias déprécié possible: redis)
     name: esign-redis
-    # Pas de build/start command ; crée l’instance KV ici
+    region: oregon
+    plan: free                   # ou starter/pro, selon ton besoin
+    ipAllowList: []              # vide = accès interne uniquement (préféré)
+    # Optionnel: désactive l’éviction si tu veux éviter la perte de jobs
+    # maxmemoryPolicy: noeviction

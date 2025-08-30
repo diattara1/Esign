@@ -70,6 +70,17 @@ const fetchSavedSignatureAsDataURL = async (sig) => {
   return blobToPngDataURL(await res.blob());
 };
 
+// NEW: convertir une dataURL en Blob pour envoyer un "vrai fichier" à l'API
+const dataURLtoBlob = (dataUrl) => {
+  const [meta, b64] = dataUrl.split(',');
+  const mime = (meta.match(/data:(.*?);base64/) || [])[1] || 'image/png';
+  const bin = atob(b64);
+  const len = bin.length;
+  const u8 = new Uint8Array(len);
+  for (let i = 0; i < len; i++) u8[i] = bin.charCodeAt(i);
+  return new Blob([u8], { type: mime });
+};
+
 /* ----------------------------- Draggable ------------------------------ */
 
 const DraggableSignature = React.memo(function DraggableSignature({
@@ -254,7 +265,8 @@ function SignatureModal({ isOpen, onClose, onConfirm, savedSignatures }) {
 
       <div className="mt-4 flex justify-end gap-2">
         <button onClick={onClose} className="px-4 py-2 rounded bg-gray-200">Annuler</button>
-        <button onClick={()=> { if(!tempDataUrl) return toast.error('Veuillez fournir une signature'); onConfirm(tempDataUrl); }} className="px-4 py-2 rounded bg-blue-600 text-white">Valider</button>
+        {/* PASSER AUSSI l'ID sauvegardé quand pertinent */}
+        <button onClick={()=> { if(!tempDataUrl) return toast.error('Veuillez fournir une signature'); onConfirm(tempDataUrl, savedSelectedId); }} className="px-4 py-2 rounded bg-blue-600 text-white">Valider</button>
       </div>
     </Modal>
   );
@@ -270,6 +282,7 @@ export default function BulkSignSameWizard() {
   const [placement, setPlacement] = useState(null); // {page,x,y,width,height}
 
   const [sigDataUrl, setSigDataUrl] = useState('');
+  const [sigSavedId, setSigSavedId] = useState(null); // NEW: id signature enregistrée
   const [savedSignatures, setSavedSignatures] = useState([]);
 
   const [pdfUrl, setPdfUrl] = useState(null);
@@ -330,7 +343,8 @@ export default function BulkSignSameWizard() {
   // ---- helpers ----
   const pageScale = (n) => {
     const padding = isMobile ? 24 : 32; // p-4
-    const w = Math.min(Math.max(viewerWidth - padding, 320), 900);
+    // FIX: retirer le plancher 320px, garder une limite haute pour desktop
+    const w = Math.min(viewerWidth - padding, 900);
     return w / (pageDims[n]?.width || w || 1);
   };
 
@@ -339,7 +353,7 @@ export default function BulkSignSameWizard() {
     if (!arr.length) { setFiles([]); setPdfUrl(null); setDocKey(k=>k+1); return; }
 
     if (pdfUrl) URL.revokeObjectURL(pdfUrl);
-    setNumPages(0); setPageDims({}); setPlacement(null); setSigDataUrl('');
+    setNumPages(0); setPageDims({}); setPlacement(null); setSigDataUrl(''); setSigSavedId(null);
 
     setFiles(arr);
     setPdfUrl(URL.createObjectURL(arr[0]));
@@ -369,20 +383,28 @@ export default function BulkSignSameWizard() {
 
   const [modalOpen, setModalOpen] = useState(false);
   const openSignatureModal = () => { if (!placement) return toast.info('Définis d’abord la zone'); setModalOpen(true); };
-  const handleModalConfirm = (dataUrl) => { setSigDataUrl(dataUrl); setModalOpen(false); toast.success('Signature ajoutée'); };
+  // FIX: récupérer aussi l'ID de signature enregistrée
+  const handleModalConfirm = (dataUrl, savedId = null) => { setSigDataUrl(dataUrl); setSigSavedId(savedId); setModalOpen(false); toast.success('Signature ajoutée'); };
 
   // ---- submit + polling ----
   const submit = async () => {
     if (!files.length) return toast.error('Ajoute au moins un PDF');
     if (!placement) return toast.error('Définis la zone de signature');
-    if (!sigDataUrl) return toast.error('Ajoute une image de signature');
+    if (!sigDataUrl && !sigSavedId) return toast.error('Ajoute une image de signature');
 
     const fd = new FormData();
     files.forEach((f) => fd.append('files', f));
     fd.append('mode', 'bulk_same_spot');
     fd.append('placements', JSON.stringify([placement]));
-    fd.append('signature_image', sigDataUrl); // data:image/png;base64
     fd.append('include_qr', includeQr ? 'true' : 'false');
+
+    // FIX: si une signature enregistrée est sélectionnée => utiliser use_saved_signature_id
+    if (sigSavedId) {
+      fd.append('use_saved_signature_id', String(sigSavedId));
+    } else {
+      // sinon on envoie un FICHIER image (Blob), pas une dataURL string
+      fd.append('signature_image', dataURLtoBlob(sigDataUrl), 'signature.png');
+    }
 
     setIsProcessing(true);
     try {
@@ -411,7 +433,7 @@ export default function BulkSignSameWizard() {
 
   const resetAll = () => {
     if (pdfUrl) URL.revokeObjectURL(pdfUrl);
-    setFiles([]); setPdfUrl(null); setPlacement(null); setSigDataUrl('');
+    setFiles([]); setPdfUrl(null); setPlacement(null); setSigDataUrl(''); setSigSavedId(null);
     setNumPages(0); setPageDims({}); setDocKey((k) => k + 1);
     if (pdfsInputRef.current) pdfsInputRef.current.value = '';
   };
@@ -481,7 +503,7 @@ export default function BulkSignSameWizard() {
         </div>
 
         {/* Submit */}
-        <button onClick={submit} disabled={!files.length || !placement || !sigDataUrl || isProcessing} className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white py-3 rounded-lg font-medium transition">
+        <button onClick={submit} disabled={!files.length || !placement || (!sigDataUrl && !sigSavedId) || isProcessing} className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white py-3 rounded-lg font-medium transition">
           <FiDownload className="inline w-4 h-4 mr-2" />
           {isProcessing ? 'Lancement…' : 'Lancer la signature'}
         </button>
@@ -543,16 +565,17 @@ export default function BulkSignSameWizard() {
                   {Array.from({ length: numPages }, (_, i) => {
                     const n = i + 1;
                     const padding = isMobile ? 24 : 32; // p-4
-                    const pageWidth = Math.min(Math.max(viewerWidth - padding, 320), 900);
-                    const s = pageWidth / (pageDims[n]?.width || 1);
+                    // FIX: retire min 320 et utilise conteneur fluide
+                    const pageMaxWidth = Math.min(viewerWidth - padding, 900);
+                    const s = pageMaxWidth / (pageDims[n]?.width || 1);
 
                     const fieldObj = placement && placement.page === n ? { position: { x: placement.x, y: placement.y, width: placement.width, height: placement.height } } : null;
 
                     return (
-                      <div key={i} className="relative mb-6 last:mb-0" style={{ width: pageWidth, margin: '0 auto' }}>
+                      <div key={i} className="relative mb-6 last:mb-0" style={{ width: '100%', maxWidth: pageMaxWidth, margin: '0 auto' }}>
                         <Page
                           pageNumber={n}
-                          width={pageWidth}
+                          width={pageMaxWidth}
                           renderTextLayer={false}
                           renderAnnotationLayer={false}
                           onLoadSuccess={(p) => onPageLoad(n, p)}
@@ -572,7 +595,7 @@ export default function BulkSignSameWizard() {
                             factor={s}
                             isMobileView={isMobile}
                             onUpdate={(field, { position }) => setPlacement(p => ({ ...p, ...position }))}
-                            onDelete={() => { setPlacement(null); setSigDataUrl(''); }}
+                            onDelete={() => { setPlacement(null); setSigDataUrl(''); setSigSavedId(null); }}
                             onOpenModal={openSignatureModal}
                             image={sigDataUrl}
                           />

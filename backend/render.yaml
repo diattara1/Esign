@@ -1,0 +1,51 @@
+services:
+  - type: web
+    name: esign-web
+    runtime: python
+    region: oregon # par ex., mets la même que Redis
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn esign.wsgi:application
+    envVars:
+      - key: DJANGO_SETTINGS_MODULE
+        value: esign.settings
+      - key: CELERY_BROKER_URL
+        fromService:
+          type: key-value
+          name: esign-redis           # remplace par le nom de ton instance
+          property: connectionString  # Internal URL
+      # … tes autres VARs (POSTGRES_*, DJANGO_SECRET_KEY, etc.)
+
+  - type: worker
+    name: esign-celery-worker
+    runtime: python
+    region: oregon
+    buildCommand: pip install -r requirements.txt
+    startCommand: celery -A esign worker --loglevel=INFO --concurrency=2
+    envVars:
+      - key: DJANGO_SETTINGS_MODULE
+        value: esign.settings
+      - key: CELERY_BROKER_URL
+        fromService:
+          type: key-value
+          name: esign-redis
+          property: connectionString
+      # mêmes VARs que le web si nécessaire (ex: EMAIL_*)
+
+  - type: worker
+    name: esign-celery-beat
+    runtime: python
+    region: oregon
+    buildCommand: pip install -r requirements.txt
+    startCommand: celery -A esign beat --loglevel=INFO
+    envVars:
+      - key: DJANGO_SETTINGS_MODULE
+        value: esign.settings
+      - key: CELERY_BROKER_URL
+        fromService:
+          type: key-value
+          name: esign-redis
+          property: connectionString
+
+  - type: key-value
+    name: esign-redis
+    # Pas de build/start command ; crée l’instance KV ici

@@ -1,0 +1,52 @@
+services:
+  - type: web
+    name: esign-web
+    runtime: python
+    region: oregon
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn esign.wsgi:application
+    envVars:
+      - key: DJANGO_SETTINGS_MODULE
+        value: esign.settings
+      - key: CELERY_BROKER_URL
+        fromService:
+          name: esign-redis        # référence le service Key Value ci-dessous
+          property: connectionString
+      # … tes autres VARs (POSTGRES_*, DJANGO_SECRET_KEY, etc.)
+
+  - type: worker
+    name: esign-celery-worker
+    runtime: python
+    region: oregon
+    buildCommand: pip install -r requirements.txt
+    startCommand: celery -A esign worker --loglevel=INFO --concurrency=2
+    envVars:
+      - key: DJANGO_SETTINGS_MODULE
+        value: esign.settings
+      - key: CELERY_BROKER_URL
+        fromService:
+          name: esign-redis
+          property: connectionString
+
+  - type: worker
+    name: esign-celery-beat
+    runtime: python
+    region: oregon
+    buildCommand: pip install -r requirements.txt
+    startCommand: celery -A esign beat --loglevel=INFO
+    envVars:
+      - key: DJANGO_SETTINGS_MODULE
+        value: esign.settings
+      - key: CELERY_BROKER_URL
+        fromService:
+          name: esign-redis
+          property: connectionString
+
+  # Instance Render Key Value (Redis®-compatible)
+  - type: keyvalue               # (alias déprécié possible: redis)
+    name: esign-redis
+    region: oregon
+    plan: free                   # ou starter/pro, selon ton besoin
+    ipAllowList: []              # vide = accès interne uniquement (préféré)
+    # Optionnel: désactive l’éviction si tu veux éviter la perte de jobs
+    # maxmemoryPolicy: noeviction

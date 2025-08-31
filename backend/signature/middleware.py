@@ -156,3 +156,17 @@ class AllowIframeForPDFOnlyMiddleware:
             else:
                 response.headers["X-Frame-Options"] = "SAMEORIGIN"
         return response
+
+
+class ClearAuthCookiesMiddleware:
+    """Delete auth cookies when requested by the authentication layer."""
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        response = self.get_response(request)
+        if getattr(request, "_delete_auth_cookies", False):
+            response.delete_cookie("access_token")
+            response.delete_cookie("refresh_token")
+        return response

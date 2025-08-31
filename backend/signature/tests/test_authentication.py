@@ -15,3 +15,21 @@ class CookieAuthenticationTests(APITestCase):
         self.assertEqual(response.cookies['refresh_token'].value, '')
         self.assertNotIn('access_token', self.client.cookies)
         self.assertNotIn('refresh_token', self.client.cookies)
+
+    def test_register_with_invalid_cookie_returns_201(self):
+        url = reverse('register')
+        self.client.cookies['access_token'] = 'bad'
+        self.client.cookies['refresh_token'] = 'bad'
+        data = {
+            'username': 'newuser',
+            'email': 'newuser@example.com',
+            'password': 'secret123'
+        }
+        response = self.client.post(url, data)
+        self.assertEqual(response.status_code, 201)
+        self.assertIn('access_token', response.cookies)
+        self.assertIn('refresh_token', response.cookies)
+        self.assertEqual(response.cookies['access_token'].value, '')
+        self.assertEqual(response.cookies['refresh_token'].value, '')
+        self.assertNotIn('access_token', self.client.cookies)
+        self.assertNotIn('refresh_token', self.client.cookies)

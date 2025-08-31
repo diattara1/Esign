@@ -59,9 +59,9 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "signature.middleware.ClearAuthCookiesMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
-    "signature.middleware.ClearAuthCookiesMiddleware",
 ]
 
 ROOT_URLCONF = "esign.urls"

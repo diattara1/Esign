@@ -1,6 +1,9 @@
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework_simplejwt.exceptions import InvalidToken
 from rest_framework.exceptions import AuthenticationFailed
+from django.contrib.auth import get_user_model
+
+User = get_user_model()
 
 class CookieJWTAuthentication(JWTAuthentication):
     """JWT authentication that also reads tokens from HttpOnly cookies."""
@@ -18,4 +21,9 @@ class CookieJWTAuthentication(JWTAuthentication):
         except (InvalidToken, AuthenticationFailed):
             request._delete_auth_cookies = True
             return None
-        return self.get_user(validated_token), validated_token
+        try:
+            user = self.get_user(validated_token)
+        except (AuthenticationFailed, User.DoesNotExist):
+            request._delete_auth_cookies = True
+            return None
+        return user, validated_token

@@ -515,7 +515,12 @@ const RecipientsPanel = React.memo(({
 />
 
 
-<input
+
+                              {emailError && <p className="text-xs text-red-500 mt-1">{emailError}</p>}
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">Nom complet</label>
+                             <input
   key={`fullname-${recipient.order}`}
   type="text"
   value={recipient.full_name}
@@ -559,7 +564,6 @@ const RecipientsPanel = React.memo(({
 }}
 
 />
-
                             </div>
                             <div className="pt-1">
                               <button

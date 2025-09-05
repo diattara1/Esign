@@ -466,28 +466,51 @@ const RecipientsPanel = React.memo(({
                            <div className="mt-2 space-y-2">
                             <div>
                               <label className="block text-xs font-medium text-gray-700 mb-1">Email</label>
-                               <input
-                                key={`email-${recipient.order}`}
-                                type="email"
-                                value={recipient.email}
-                                onChange={(e) => updateRecipient(idx, 'email', e.target.value)}
-                               
-                                 className={`w-full px-3 py-2 border rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${emailError ? 'border-red-500' : 'border-gray-200'}`}
-                                
-                                placeholder="exemple@email.com"
-                              />
-                              {emailError && <p className="text-xs text-red-500 mt-1">{emailError}</p>}
-                            </div>
-                            <div>
-                              <label className="block text-xs font-medium text-gray-700 mb-1">Nom complet</label>
                               <input
-                                key={`fullname-${recipient.order}`}
-                                type="text"
-                                value={recipient.full_name}
-                                onChange={(e) => updateRecipient(idx, 'full_name', e.target.value)}
-                                
-                                className="w-full px-3 py-2 border border-gray-200 rounded-md"
-                               />
+  key={`email-${recipient.order}`}
+  type="email"
+  value={recipient.email}
+  onChange={(e) => updateRecipient(idx, 'email', e.target.value)}
+  onBlur={(e) => {
+    // Fix pour l'autocomplete mobile - vérifie si la valeur a changé après blur
+    if (e.target.value !== recipient.email) {
+      updateRecipient(idx, 'email', e.target.value);
+    }
+  }}
+  onInput={(e) => {
+    // Fix supplémentaire pour certains navigateurs mobiles
+    if (e.target.value !== recipient.email) {
+      updateRecipient(idx, 'email', e.target.value);
+    }
+  }}
+  className={`w-full px-3 py-2 border rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${emailError ? 'border-red-500' : 'border-gray-200'}`}
+  placeholder="exemple@email.com"
+  autoComplete="email" // Assure la compatibilité avec l'autocomplete
+/>
+
+// Et pour le champ nom complet :
+
+<input
+  key={`fullname-${recipient.order}`}
+  type="text"
+  value={recipient.full_name}
+  onChange={(e) => updateRecipient(idx, 'full_name', e.target.value)}
+  onBlur={(e) => {
+    // Fix pour l'autocomplete mobile
+    if (e.target.value !== recipient.full_name) {
+      updateRecipient(idx, 'full_name', e.target.value);
+    }
+  }}
+  onInput={(e) => {
+    // Fix supplémentaire pour certains navigateurs mobiles
+    if (e.target.value !== recipient.full_name) {
+      updateRecipient(idx, 'full_name', e.target.value);
+    }
+  }}
+  className="w-full px-3 py-2 border border-gray-200 rounded-md"
+  autoComplete="name" // Assure la compatibilité avec l'autocomplete
+/>
+
                             </div>
                             <div className="pt-1">
                               <button

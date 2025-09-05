@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Document, Page, pdfjs } from 'react-pdf';
-import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
 import signatureService from '../services/signatureService';
 import { toast } from 'react-toastify';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
@@ -13,7 +12,7 @@ import Countdown from '../components/Countdown';
 pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js';
 
 /* =========================
-   COMPOSANT SIGNATURE DRAGGABLE
+   COMPOSANT SIGNATURE DRAGGABLE (conservé)
    ========================= */
 const DraggableSignature = React.memo(function DraggableSignature({
   field,
@@ -302,7 +301,7 @@ const PDFViewer = React.memo(function PDFViewer({
 });
 
 /* =========================
-   PANEL DES DESTINATAIRES
+   PANEL DES DESTINATAIRES (drag supprimé)
    ========================= */
 const RecipientsPanel = React.memo(({
   className = '',
@@ -325,7 +324,7 @@ const RecipientsPanel = React.memo(({
   updateRecipient,
   addRecipient,
   removeRecipient,
-  handleDragEnd,
+  // handleDragEnd, // supprimé
   fields,
   placing,
   setPlacing,
@@ -340,280 +339,266 @@ const RecipientsPanel = React.memo(({
     <div className={`bg-white shadow-lg overflow-y-auto border-gray-200 ${className}`}>
      <div className="p-4 lg:p-6">
         
-           <div className="mb-4 lg:mb-5 p-3 bg-gray-50 rounded-md">
-          <label htmlFor="flowType" className="block text-sm font-medium text-gray-800 mb-2">
-            Type de signatures
-          </label>
-          <select
-            id="flowType"
-            value={flowType}
-            onChange={(e) => setFlowType(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
-          >
-            <option value="sequential">Séquentielle (un par un)</option>
-            <option value="parallel">Parallèle (tous en même temps)</option>
-          </select>
-        </div>
+      <div className="mb-4 lg:mb-5 p-3 bg-gray-50 rounded-md">
+        <label htmlFor="flowType" className="block text-sm font-medium text-gray-800 mb-2">
+          Type de signatures
+        </label>
+        <select
+          id="flowType"
+          value={flowType}
+          onChange={(e) => setFlowType(e.target.value)}
+          className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+        >
+          <option value="sequential">Séquentielle (un par un)</option>
+          <option value="parallel">Parallèle (tous en même temps)</option>
+        </select>
+      </div>
 
-
-        <div className="mb-4 lg:mb-6">
-          <label className="block text-sm font-medium text-gray-700 mb-2">Ajouter des documents</label>
-          <div className="relative">
-            <input
-              type="file"
-              multiple
-              accept=".pdf,.doc,.docx"
-              onChange={onFilesSelected}
-              disabled={isUploading}
-              className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 disabled:opacity-50"
-            />
-            {isUploading && (
-              <div className="absolute inset-0 bg-white/70 flex items-center justify-center rounded">
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
-              </div>
-            )}
-          </div>
-          {documents.length > 0 && (
-            <p className="text-xs text-gray-500 mt-2">
-              {documents.length} document{documents.length > 1 ? 's' : ''}
-            </p>
+      <div className="mb-4 lg:mb-6">
+        <label className="block text-sm font-medium text-gray-700 mb-2">Ajouter des documents</label>
+        <div className="relative">
+          <input
+            type="file"
+            multiple
+            accept=".pdf,.doc,.docx"
+            onChange={onFilesSelected}
+            disabled={isUploading}
+            className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 disabled:opacity-50"
+          />
+          {isUploading && (
+            <div className="absolute inset-0 bg-white/70 flex items-center justify-center rounded">
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+            </div>
           )}
         </div>
-        <div className="mb-3 lg:mb-4">
-          <div className="flex items-center justify-between bg-gray-100 rounded-md px-3 py-2">
-            <div className="flex items-center space-x-2">
-              {/* petite icône “signature” */}
-              <svg className="w-5 h-5 text-gray-700" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
-                  d="M3 20h18M7 16c1.5-3 3.5-3 5-1s3.5 2 5-1M14 7l3 3M11 10l3-3" />
+        {documents.length > 0 && (
+          <p className="text-xs text-gray-500 mt-2">
+            {documents.length} document{documents.length > 1 ? 's' : ''}
+          </p>
+        )}
+      </div>
+
+      <div className="mb-3 lg:mb-4">
+        <div className="flex items-center justify-between bg-gray-100 rounded-md px-3 py-2">
+          <div className="flex items-center space-x-2">
+            <svg className="w-5 h-5 text-gray-700" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
+                d="M3 20h18M7 16c1.5-3 3.5-3 5-1s3.5 2 5-1M14 7l3 3M11 10l3-3" />
+            </svg>
+            <span className="font-semibold text-gray-900">Signataires</span>
+            <span className="inline-flex items-center justify-center px-2 py-0.5 rounded text-xs font-medium bg-white text-gray-800 border border-gray-200">
+              {recipients.length}
+            </span>
+          </div>
+          <div className="flex items-center space-x-2">
+            <button
+              type="button"
+              onClick={addRecipient}
+              className="w-8 h-8 rounded-full border border-gray-300 bg-white flex items-center justify-center hover:bg-gray-50"
+              title="Ajouter un signataire"
+            >
+              <span className="text-xl leading-none">+</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setOpen(v => !v)}
+              className="w-8 h-8 rounded-full border border-gray-300 bg-white flex items-center justify-center hover:bg-gray-50"
+              aria-expanded={open}
+              title={open ? 'Replier' : 'Déplier'}
+            >
+              <svg className={`w-4 h-4 transform transition-transform ${open ? '' : '-rotate-90'}`} viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.06l3.71-3.83a.75.75 0 011.08 1.04l-4.24 4.38a.75.75 0 01-1.08 0L5.21 8.27a.75.75 0 01.02-1.06z" clipRule="evenodd" />
               </svg>
-              <span className="font-semibold text-gray-900">Signataires</span>
-              <span className="inline-flex items-center justify-center px-2 py-0.5 rounded text-xs font-medium bg-white text-gray-800 border border-gray-200">
-                {recipients.length}
-              </span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <button
-                type="button"
-                onClick={addRecipient}
-                className="w-8 h-8 rounded-full border border-gray-300 bg-white flex items-center justify-center hover:bg-gray-50"
-                title="Ajouter un signataire"
-              >
-                <span className="text-xl leading-none">+</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setOpen(v => !v)}
-                className="w-8 h-8 rounded-full border border-gray-300 bg-white flex items-center justify-center hover:bg-gray-50"
-                aria-expanded={open}
-                title={open ? 'Replier' : 'Déplier'}
-              >
-                <svg className={`w-4 h-4 transform transition-transform ${open ? '' : '-rotate-90'}`} viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.06l3.71-3.83a.75.75 0 011.08 1.04l-4.24 4.38a.75.75 0 01-1.08 0L5.21 8.27a.75.75 0 01.02-1.06z" clipRule="evenodd" />
-                </svg>
-              </button>
-            </div>
+            </button>
           </div>
         </div>
-        {open && (
-          <DragDropContext onDragEnd={handleDragEnd}>
-            <Droppable droppableId="recipients">
-              {(provided) => (
-                <div className="divide-y divide-gray-200" ref={provided.innerRef} {...provided.droppableProps}>
-                  {recipients.map((recipient, idx) => {
-                  const canPlace = canPlaceSignature(idx);
-                  const hasSignature = hasSignatureOnDoc(recipient.order);
-                  const emailError = !recipient.email
-                    ? 'Email obligatoire'
-                    : /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipient.email)
-                    ? ''
-                    : 'Email invalide';
-                  return (
-                    <Draggable key={`recipient-${recipient.order}`} draggableId={`rec-${recipient.order}`} index={idx}>
-                      {(dragProvided) => (
-                       <div ref={dragProvided.innerRef} {...dragProvided.draggableProps} className="py-3">
-                          <div className="flex items-center justify-between">
-                           <div className="flex items-center space-x-2">
-                              <button
-                                type="button"
-                                 className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center cursor-grab active:cursor-grabbing"
-                                 aria-label={`Réordonner destinataire ${idx + 1}`}
-                                {...dragProvided.dragHandleProps}
-                                onMouseDown={(e) => e.stopPropagation()}
-                              >
-                                <span className="text-xs font-medium text-blue-700">{idx + 1}</span>
-                               </button>
-                               <span className="font-medium text-gray-900 text-sm">
-                                {recipient.full_name || `Destinataire #${idx + 1}`}
-                              </span>
-                             </div>
-                            {recipients.length > 1 && (
-                              <button
-                                onClick={() => removeRecipient(idx)}
-                                 className="text-red-400 hover:text-red-600 p-1"
-                                title="Supprimer"
-                              >
-                                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                                  <path
-                                    fillRule="evenodd"
-                                    d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
-                                    clipRule="evenodd"
-                                  />
-                                </svg>
-                              </button>
-                            )}
-                          </div>
-                           <div className="mt-2 space-y-2">
-                            <div>
-                              <label className="block text-xs font-medium text-gray-700 mb-1">Email</label>
-                             {/* Champ Email */}
-<input
-  type="email"
-  name="email"
-  placeholder="Email"
-  autoComplete="email"
-  inputMode="email"
-  value={recipient.email}
-  onChange={(e) => updateRecipient(idx, 'email', e.target.value)}
-  onInput={(e) => updateRecipient(idx, 'email', e.currentTarget.value)}
-  onBlur={(e) => updateRecipient(idx, 'email', e.currentTarget.value)}
-  onBeforeInput={(e) => {
-    setTimeout(() => {
-      updateRecipient(idx, 'email', e.currentTarget.value);
-    }, 0);
-  }}
-  onTouchEnd={(e) => {
-    const v = e.currentTarget.value;
-    if (v !== recipient.email) updateRecipient(idx, 'email', v);
-  }}
-  required
-  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring focus:ring-indigo-200 focus:border-indigo-500"
-/>
-
-
-
-
-
-                              {emailError && <p className="text-xs text-red-500 mt-1">{emailError}</p>}
-                            </div>
-                            <div>
-                              <label className="block text-xs font-medium text-gray-700 mb-1">Nom complet</label>
-                            {/* Champ Nom */}
-<input
-  type="text"
-  name="full_name"
-  placeholder="Nom complet"
-  autoComplete="name"
-  value={recipient.name}
-  onChange={(e) => updateRecipient(idx, 'name', e.target.value)}
-  onInput={(e) => updateRecipient(idx, 'name', e.currentTarget.value)}
-  onBlur={(e) => updateRecipient(idx, 'name', e.currentTarget.value)}
-  onBeforeInput={(e) => {
-    setTimeout(() => {
-      updateRecipient(idx, 'name', e.currentTarget.value);
-    }, 0);
-  }}
-  onTouchEnd={(e) => {
-    const v = e.currentTarget.value;
-    if (v !== recipient.name) updateRecipient(idx, 'name', v);
-  }}
-  required
-  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring focus:ring-indigo-200 focus:border-indigo-500"
-/>
-                            </div>
-                            <div className="pt-1">
-                              <button
-                                type="button"
-                                onClick={() => handlePlaceSignature(idx)}
-                                disabled={!selectedDocId || !canPlace}
-                                className={`w-full px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                                  placing.idx === idx
-                                    ? 'bg-yellow-100 text-yellow-800 border border-yellow-300'
-                                    : canPlace && selectedDocId
-                                    ? 'bg-blue-600 text-white hover:bg-blue-700'
-                                    : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                                }`}
-                              >
-                                {placing.idx === idx
-                                  ? 'Cliquez sur le PDF pour placer'
-                                  : hasSignature
-                                  ? 'Redéfinir position signature'
-                                  : 'Définir position signature'}
-                              </button>
-                              {!selectedDocId && (
-                                <p className="text-xs text-red-500 mt-1">Sélectionnez d'abord un document</p>
-                              )}
-                              {selectedDocId && !canPlace && (
-                                <p className="text-xs text-red-500 mt-1">Renseignez l'email et le nom complet</p>
-                              )}
-                              {hasSignature && canPlace && selectedDocId && (
-                                <p className="text-xs text-green-600 mt-1">✓ Signature placée sur ce document</p>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </Draggable>
-                  );
-                })}
-                     {provided.placeholder}
-              </div>
-            )}
-          </Droppable>
-        </DragDropContext>
-        )}
-       
-        
-        <div className="mt-4 mb-2 flex items-center">
-          <input
-            id="includeQr"
-            type="checkbox"
-            className="h-4 w-4 mr-2"
-            checked={includeQr}
-            onChange={(e) => setIncludeQr(e.target.checked)}
-          />
-          <label htmlFor="includeQr" className="text-sm text-gray-700">
-            Intégrer un QR Code de vérification au PDF final
-          </label>
-        </div>
-       <div className="mb-4 lg:mb-5 p-3 bg-gray-50 rounded-md">
-   <div className="flex items-center justify-between">
-     <label className="flex items-center text-sm font-medium text-gray-800">
-       <input
-         id="deadlineEnabled"
-         type="checkbox"
-         className="h-4 w-4 mr-2"
-         checked={deadlineEnabled}
-         onChange={(e) => setDeadlineEnabled(e.target.checked)}
-       />
-       Définir une échéance
-     </label>
-     {deadlineAt && (
-       <span className="text-xs text-gray-600">
-         <Countdown targetIso={deadlineAt} />
-       </span>
-     )}
-   </div>
-   {deadlineEnabled && (
-     <div className="mt-2">
-       <input
-         type="datetime-local"
-         value={deadlineExact}
-         onChange={(e) => setDeadlineExact(e.target.value)}
-         className="w-full px-2.5 py-2 border border-gray-300 rounded text-sm"
-       />
-     </div>
-   )}
-   
- </div>
-        <button
-          onClick={handleSubmit}
-          disabled={recipients.some((r) => !r.email || !r.full_name) || fields.length === 0}
-          className="w-full mt-4 lg:mt-6 bg-green-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors text-sm lg:text-base"
-        >
-          Envoyer l'enveloppe
-        </button>
       </div>
+
+      {open && (
+        <div className="divide-y divide-gray-200">
+          {recipients.map((recipient, idx) => {
+            const canPlace = canPlaceSignature(idx);
+            const hasSignature = hasSignatureOnDoc(recipient.order);
+            const emailError = !recipient.email
+              ? 'Email obligatoire'
+              : /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipient.email)
+              ? ''
+              : 'Email invalide';
+
+            return (
+              <div key={`recipient-${recipient.order}`} className="py-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    {/* Badge d'ordre, non draggable */}
+                    <span
+                      className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center"
+                      title={`Destinataire ${idx + 1}`}
+                    >
+                      <span className="text-xs font-medium text-blue-700">{idx + 1}</span>
+                    </span>
+                    <span className="font-medium text-gray-900 text-sm">
+                      {recipient.full_name || `Destinataire #${idx + 1}`}
+                    </span>
+                  </div>
+                  {recipients.length > 1 && (
+                    <button
+                      onClick={() => removeRecipient(idx)}
+                      className="text-red-400 hover:text-red-600 p-1"
+                      title="Supprimer"
+                    >
+                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                        <path
+                          fillRule="evenodd"
+                          d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
+                    </button>
+                  )}
+                </div>
+
+                <div className="mt-2 space-y-2">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Email</label>
+                    {/* Email: correctifs iOS */}
+                    <input
+                      type="email"
+                      name="email"
+                      placeholder="Email"
+                      autoComplete="email"
+                      inputMode="email"
+                      value={recipient.email}
+                      onChange={(e) => updateRecipient(idx, 'email', e.target.value)}
+                      onInput={(e) => updateRecipient(idx, 'email', e.currentTarget.value)}
+                      onBlur={(e) => updateRecipient(idx, 'email', e.currentTarget.value)}
+                      onBeforeInput={(e) => {
+                        setTimeout(() => {
+                          updateRecipient(idx, 'email', e.currentTarget.value);
+                        }, 0);
+                      }}
+                      onTouchEnd={(e) => {
+                        const v = e.currentTarget.value;
+                        if (v !== recipient.email) updateRecipient(idx, 'email', v);
+                      }}
+                      required
+                      className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring focus:ring-indigo-200 focus:border-indigo-500"
+                    />
+                    {emailError && <p className="text-xs text-red-500 mt-1">{emailError}</p>}
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Nom complet</label>
+                    {/* Nom complet: correctifs iOS */}
+                    <input
+                      type="text"
+                      name="full_name"
+                      placeholder="Nom complet"
+                      autoComplete="name"
+                      value={recipient.full_name}
+                      onChange={(e) => updateRecipient(idx, 'full_name', e.target.value)}
+                      onInput={(e) => updateRecipient(idx, 'full_name', e.currentTarget.value)}
+                      onBlur={(e) => updateRecipient(idx, 'full_name', e.currentTarget.value)}
+                      onBeforeInput={(e) => {
+                        setTimeout(() => {
+                          updateRecipient(idx, 'full_name', e.currentTarget.value);
+                        }, 0);
+                      }}
+                      onTouchEnd={(e) => {
+                        const v = e.currentTarget.value;
+                        if (v !== recipient.full_name) updateRecipient(idx, 'full_name', v);
+                      }}
+                      required
+                      className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring focus:ring-indigo-200 focus:border-indigo-500"
+                    />
+                  </div>
+
+                  <div className="pt-1">
+                    <button
+                      type="button"
+                      onClick={() => handlePlaceSignature(idx)}
+                      disabled={!selectedDocId || !canPlace}
+                      className={`w-full px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                        placing.idx === idx
+                          ? 'bg-yellow-100 text-yellow-800 border border-yellow-300'
+                          : canPlace && selectedDocId
+                          ? 'bg-blue-600 text-white hover:bg-blue-700'
+                          : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                      }`}
+                    >
+                      {placing.idx === idx
+                        ? 'Cliquez sur le PDF pour placer'
+                        : hasSignature
+                        ? 'Redéfinir position signature'
+                        : 'Définir position signature'}
+                    </button>
+                    {!selectedDocId && (
+                      <p className="text-xs text-red-500 mt-1">Sélectionnez d'abord un document</p>
+                    )}
+                    {selectedDocId && !canPlace && (
+                      <p className="text-xs text-red-500 mt-1">Renseignez l'email et le nom complet</p>
+                    )}
+                    {hasSignature && canPlace && selectedDocId && (
+                      <p className="text-xs text-green-600 mt-1">✓ Signature placée sur ce document</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <div className="mt-4 mb-2 flex items-center">
+        <input
+          id="includeQr"
+          type="checkbox"
+          className="h-4 w-4 mr-2"
+          checked={includeQr}
+          onChange={(e) => setIncludeQr(e.target.checked)}
+        />
+        <label htmlFor="includeQr" className="text-sm text-gray-700">
+          Intégrer un QR Code de vérification au PDF final
+        </label>
+      </div>
+
+      <div className="mb-4 lg:mb-5 p-3 bg-gray-50 rounded-md">
+        <div className="flex items-center justify-between">
+          <label className="flex items-center text-sm font-medium text-gray-800">
+            <input
+              id="deadlineEnabled"
+              type="checkbox"
+              className="h-4 w-4 mr-2"
+              checked={deadlineEnabled}
+              onChange={(e) => setDeadlineEnabled(e.target.checked)}
+            />
+            Définir une échéance
+          </label>
+          {deadlineAt && (
+            <span className="text-xs text-gray-600">
+              <Countdown targetIso={deadlineAt} />
+            </span>
+          )}
+        </div>
+        {deadlineEnabled && (
+          <div className="mt-2">
+            <input
+              type="datetime-local"
+              value={deadlineExact}
+              onChange={(e) => setDeadlineExact(e.target.value)}
+              className="w-full px-2.5 py-2 border border-gray-300 rounded text-sm"
+            />
+          </div>
+        )}
+      </div>
+
+      <button
+        onClick={handleSubmit}
+        disabled={recipients.some((r) => !r.email || !r.full_name) || fields.length === 0}
+        className="w-full mt-4 lg:mt-6 bg-green-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors text-sm lg:text-base"
+      >
+        Envoyer l'enveloppe
+      </button>
+     </div>
     </div>
   );
 });
@@ -721,7 +706,8 @@ export default function DocumentWorkflow() {
   const [flowType, setFlowType] = useState('sequential');
   const [reminderDays, setReminderDays] = useState(1);
   const [deadlineEnabled, setDeadlineEnabled] = useState(false);
-  const [deadlineExact, setDeadlineExact] = useState('');const [documents, setDocuments] = useState([]);
+  const [deadlineExact, setDeadlineExact] = useState('');
+  const [documents, setDocuments] = useState([]);
   const [selectedDocId, setSelectedDocId] = useState(null);
   const [pdfUrl, setPdfUrl] = useState(null);
   const [isMobileView, setIsMobileView] = useState(false);
@@ -740,7 +726,8 @@ export default function DocumentWorkflow() {
 
   const pdfWrapper = useRef(null);
   const prevUrlRef = useRef(null);
-const handleUpdateField = useCallback((field, updates) => {
+
+  const handleUpdateField = useCallback((field, updates) => {
     setFields(prev => prev.map(f => {
       if (f.recipient_id === field.recipient_id &&
           f.document_id === field.document_id &&
@@ -761,25 +748,22 @@ const handleUpdateField = useCallback((field, updates) => {
     )));
     toast.success('Signature supprimée');
   }, []);
-  // Calcul de deadlineAt
-   const deadlineAt = useMemo(() => {
-   if (!deadlineEnabled || !deadlineExact) return null; // -> serveur appliquera le défaut
-   return new Date(deadlineExact).toISOString();
- }, [deadlineEnabled, deadlineExact]);
 
-  // -----------------------------
-  //   HOOKS STABLES
-  // -----------------------------
+  // deadlineAt
+  const deadlineAt = useMemo(() => {
+    if (!deadlineEnabled || !deadlineExact) return null;
+    return new Date(deadlineExact).toISOString();
+  }, [deadlineEnabled, deadlineExact]);
 
+  // Refs stables
   const stablePdfUrl = useRef(pdfUrl);
   const stableSelectedDocId = useRef(selectedDocId);
-
   useEffect(() => {
     stablePdfUrl.current = pdfUrl;
     stableSelectedDocId.current = selectedDocId;
   }, [pdfUrl, selectedDocId]);
 
-  // Détection de la taille d'écran
+  // Responsive
   useEffect(() => {
     const checkScreenSize = () => {
       const isMobile = window.innerWidth < 1024;
@@ -822,10 +806,7 @@ const handleUpdateField = useCallback((field, updates) => {
     };
   }, [pdfUrl]);
 
-  // -----------------------------
-  //   CALLBACKS
-  // -----------------------------
-
+  // Upload
   const uploadFiles = useCallback(async (files) => {
     try {
       setIsUploading(true);
@@ -846,14 +827,14 @@ const handleUpdateField = useCallback((field, updates) => {
     setFlowType(env.flow_type || 'sequential');
     setReminderDays(env.reminder_days ?? 1);
     if (env.deadline_at) {
-    setDeadlineEnabled(true);
+      setDeadlineEnabled(true);
       const d = new Date(env.deadline_at);
       const pad = (n) => String(n).padStart(2, '0');
       const local = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
       setDeadlineExact(local);
     } else {
       setDeadlineEnabled(false);
-    setDeadlineExact('');
+      setDeadlineExact('');
     }
     const docs = env.documents || [];
     setDocuments(docs);
@@ -909,7 +890,7 @@ const handleUpdateField = useCallback((field, updates) => {
     return () => ro.disconnect();
   }, [isMobileView]);
 
-  // Gestionnaire pour placer une signature
+  // Placement signature
   const handlePlaceSignature = useCallback((idx) => {
     setPlacing({ idx, type: 'signature' });
     if (isMobileView) {
@@ -917,7 +898,6 @@ const handleUpdateField = useCallback((field, updates) => {
     }
   }, [isMobileView, setPlacing, setCurrentMobileTab]);
 
-  // Autres callbacks...
   const onDocumentLoad = useCallback(({ numPages }) => {
     if (!stableSelectedDocId.current) return;
     setNumPagesByDoc((prev) =>
@@ -1052,24 +1032,6 @@ const handleUpdateField = useCallback((field, updates) => {
     }
   }, [recipients, placing.idx]);
 
-  const handleDragEnd = useCallback((result) => {
-    if (!result.destination) return;
-    setRecipients((prev) => {
-      const items = Array.from(prev);
-      const [moved] = items.splice(result.source.index, 1);
-      items.splice(result.destination.index, 0, moved);
-      const orderMap = {};
-      const updated = items.map((rec, i) => {
-        orderMap[rec.order] = i + 1;
-        return { ...rec, order: i + 1 };
-      });
-      setFields((prevFields) =>
-        prevFields.map((f) => (orderMap[f.recipient_id] ? { ...f, recipient_id: orderMap[f.recipient_id] } : f))
-      );
-      return updated;
-    });
-  }, [setFields]);
-
   const onFilesSelected = useCallback((e) => {
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
@@ -1142,10 +1104,7 @@ const handleUpdateField = useCallback((field, updates) => {
     </div>
   );
 
-  // -----------------------------
-  //   RENDU
-  // -----------------------------
-
+  // Rendu
   if (isMobileView) {
     return (
       <div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
@@ -1173,7 +1132,7 @@ const handleUpdateField = useCallback((field, updates) => {
               updateRecipient={updateRecipient}
               addRecipient={addRecipient}
               removeRecipient={removeRecipient}
-              handleDragEnd={handleDragEnd}
+              // handleDragEnd={handleDragEnd} // supprimé
               fields={fields}
               placing={placing}
               setPlacing={setPlacing}
@@ -1181,7 +1140,7 @@ const handleUpdateField = useCallback((field, updates) => {
               canPlaceSignature={canPlaceSignature}
               hasSignatureOnDoc={hasSignatureOnDoc}
               handleSubmit={handleSubmit}
-              handlePlaceSignature={handlePlaceSignature} // 👈 passé ici
+              handlePlaceSignature={handlePlaceSignature}
             />
           )}
           {currentMobileTab === 'pdf' && (
@@ -1243,7 +1202,7 @@ const handleUpdateField = useCallback((field, updates) => {
           updateRecipient={updateRecipient}
           addRecipient={addRecipient}
           removeRecipient={removeRecipient}
-          handleDragEnd={handleDragEnd}
+          // handleDragEnd={handleDragEnd} // supprimé
           fields={fields}
           placing={placing}
           setPlacing={setPlacing}
@@ -1281,6 +1240,7 @@ const handleUpdateField = useCallback((field, updates) => {
           selectDocument={selectDocument}
         />
       )}
+
       {/* Boutons de visibilité desktop */}
       {!isMobileView && (
         <>

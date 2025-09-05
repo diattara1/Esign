@@ -471,8 +471,7 @@ const RecipientsPanel = React.memo(({
                                 type="email"
                                 value={recipient.email}
                                 onChange={(e) => updateRecipient(idx, 'email', e.target.value)}
-                                onMouseDown={(e) => e.stopPropagation()}
-                                onPointerDown={(e) => e.stopPropagation()}
+                               
                                  className={`w-full px-3 py-2 border rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${emailError ? 'border-red-500' : 'border-gray-200'}`}
                                 
                                 placeholder="exemple@email.com"
@@ -486,8 +485,7 @@ const RecipientsPanel = React.memo(({
                                 type="text"
                                 value={recipient.full_name}
                                 onChange={(e) => updateRecipient(idx, 'full_name', e.target.value)}
-                                onMouseDown={(e) => e.stopPropagation()}
-                                onPointerDown={(e) => e.stopPropagation()}
+                                
                                 className="w-full px-3 py-2 border border-gray-200 rounded-md"
                                />
                             </div>

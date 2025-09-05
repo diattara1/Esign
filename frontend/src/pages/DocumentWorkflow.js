@@ -466,53 +466,31 @@ const RecipientsPanel = React.memo(({
                            <div className="mt-2 space-y-2">
                             <div>
                               <label className="block text-xs font-medium text-gray-700 mb-1">Email</label>
-                              <input
-  key={`email-${recipient.order}`}
+                             {/* Champ Email */}
+<input
   type="email"
-  value={recipient.email}
-  onChange={(e) => {
-    console.log('onChange triggered:', e.target.value);
-    updateRecipient(idx, 'email', e.target.value);
-  }}
-  onBlur={(e) => {
-    console.log('onBlur triggered:', e.target.value);
-    // Force la mise à jour même si onChange n'a pas été déclenché
-    if (e.target.value !== recipient.email) {
-      updateRecipient(idx, 'email', e.target.value);
-    }
-  }}
-  onInput={(e) => {
-    console.log('onInput triggered:', e.target.value);
-    // Déclenché à chaque caractère tapé, même avec l'autocomplete
-    updateRecipient(idx, 'email', e.target.value);
-  }}
-  // Nouveaux événements pour gérer l'autocomplete
-  onFocus={(e) => {
-    // Stocke la valeur initiale au focus
-    e.target.dataset.initialValue = e.target.value;
-  }}
-  onKeyDown={(e) => {
-    // Gère les touches spéciales (Tab, Enter) souvent utilisées avec l'autocomplete
-    if (e.key === 'Tab' || e.key === 'Enter') {
-      setTimeout(() => {
-        if (e.target.value !== recipient.email) {
-          console.log('onKeyDown delayed update:', e.target.value);
-          updateRecipient(idx, 'email', e.target.value);
-        }
-      }, 10);
-    }
-  }}
-  className={`w-full px-3 py-2 border rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${emailError ? 'border-red-500' : 'border-gray-200'}`}
-  placeholder="exemple@email.com"
+  name="email"
+  placeholder="Email"
   autoComplete="email"
-  spellCheck="false"
-  autoCorrect="off"
-  autoCapitalize="off"
-   onBeforeInput={(e) => {
-    // Laisse iOS remplir, puis lis la valeur juste après
-    setTimeout(() => updateRecipient(idx, 'email', e.currentTarget.value), 0);
+  inputMode="email"
+  value={recipient.email}
+  onChange={(e) => updateRecipient(idx, 'email', e.target.value)}
+  onInput={(e) => updateRecipient(idx, 'email', e.currentTarget.value)}
+  onBlur={(e) => updateRecipient(idx, 'email', e.currentTarget.value)}
+  onBeforeInput={(e) => {
+    setTimeout(() => {
+      updateRecipient(idx, 'email', e.currentTarget.value);
+    }, 0);
   }}
+  onTouchEnd={(e) => {
+    const v = e.currentTarget.value;
+    if (v !== recipient.email) updateRecipient(idx, 'email', v);
+  }}
+  required
+  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring focus:ring-indigo-200 focus:border-indigo-500"
 />
+
+
 
 
 
@@ -520,49 +498,27 @@ const RecipientsPanel = React.memo(({
                             </div>
                             <div>
                               <label className="block text-xs font-medium text-gray-700 mb-1">Nom complet</label>
-                             <input
-  key={`fullname-${recipient.order}`}
+                            {/* Champ Nom */}
+<input
   type="text"
-  value={recipient.full_name}
-  onChange={(e) => {
-    console.log('fullname onChange:', e.target.value);
-    updateRecipient(idx, 'full_name', e.target.value);
-  }}
-  onBlur={(e) => {
-    console.log('fullname onBlur:', e.target.value);
-    if (e.target.value !== recipient.full_name) {
-      updateRecipient(idx, 'full_name', e.target.value);
-    }
-  }}
-  onInput={(e) => {
-    console.log('fullname onInput:', e.target.value);
-    updateRecipient(idx, 'full_name', e.target.value);
-  }}
-  onFocus={(e) => {
-    e.target.dataset.initialValue = e.target.value;
-  }}
-  onKeyDown={(e) => {
-    if (e.key === 'Tab' || e.key === 'Enter') {
-      setTimeout(() => {
-        if (e.target.value !== recipient.full_name) {
-          console.log('fullname onKeyDown delayed update:', e.target.value);
-          updateRecipient(idx, 'full_name', e.target.value);
-        }
-      }, 10);
-    }
-  }}
-  className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-  placeholder="Mamadou Sow"
+  name="full_name"
+  placeholder="Nom complet"
   autoComplete="name"
-  spellCheck="false"
-  autoCorrect="off"
-  autoCapitalize="words"
+  value={recipient.name}
+  onChange={(e) => updateRecipient(idx, 'name', e.target.value)}
+  onInput={(e) => updateRecipient(idx, 'name', e.currentTarget.value)}
+  onBlur={(e) => updateRecipient(idx, 'name', e.currentTarget.value)}
+  onBeforeInput={(e) => {
+    setTimeout(() => {
+      updateRecipient(idx, 'name', e.currentTarget.value);
+    }, 0);
+  }}
   onTouchEnd={(e) => {
-  // Si la valeur DOM ≠ état, synchronise
-  const v = e.currentTarget.value;
-  if (v !== recipient.email) updateRecipient(idx, 'email', v);
-}}
-
+    const v = e.currentTarget.value;
+    if (v !== recipient.name) updateRecipient(idx, 'name', v);
+  }}
+  required
+  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring focus:ring-indigo-200 focus:border-indigo-500"
 />
                             </div>
                             <div className="pt-1">

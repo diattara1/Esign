@@ -470,45 +470,85 @@ const RecipientsPanel = React.memo(({
   key={`email-${recipient.order}`}
   type="email"
   value={recipient.email}
-  onChange={(e) => updateRecipient(idx, 'email', e.target.value)}
+  onChange={(e) => {
+    console.log('onChange triggered:', e.target.value);
+    updateRecipient(idx, 'email', e.target.value);
+  }}
   onBlur={(e) => {
-    // Fix pour l'autocomplete mobile - vérifie si la valeur a changé après blur
+    console.log('onBlur triggered:', e.target.value);
+    // Force la mise à jour même si onChange n'a pas été déclenché
     if (e.target.value !== recipient.email) {
       updateRecipient(idx, 'email', e.target.value);
     }
   }}
   onInput={(e) => {
-    // Fix supplémentaire pour certains navigateurs mobiles
-    if (e.target.value !== recipient.email) {
-      updateRecipient(idx, 'email', e.target.value);
+    console.log('onInput triggered:', e.target.value);
+    // Déclenché à chaque caractère tapé, même avec l'autocomplete
+    updateRecipient(idx, 'email', e.target.value);
+  }}
+  // Nouveaux événements pour gérer l'autocomplete
+  onFocus={(e) => {
+    // Stocke la valeur initiale au focus
+    e.target.dataset.initialValue = e.target.value;
+  }}
+  onKeyDown={(e) => {
+    // Gère les touches spéciales (Tab, Enter) souvent utilisées avec l'autocomplete
+    if (e.key === 'Tab' || e.key === 'Enter') {
+      setTimeout(() => {
+        if (e.target.value !== recipient.email) {
+          console.log('onKeyDown delayed update:', e.target.value);
+          updateRecipient(idx, 'email', e.target.value);
+        }
+      }, 10);
     }
   }}
   className={`w-full px-3 py-2 border rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${emailError ? 'border-red-500' : 'border-gray-200'}`}
   placeholder="exemple@email.com"
-  autoComplete="email" // Assure la compatibilité avec l'autocomplete
+  autoComplete="email"
+  // Attributs supplémentaires pour améliorer la compatibilité mobile
+  spellCheck="false"
+  autoCorrect="off"
+  autoCapitalize="off"
 />
 
-// Et pour le champ nom complet :
-
+// Et pour le nom complet :
 <input
   key={`fullname-${recipient.order}`}
   type="text"
   value={recipient.full_name}
-  onChange={(e) => updateRecipient(idx, 'full_name', e.target.value)}
+  onChange={(e) => {
+    console.log('fullname onChange:', e.target.value);
+    updateRecipient(idx, 'full_name', e.target.value);
+  }}
   onBlur={(e) => {
-    // Fix pour l'autocomplete mobile
+    console.log('fullname onBlur:', e.target.value);
     if (e.target.value !== recipient.full_name) {
       updateRecipient(idx, 'full_name', e.target.value);
     }
   }}
   onInput={(e) => {
-    // Fix supplémentaire pour certains navigateurs mobiles
-    if (e.target.value !== recipient.full_name) {
-      updateRecipient(idx, 'full_name', e.target.value);
+    console.log('fullname onInput:', e.target.value);
+    updateRecipient(idx, 'full_name', e.target.value);
+  }}
+  onFocus={(e) => {
+    e.target.dataset.initialValue = e.target.value;
+  }}
+  onKeyDown={(e) => {
+    if (e.key === 'Tab' || e.key === 'Enter') {
+      setTimeout(() => {
+        if (e.target.value !== recipient.full_name) {
+          console.log('fullname onKeyDown delayed update:', e.target.value);
+          updateRecipient(idx, 'full_name', e.target.value);
+        }
+      }, 10);
     }
   }}
-  className="w-full px-3 py-2 border border-gray-200 rounded-md"
-  autoComplete="name" // Assure la compatibilité avec l'autocomplete
+  className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+  placeholder="Mamadou Sow"
+  autoComplete="name"
+  spellCheck="false"
+  autoCorrect="off"
+  autoCapitalize="words"
 />
 
                             </div>

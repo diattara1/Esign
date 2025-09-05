@@ -505,13 +505,16 @@ const RecipientsPanel = React.memo(({
   className={`w-full px-3 py-2 border rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${emailError ? 'border-red-500' : 'border-gray-200'}`}
   placeholder="exemple@email.com"
   autoComplete="email"
-  // Attributs supplémentaires pour améliorer la compatibilité mobile
   spellCheck="false"
   autoCorrect="off"
   autoCapitalize="off"
+   onBeforeInput={(e) => {
+    // Laisse iOS remplir, puis lis la valeur juste après
+    setTimeout(() => updateRecipient(idx, 'email', e.currentTarget.value), 0);
+  }}
 />
 
-// Et pour le nom complet :
+
 <input
   key={`fullname-${recipient.order}`}
   type="text"
@@ -549,6 +552,12 @@ const RecipientsPanel = React.memo(({
   spellCheck="false"
   autoCorrect="off"
   autoCapitalize="words"
+  onTouchEnd={(e) => {
+  // Si la valeur DOM ≠ état, synchronise
+  const v = e.currentTarget.value;
+  if (v !== recipient.email) updateRecipient(idx, 'email', v);
+}}
+
 />
 
                             </div>

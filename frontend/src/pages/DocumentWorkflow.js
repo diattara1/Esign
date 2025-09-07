@@ -458,59 +458,45 @@ const RecipientsPanel = React.memo(({
                 </div>
 
                 <div className="mt-2 space-y-2">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Email</label>
-                    {/* Email: correctifs iOS */}
-                    <input
-                      type="email"
-                      name="email"
-                      placeholder="Email"
-                      autoComplete="email"
-                      inputMode="email"
-                      value={recipient.email}
-                      onChange={(e) => updateRecipient(idx, 'email', e.target.value)}
-                      onInput={(e) => updateRecipient(idx, 'email', e.currentTarget.value)}
-                      onBlur={(e) => updateRecipient(idx, 'email', e.currentTarget.value)}
-                      onBeforeInput={(e) => {
-                        setTimeout(() => {
-                          updateRecipient(idx, 'email', e.currentTarget.value);
-                        }, 0);
-                      }}
-                      onTouchEnd={(e) => {
-                        const v = e.currentTarget.value;
-                        if (v !== recipient.email) updateRecipient(idx, 'email', v);
-                      }}
-                      required
-                      className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring focus:ring-indigo-200 focus:border-indigo-500"
-                    />
-                    {emailError && <p className="text-xs text-red-500 mt-1">{emailError}</p>}
-                  </div>
+               {/* Email */}
+<div>
+  <label htmlFor={`email-${recipient.uid}`} className="block text-xs font-medium text-gray-700 mb-1">
+    Email
+  </label>
+  <input
+    id={`email-${recipient.uid}`}
+    type="email"
+    name={`email-${recipient.uid}`}
+    placeholder="Email"
+    autoComplete="email"
+    inputMode="email"
+    value={recipient.email ?? ""}
+    onChange={(e) => updateRecipient(idx, "email", e.target.value)}
+    required
+    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring focus:ring-indigo-200 focus:border-indigo-500"
+    autoCapitalize="off"
+    spellCheck={false}
+  />
+</div>
 
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Nom complet</label>
-                    {/* Nom complet: correctifs iOS */}
-                    <input
-                      type="text"
-                      name="full_name"
-                      placeholder="Nom complet"
-                      autoComplete="name"
-                      value={recipient.full_name}
-                      onChange={(e) => updateRecipient(idx, 'full_name', e.target.value)}
-                      onInput={(e) => updateRecipient(idx, 'full_name', e.currentTarget.value)}
-                      onBlur={(e) => updateRecipient(idx, 'full_name', e.currentTarget.value)}
-                      onBeforeInput={(e) => {
-                        setTimeout(() => {
-                          updateRecipient(idx, 'full_name', e.currentTarget.value);
-                        }, 0);
-                      }}
-                      onTouchEnd={(e) => {
-                        const v = e.currentTarget.value;
-                        if (v !== recipient.full_name) updateRecipient(idx, 'full_name', v);
-                      }}
-                      required
-                      className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring focus:ring-indigo-200 focus:border-indigo-500"
-                    />
-                  </div>
+{/* Nom complet */}
+<div>
+  <label htmlFor={`full_name-${recipient.uid}`} className="block text-xs font-medium text-gray-700 mb-1">
+    Nom
+  </label>
+  <input
+    id={`full_name-${recipient.uid}`}
+    type="text"
+    name={`full_name-${recipient.uid}`}
+    placeholder="Nom complet"
+    autoComplete="name"
+    value={recipient.full_name ?? ""}
+    onChange={(e) => updateRecipient(idx, "full_name", e.target.value)}
+    required
+    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring focus:ring-indigo-200 focus:border-indigo-500"
+  />
+</div>
+
 
                   <div className="pt-1">
                     <button

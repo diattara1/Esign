@@ -3,8 +3,9 @@ import axios from 'axios';
 import createAuthRefreshInterceptor from 'axios-auth-refresh';
 import logService from './logService';
 // URL de base de l'API Django
-export const API_BASE_URL = process.env.REACT_APP_API_BASE_URL;
-
+export const API_BASE_URL = (process.env.REACT_APP_API_BASE_URL || '')
+  .trim()                 // vire espaces parasites
+  .replace(/\/+$/, '');   // vire les slashs finaux
 if (!API_BASE_URL) {
   throw new Error('REACT_APP_API_BASE_URL is not defined');
 }

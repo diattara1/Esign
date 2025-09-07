@@ -81,9 +81,16 @@ class CookieTokenRefreshView(TokenRefreshView):
 @permission_classes([AllowAny])
 def logout(request):
     """Clear authentication cookies."""
+    refresh = request.COOKIES.get('refresh_token')
+    if refresh:
+        from rest_framework_simplejwt.tokens import RefreshToken
+        try:
+            RefreshToken(refresh).blacklist()
+        except Exception:
+            pass
     response = Response({'detail': 'Logout successful'}, status=status.HTTP_200_OK)
-    response.delete_cookie('access_token')
-    response.delete_cookie('refresh_token')
+    response.delete_cookie('access_token', samesite='None', secure=True)
+    response.delete_cookie('refresh_token', samesite='None', secure=True)
     return response
 
 @api_view(['POST'])

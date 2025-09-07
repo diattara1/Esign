@@ -167,6 +167,6 @@ class ClearAuthCookiesMiddleware:
     def __call__(self, request):
         response = self.get_response(request)
         if getattr(request, "_delete_auth_cookies", False):
-            response.delete_cookie("access_token")
-            response.delete_cookie("refresh_token")
+            response.delete_cookie("access_token", samesite="None", secure=True)
+            response.delete_cookie("refresh_token", samesite="None", secure=True)
         return response

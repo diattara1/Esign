@@ -587,8 +587,8 @@ export default function BulkSignSameWizard() {
                     {Array.from({ length: numPages }, (_, i) => {
                       const n = i + 1;
                       const containerPadding = isMobile ? 24 : 48; // p-3/md:p-6
-                      const pageWidth = Math.min(Math.max((viewerWidth || 600) - containerPadding, 320), 900);
-                      const s = pageWidth / (pageDims[n]?.width || 1);
+                      const pageWidth = Math.max(0, Math.min((viewerWidth || 600) - containerPadding, 900));
+                     const s = pageWidth / (pageDims[n]?.width || 1);
 
                       const fieldObj = placement && placement.page === n ? { position: { x: placement.x, y: placement.y, width: placement.width, height: placement.height } } : null;
 

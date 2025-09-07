@@ -70,9 +70,9 @@ class CookieTokenRefreshView(TokenRefreshView):
         access = response.data.get('access')
         refresh = response.data.get('refresh')
         if access:
-            response.set_cookie('access_token', access, httponly=True, secure=True, samesite='Lax')
+            response.set_cookie('access_token', access, httponly=True, secure=True, samesite='None', max_age=int(timedelta(hours=1).total_seconds()))
         if refresh:
-            response.set_cookie('refresh_token', refresh, httponly=True, secure=True, samesite='Lax')
+            response.set_cookie('refresh_token', refresh, httponly=True, secure=True, samesite='None')
         response.data = {'detail': 'Token refreshed'}
         return response
 

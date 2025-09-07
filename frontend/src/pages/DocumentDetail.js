@@ -116,6 +116,10 @@ const DocumentDetail = () => {
     };
   }, []);
 
+  const isMobileView = window.innerWidth < 768;
+  const padding = isMobileView ? 16 : 48;
+  const pageMaxWidth = Math.max(0, Math.min(viewerWidth - padding, 900));
+
   // Libération URL blob
   useEffect(() => {
     return () => {
@@ -501,7 +505,7 @@ const DocumentDetail = () => {
                     <div key={i} className="relative mb-4 lg:mb-6 shadow-lg rounded-lg overflow-hidden">
                       <Page
                         pageNumber={i + 1}
-                        width={Math.max(viewerWidth, 300)}
+                        width={pageMaxWidth}
                         renderTextLayer={false}
                         className="mx-auto"
                       />

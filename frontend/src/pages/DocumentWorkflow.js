@@ -877,8 +877,7 @@ export default function DocumentWorkflow() {
       const padding = isMobileView ? 16 : 48;
       const container = node.clientWidth || 0;
       const maxWidth = isMobileView ? 600 : 900;
-      const minWidth = isMobileView ? 280 : 320;
-      const nextWidth = Math.min(Math.max(container - padding, minWidth), maxWidth);
+      const nextWidth = Math.max(0, Math.min(container - padding, maxWidth));
       if (Math.abs(nextWidth - lastWidth) >= MIN_DELTA) {
         lastWidth = nextWidth;
         setPdfWidth(nextWidth);

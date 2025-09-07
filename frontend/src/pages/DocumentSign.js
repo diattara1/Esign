@@ -337,7 +337,7 @@ export default function DocumentSign() {
         {numPages > 0 && Array.from({ length: numPages }, (_, i) => {
           const n = i + 1;
           const padding = isMobile ? 24 : 48; // SelfSign-like
-          const pageMaxWidth = Math.min(Math.max((viewerWidth || 600) - padding, 320), 900);
+          const pageMaxWidth = Math.max(0, Math.min(viewerWidth - padding, 900));
           const s = pageMaxWidth / (pageDims[n]?.width || 1);
           const fields = currentFields.filter((f) => f.page === n);
 

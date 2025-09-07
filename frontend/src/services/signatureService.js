@@ -1,26 +1,6 @@
-// src/services/signatureService.js
 import { api } from './apiUtils';
 
 const BASE = 'api/signature';
-
-/* --------------------------------------------------------------
- * Helpers
- * ------------------------------------------------------------*/
-
-/**
- * Construit une URL ABSOLUE à partir d'un chemin relatif, basée sur api.defaults.baseURL.
- * - supprime les / en trop
- * - force https si domaine intellivibes.linkpc.net (évite CSP connect-src http)
- */
-const ABS = (rel) => {
-  const base = (api?.defaults?.baseURL || '').replace(/\/+$/, '');
-  const path = String(rel || '').replace(/^\/+/, '');
-  const u = new URL(`${base}/${path}`);
-  if (u.hostname === 'intellivibes.linkpc.net') {
-    u.protocol = 'https:';
-  }
-  return u.toString();
-};
 
 const apiRequest = async (method, url, data, config, errorMessage = 'Une erreur est survenue') => {
   try {
@@ -33,9 +13,6 @@ const apiRequest = async (method, url, data, config, errorMessage = 'Une erreur 
   }
 };
 
-/* --------------------------------------------------------------
- * Service
- * ------------------------------------------------------------*/
 export default {
   // ─── Envelopes listing / CRUD ──────────────────────────────────────────
   getEnvelopes: (params = {}) =>
@@ -68,6 +45,7 @@ export default {
   updateEnvelope: (id, payload) =>
     apiRequest('patch', `${BASE}/envelopes/${id}/`, payload, undefined, "Impossible de mettre à jour l'enveloppe"),
 
+
   updateEnvelopeFiles: (id, files) => {
     const form = new FormData();
     files.forEach(f => form.append('files', f));
@@ -87,7 +65,6 @@ export default {
     const headers = token ? { 'X-Signature-Token': token } : {};
     return apiRequest('get', `${BASE}/envelopes/${id}/guest/`, null, { headers }, "Impossible de récupérer l'enveloppe invitée");
   },
-
   sendOtp: (id, token) =>
     apiRequest(
       'post',
@@ -109,6 +86,7 @@ export default {
   // ─── Signing ────────────────────────────────────────────────────────
   signGuest: (id, body, token) => {
     const cfg = token ? { headers: { 'X-Signature-Token': token } } : undefined;
+    // backend renvoie du JSON -> pas de responseType: 'blob'
     return apiRequest('post', `${BASE}/envelopes/${id}/sign/`, body, cfg, "Impossible de signer l'enveloppe en tant qu'invité");
   },
 
@@ -118,20 +96,20 @@ export default {
   sign(id, body, token) {
     return token ? this.signGuest(id, body, token) : this.signAuthenticated(id, body);
   },
-
-  // Demande d'email de réinitialisation
-  requestPasswordReset: (email) =>
-    apiRequest(
-      'post',
-      `${BASE}/password-reset/`,
-      { email },
-      undefined,
-      "Impossible d'envoyer l'email de réinitialisation"
-    ),
+// Demande d'email de réinitialisation
+requestPasswordReset: (email) =>
+  apiRequest(
+    'post',
+    `${BASE}/password-reset/`,
+    { email },
+    undefined,
+    "Impossible d'envoyer l'email de réinitialisation"
+  ),
 
   getAuthenticatedEnvelope: id =>
     apiRequest('get', `${BASE}/envelopes/${id}/sign-page/`, null, undefined, "Impossible de récupérer l'enveloppe"),
-
+  
+  
   changePassword: (uid, token, password) =>
     apiRequest('post', `${BASE}/change-password/`, { uid, token, password }, undefined, 'Impossible de changer le mot de passe'),
 
@@ -141,66 +119,58 @@ export default {
 
   // ─── Download helpers ────────────────────────────────────────────────
   // Téléchargement "global" : renvoie l'URL qui pointe vers le signé si dispo, sinon original.
-  downloadEnvelope: async (envelopeId) => {
-    const { download_url } = await apiRequest(
-      'get',
-      `${BASE}/envelopes/${envelopeId}/download/`,
-      null,
-      undefined,
-      "Impossible de préparer le téléchargement"
-    );
-
-    // Normaliser l'URL renvoyée par le backend (peut être relative ou en http)
-    const absolute = new URL(download_url || '', api?.defaults?.baseURL || '');
-    if (absolute.hostname === 'intellivibes.linkpc.net') {
-      absolute.protocol = 'https:';
-    }
-
-    // Télécharger via axios pour conserver les mêmes en-têtes (auth, etc.)
-    const pdfBlob = await api.get(absolute.toString(), { responseType: 'blob' }).then(r => r.data);
+  downloadEnvelope: async envelopeId => {
+    const { download_url } = await apiRequest('get', `${BASE}/envelopes/${envelopeId}/download/`, null, undefined, "Impossible de préparer le téléchargement");
+    const pdfBlob = await apiRequest('get', download_url, null, { responseType: 'blob' }, "Impossible de télécharger le document");
     return { download_url: URL.createObjectURL(pdfBlob) };
   },
+// --- Vérification QR publique (uuid + sig) ---
+verifyQRCodeWithSig: (uuid, sig) =>
+  apiRequest('get', `${BASE}/prints/${uuid}/verify/`, null, { params: { sig } }, 'Impossible de vérifier le QR code'),
 
-  // --- Vérification QR publique (uuid + sig) ---
-  verifyQRCodeWithSig: (uuid, sig) =>
-    apiRequest('get', `${BASE}/prints/${uuid}/verify/`, null, { params: { sig } }, 'Impossible de vérifier le QR code'),
+// --- URL absolue vers le PDF signé via uuid+sig (sans JWT, pérenne) ---
+getQRCodeDocumentAbsoluteUrl: (uuid, sig) => {
+  const base = (api.defaults.baseURL || '').replace(/\/$/, '');
+  const rel = `${BASE}/prints/${uuid}/document/?sig=${encodeURIComponent(sig || '')}`;
+  return `${base}/${rel.replace(/^\//, '')}`;
+},
 
-  // --- URL absolue vers le PDF signé via uuid+sig (sans JWT, pérenne) ---
-  getQRCodeDocumentAbsoluteUrl: (uuid, sig) => {
-    const rel = `${BASE}/prints/${uuid}/document/?sig=${encodeURIComponent(sig || '')}`;
-    return ABS(rel);
-  },
+// --- Ouvrir le PDF dans l'onglet courant (convenient) ---
+openQRCodeDocument: (uuid, sig) => {
+  const base = (api.defaults.baseURL || '').replace(/\/$/, '');
+  const url = `${base}/${BASE}/prints/${uuid}/document/?sig=${encodeURIComponent(sig || '')}`;
+  window.location.assign(url);
+},
 
-  // --- Ouvrir le PDF dans l'onglet courant (convenient) ---
-  openQRCodeDocument: (uuid, sig) => {
-    const rel = `${BASE}/prints/${uuid}/document/?sig=${encodeURIComponent(sig || '')}`;
-    window.location.assign(ABS(rel));
-  },
-
-  // Téléchargement d'un document précis (si tu ajoutes un endpoint côté vue)
+// Téléchargement d'un document précis (si tu ajoutes un endpoint côté vue)
   // Sinon, utilise simplement doc.file_url côté front.
+
   fetchDocumentBlob: async (envelopeId, documentId) => {
     const url = `${BASE}/envelopes/${envelopeId}/documents/${documentId}/file/`;
     const blob = await apiRequest('get', url, null, { responseType: 'blob' }, 'Impossible de récupérer le fichier');
+    // Sanity check (optionnel) : vérifier le type
     if (!blob) throw new Error('Fichier introuvable');
     return URL.createObjectURL(blob);
   },
 
-  // Relance manuelle par le créateur
+// Relance manuelle par le créateur
   remindNow: (id) =>
     apiRequest('post', `${BASE}/envelopes/${id}/remind/`, undefined, undefined, "Impossible de relancer l'enveloppe"),
 
-  // URLs directes (désormais ABSOLUES et HTTPS)
-  getOriginalDocumentUrl: (envelopeId) =>
-    ABS(`${BASE}/envelopes/${envelopeId}/original-document/`),
+  // URLs directes "brutes"
+  getOriginalDocumentUrl: envelopeId =>
+    `${BASE}/envelopes/${envelopeId}/original-document/`,
 
-  getSignedDocumentUrl: (envelopeId) =>
-    ABS(`${BASE}/envelopes/${envelopeId}/signed-document/`),
+  getSignedDocumentUrl: envelopeId =>
+    `${BASE}/envelopes/${envelopeId}/signed-document/`,
 
-  // URL absolue du document décrypté (avec token), forçant https si besoin
+    // renvoyer une URL ABSOLUE (utilise api.defaults.baseURL)
   getDecryptedDocumentUrl: (envelopeId, token) => {
-    const rel = `${BASE}/envelopes/${envelopeId}/document/?token=${encodeURIComponent(token || '')}`;
-    return ABS(rel);
+    const rel = `${BASE}/envelopes/${envelopeId}/document/?token=${encodeURIComponent(
+      token || ''
+    )}`;
+    const base = (api.defaults.baseURL || '').replace(/\/$/, '');
+    return `${base}/${rel.replace(/^\//, '')}`;
   },
 
   // ─── Signatures / QR codes  ───────────────────────────────
@@ -210,13 +180,10 @@ export default {
   generateQRCode: (envelopeId, type) =>
     apiRequest('post', `${BASE}/prints/generate/`, { envelope: envelopeId, qr_type: type }, undefined, 'Impossible de générer le QR code'),
 
-  getQRCodes: () =>
-    apiRequest('get', `${BASE}/prints/`, null, undefined, 'Impossible de récupérer les QR codes'),
+  getQRCodes: () => apiRequest('get', `${BASE}/prints/`, null, undefined, 'Impossible de récupérer les QR codes'),
 
-  verifyQRCode: uuid =>
-    apiRequest('get', `${BASE}/prints/${uuid}/verify/`, null, undefined, 'Impossible de vérifier le QR code'),
-
-  // Self-sign (un ou plusieurs docs, même endroit)
+  verifyQRCode: uuid => apiRequest('get', `${BASE}/prints/${uuid}/verify/`, null, undefined, 'Impossible de vérifier le QR code'),
+// Self-sign (un ou plusieurs docs, même endroit)
   selfSign: async (formData, { sync = false } = {}) => {
     const config = {};
     if (sync) config.responseType = 'blob';
@@ -229,7 +196,7 @@ export default {
     }
   },
 
-  // Batch sign (same spot ou var spots)
+// Batch sign (same spot ou var spots)
   createBatchSign: formData =>
     apiRequest('post', `${BASE}/batch-sign/`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' }
@@ -244,4 +211,20 @@ export default {
         const url = URL.createObjectURL(data);
         return { url };
       }),
+
+  // ─── Saved signatures ───────────────────────────────────────────────
+  listSavedSignatures: () =>
+    apiRequest('get', `${BASE}/saved-signatures/`, null, undefined, 'Impossible de récupérer les signatures enregistrées'),
+
+  createSavedSignature: (payload) => {
+    const config = payload instanceof FormData ? {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    } : {};
+    return apiRequest('post', `${BASE}/saved-signatures/`, payload, config, 'Impossible de créer la signature enregistrée');
+  },
+
+  deleteSavedSignature: (id) =>
+    apiRequest('delete', `${BASE}/saved-signatures/${id}/`, null, undefined, 'Impossible de supprimer la signature enregistrée'),
+
+
 };

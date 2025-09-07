@@ -238,8 +238,20 @@ function SignatureModal({ isOpen, onClose, onConfirm, savedSignatures }) {
       onRequestClose={onClose}
       ariaHideApp={false}
       contentLabel="Signer"
-      style={{ overlay: { zIndex: 10000, backgroundColor: 'rgba(0,0,0,0.5)' }, content: { zIndex: 10001, inset: '10% 20%', borderRadius: 12, padding: 16 } }}
-    >
+     style={{
+        overlay: { zIndex: 10000, backgroundColor: 'rgba(0,0,0,0.5)' },
+        content: {
+          zIndex: 10001,
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          width: '90%',
+          maxWidth: 600,
+          margin: '0 auto',
+          padding: 16,
+          borderRadius: 12,
+        },
+      }}>
       <h2 className="text-lg font-semibold mb-3">Ajouter une signature</h2>
 
       <div className="flex items-center gap-4 mb-3">

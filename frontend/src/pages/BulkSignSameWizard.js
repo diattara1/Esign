@@ -554,7 +554,10 @@ export default function BulkSignSameWizard() {
       )}
 
       {/* Sidebar (drawer intégré) */}
-      <aside id="mobile-panel" className={`${isMobile ? `fixed inset-y-0 left-0 z-40 w-full max-w-sm transform transition-transform duration-300 ease-in-out will-change-transform ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}` : 'w-full lg:w-1/3 max-w-md'} bg-white border-r border-gray-200`} aria-hidden={!sidebarOpen && isMobile}>
+      <aside
+       id="mobile-panel"
+        className={`${isMobile
+         ? `fixed inset-y-0 left-0 z-40 w-full max-w-sm transform transition-transform duration-300 ease-in-out will-change-transform ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}` : 'w-1/3 max-w-md flex-shrink-0'} bg-white border-r border-gray-200`} aria-hidden={!sidebarOpen && isMobile}>
         <div className="relative z-40 bg-white h-full overflow-auto"><Sidebar /></div>
       </aside>
 
@@ -598,9 +601,9 @@ export default function BulkSignSameWizard() {
                             error={<div className="text-red-500 text-center p-8">Erreur lors du chargement du PDF</div>}>
                     {Array.from({ length: numPages }, (_, i) => {
                       const n = i + 1;
-                      const containerPadding = isMobile ? 24 : 48; // p-3/md:p-6
-                      const pageWidth = Math.max(0, Math.min((viewerWidth || 600) - containerPadding, 900));
-                     const s = pageWidth / (pageDims[n]?.width || 1);
+                       const containerPadding = isMobile ? 24 : 48; // p-3/md:p-6
+ const pageWidth = Math.min(Math.max((viewerWidth || 320) - containerPadding, 320), 900);
+const s = pageWidth / Math.max(1, (pageDims[n]?.width || 1));
 
                       const fieldObj = placement && placement.page === n ? { position: { x: placement.x, y: placement.y, width: placement.width, height: placement.height } } : null;
 

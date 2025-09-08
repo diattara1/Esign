@@ -492,7 +492,7 @@ export default function BulkSignSameWizard() {
                   <h3 className="font-medium text-gray-800">Aperçu du premier document</h3>
                   <p className="text-sm text-gray-600">Définis la zone de signature qui sera appliquée sur {files.length} document(s)</p>
                 </div>
-                <div className="p-3 md:p-6">
+                <div className="py-3 md:py-6">
                   <Document key={docKey} file={pdfUrl} onLoadSuccess={onDocLoad}
                             loading={<div className="flex items-center justify-center p-8"><div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" /></div>}
                             error={<div className="text-red-500 text-center p-8">Erreur lors du chargement du PDF</div>}>

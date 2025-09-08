@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState, useLayoutEffect, useMemo, useCallback } from 'react';
 import { Document, Page } from 'react-pdf';
+import useResponsivePdf from '../hooks/useResponsivePdf';
 import { toast } from 'react-toastify';
 import { FiUpload, FiX, FiEdit3, FiMenu, FiTrash2 } from 'react-icons/fi';
 import signatureService from '../services/signatureService';
@@ -298,6 +299,8 @@ export default function SelfSignWizard() {
   // Modal signature
   const [modalOpen, setModalOpen] = useState(false);
 
+  const getPageMetrics = useResponsivePdf(viewerWidth, isMobile, pageDims);
+
   /* layout + responsive width (mesure + breakpoints) */
   useLayoutEffect(() => {
     const measure = () => setViewerWidth(viewerRef.current?.clientWidth || 600);
@@ -377,7 +380,7 @@ export default function SelfSignWizard() {
   const handleOverlayClick = (e, pageNumber) => {
     if (!placing) return;
     const rect = e.currentTarget.getBoundingClientRect();
-    const scale = (viewerWidth || 600) / (pageDims[pageNumber]?.width || 600);
+    const { scale } = getPageMetrics(pageNumber);
     const x = (e.clientX - rect.left) / scale;
     const y = (e.clientY - rect.top) / scale;
     setPlacement({ page: pageNumber, x, y, width: 160, height: 50 });
@@ -385,7 +388,7 @@ export default function SelfSignWizard() {
     toast.success(`Zone posée p.${pageNumber}`);
     if (isMobile) setSidebarOpen(false);
     // Ouvre direct le modal à la création
-    setTimeout(()=> setModalOpen(true), 0);
+    setTimeout(() => setModalOpen(true), 0);
   };
 
   const openSignatureModal = () => {
@@ -563,22 +566,46 @@ export default function SelfSignWizard() {
                         loading={<div className="flex items-center justify-center p-8"><div className="w-8 h-8 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" /></div>}
                         error={<div className="text-red-500 text-center p-8">Erreur lors du chargement du PDF</div>}>
                 {Array.from({ length: numPages }, (_, i) => {
-                  const containerPadding = isMobile ? 24 : 48; // correspond aux p-3/md:p-6
-                  const maxWidth = Math.min(Math.max(viewerWidth - containerPadding, 320), 900);
-                  const pageWidth = maxWidth;
-                  const scale = pageWidth / (pageDims[i + 1]?.width || 1);
+                  const { pageWidth, pageHeight, scale } = getPageMetrics(i + 1);
 
-                  const fieldObj = placement && placement.page === i + 1
-                    ? { position: { x: placement.x, y: placement.y, width: placement.width, height: placement.height } }
-                    : null;
+                  const fieldObj =
+                    placement && placement.page === i + 1
+                      ? {
+                          position: {
+                            x: placement.x,
+                            y: placement.y,
+                            width: placement.width,
+                            height: placement.height,
+                          },
+                        }
+                      : null;
 
                   return (
-                    <div key={i} className="relative mb-6 bg-white shadow-lg rounded-lg overflow-hidden">
-                      <Page pageNumber={i + 1} width={pageWidth} renderTextLayer={false} onLoadSuccess={(p) => onPageLoad(i + 1, p)} className="mx-auto" />
+                    <div
+                      key={i}
+                      className="relative mb-6 bg-white shadow-lg rounded-lg overflow-hidden"
+                    >
+                      <Page
+                        pageNumber={i + 1}
+                        width={pageWidth}
+                        renderTextLayer={false}
+                        onLoadSuccess={(p) => onPageLoad(i + 1, p)}
+                        className="mx-auto"
+                      />
                       {pageDims[i + 1] && (
-                        <div onClick={(e) => handleOverlayClick(e, i + 1)}
-                             className="absolute top-0 left-1/2 -translate-x-1/2"
-                             style={{ width: pageWidth, height: pageDims[i + 1].height * scale, cursor: placing ? 'crosshair' : 'default', zIndex: 10, backgroundColor: placing ? 'rgba(16,185,129,.08)' : 'transparent' }} />
+                        <div
+                          onClick={(e) => handleOverlayClick(e, i + 1)}
+                          className="absolute top-0 left-1/2 -translate-x-1/2"
+                          style={{
+                            width: pageWidth,
+                            height: pageHeight,
+                            cursor: placing ? 'crosshair' : 'default',
+                            zIndex: 10,
+                            backgroundColor: placing
+                              ? 'rgba(16,185,129,.08)'
+                              : 'transparent',
+                          }}
+                        />
                       )}
 
                       {fieldObj && (
@@ -586,14 +613,21 @@ export default function SelfSignWizard() {
                           field={fieldObj}
                           factor={scale}
                           isMobileView={isMobile}
-                          onUpdate={(field, { position }) => setPlacement(p => ({ ...p, ...position }))}
-                          onDelete={() => { setPlacement(null); setSigDataUrl(''); }}
+                          onUpdate={(field, { position }) =>
+                            setPlacement((p) => ({ ...p, ...position }))
+                          }
+                          onDelete={() => {
+                            setPlacement(null);
+                            setSigDataUrl('');
+                          }}
                           onOpenModal={openSignatureModal}
                           image={sigDataUrl}
                         />
                       )}
 
-                      <div className="absolute bottom-2 right-2 bg-gray-900/75 text-white text-sm px-2 py-1 rounded">Page {i + 1}/{numPages}</div>
+                      <div className="absolute bottom-2 right-2 bg-gray-900/75 text-white text-sm px-2 py-1 rounded">
+                        Page {i + 1}/{numPages}
+                      </div>
                     </div>
                   );
                 })}

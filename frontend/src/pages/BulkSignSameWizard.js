@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState, useLayoutEffect, useCallback, useMemo } from 'react';
 import { Document, Page } from 'react-pdf';
+import useResponsivePdf from '../hooks/useResponsivePdf';
 import { toast } from 'react-toastify';
 import { FiLayers, FiDownload, FiMove, FiFile, FiX, FiMenu, FiTrash2 } from 'react-icons/fi';
 import signatureService from '../services/signatureService';
@@ -232,6 +233,8 @@ export default function BulkSignSameWizard() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const toggleSidebar = useCallback(() => setSidebarOpen((o) => !o), []);
 
+  const getPageMetrics = useResponsivePdf(viewerWidth, isMobile, pageDims);
+
   /* ---------------- layout & responsive (aligné sur SelfSign) ---------------- */
   useLayoutEffect(() => {
     const measure = () => setViewerWidth(viewerRef.current?.clientWidth || 600);
@@ -287,26 +290,19 @@ export default function BulkSignSameWizard() {
     setPageDims((d) => ({ ...d, [n]: { width: vp.width, height: vp.height } }));
   };
 
-  // Calcul d’échelle façon SelfSign
-  const pageScale = (pageNumber) => {
-    const containerPadding = isMobile ? 24 : 48; // p-3 / md:p-6
-    const pageWidth = Math.min(Math.max((viewerWidth || 600) - containerPadding, 320), 900);
-    const natural = pageDims[pageNumber]?.width || 1;
-    return pageWidth / natural;
-  };
 
   // Placement zone
   const handleOverlayClick = (e, pageNumber) => {
     if (!placing) return;
     const rect = e.currentTarget.getBoundingClientRect();
-    const scale = pageScale(pageNumber);
+    const { scale } = getPageMetrics(pageNumber);
     const x = (e.clientX - rect.left) / scale;
     const y = (e.clientY - rect.top) / scale;
     setPlacement({ page: pageNumber, x, y, width: 160, height: 50 });
     setPlacing(false);
     toast.success(`Zone définie (page ${pageNumber}) — appliquée à tous les documents`);
     if (isMobile) setSidebarOpen(false);
-    setTimeout(()=> setModalOpen(true), 0);
+    setTimeout(() => setModalOpen(true), 0);
   };
 
   const [modalOpen, setModalOpen] = useState(false);
@@ -502,11 +498,19 @@ export default function BulkSignSameWizard() {
                             error={<div className="text-red-500 text-center p-8">Erreur lors du chargement du PDF</div>}>
                     {Array.from({ length: numPages }, (_, i) => {
                       const n = i + 1;
-                       const containerPadding = isMobile ? 24 : 48; // p-3/md:p-6
- const pageWidth = Math.min(Math.max((viewerWidth || 320) - containerPadding, 320), 900);
-const s = pageWidth / Math.max(1, (pageDims[n]?.width || 1));
+                      const { pageWidth, pageHeight, scale: s } = getPageMetrics(n);
 
-                      const fieldObj = placement && placement.page === n ? { position: { x: placement.x, y: placement.y, width: placement.width, height: placement.height } } : null;
+                      const fieldObj =
+                        placement && placement.page === n
+                          ? {
+                              position: {
+                                x: placement.x,
+                                y: placement.y,
+                                width: placement.width,
+                                height: placement.height,
+                              },
+                            }
+                          : null;
 
                       return (
                         <div key={i} className="relative mb-6 bg-white shadow rounded-lg overflow-hidden">
@@ -522,7 +526,13 @@ const s = pageWidth / Math.max(1, (pageDims[n]?.width || 1));
                             <div
                               onClick={(e) => handleOverlayClick(e, n)}
                               className="absolute top-0 left-1/2 -translate-x-1/2"
-                              style={{ width: pageWidth, height: pageDims[n].height * s, cursor: placing ? 'crosshair' : 'default', zIndex: 10, backgroundColor: placing ? 'rgba(59,130,246,.06)' : 'transparent' }}
+                              style={{
+                                width: pageWidth,
+                                height: pageHeight,
+                                cursor: placing ? 'crosshair' : 'default',
+                                zIndex: 10,
+                                backgroundColor: placing ? 'rgba(59,130,246,.06)' : 'transparent',
+                              }}
                             />
                           )}
 
@@ -531,14 +541,22 @@ const s = pageWidth / Math.max(1, (pageDims[n]?.width || 1));
                               field={fieldObj}
                               factor={s}
                               isMobileView={isMobile}
-                              onUpdate={(field, { position }) => setPlacement(p => ({ ...p, ...position }))}
-                              onDelete={() => { setPlacement(null); setSigDataUrl(''); setSigSavedId(null); }}
+                              onUpdate={(field, { position }) =>
+                                setPlacement((p) => ({ ...p, ...position }))
+                              }
+                              onDelete={() => {
+                                setPlacement(null);
+                                setSigDataUrl('');
+                                setSigSavedId(null);
+                              }}
                               onOpenModal={openSignatureModal}
                               image={sigDataUrl}
                             />
                           )}
 
-                          <div className="absolute bottom-2 right-2 bg-gray-900/75 text-white text-xs px-2 py-1 rounded">Page {n}/{numPages}</div>
+                          <div className="absolute bottom-2 right-2 bg-gray-900/75 text-white text-xs px-2 py-1 rounded">
+                            Page {n}/{numPages}
+                          </div>
                         </div>
                       );
                     })}

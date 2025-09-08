@@ -9,11 +9,10 @@ import { toast } from 'react-toastify';
 import { Document, Page } from 'react-pdf';
 import signatureService from '../services/signatureService';
 import { api } from '../services/apiUtils';
-import SignaturePadComponent from '../components/SignaturePadComponent';
-import Modal from 'react-modal';
+import SignatureModal from '../components/SignatureModal';
+import { fileToPngDataURL, blobToPngDataURL, savedSignatureImageUrl, fetchSavedSignatureAsDataURL } from '../utils/signatureUtils';
 import logService from '../services/logService';
 import sanitize from '../utils/sanitize';
-import useFocusTrap from '../hooks/useFocusTrap';
 import { FiMenu, FiX, FiShield, FiCheckCircle, FiAlertCircle } from 'react-icons/fi';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
@@ -97,11 +96,9 @@ export default function DocumentSign() {
   }, [cooldownUntil]);
 
   // Signatures locales par champ
-  const [mode, setMode] = useState('draw'); // draw | upload | saved
   const [signatureData, setSignatureData] = useState({}); // {fieldId: dataURL}
-  const [uploadPreview, setUploadPreview] = useState(null);
   const [savedSignatures, setSavedSignatures] = useState([]);
-  const [savedSelectedId, setSavedSelectedId] = useState(null);
+  const [savedSelectedIds, setSavedSelectedIds] = useState({});
 
   // Helpers URL absolue + PDF invité
   const toAbsolute = (url) => {
@@ -110,16 +107,6 @@ export default function DocumentSign() {
     const base = (api.defaults.baseURL || '').replace(/\/$/, '');
     return `${base}/${url.replace(/^\//, '')}`;
   };
-  async function urlToDataUrl(url) {
-    const res = await fetch(url, { credentials: 'include' });
-    const blob = await res.blob();
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result);
-      reader.onerror = reject;
-      reader.readAsDataURL(blob);
-    });
-  }
   const fetchPdfBlobWithToken = async (url) => {
     const headers = token ? { 'X-Signature-Token': token } : {};
     const abs = toAbsolute(url);
@@ -259,29 +246,24 @@ export default function DocumentSign() {
   // ---------------------------- Modal signature ----------------------------
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedField, setSelectedField] = useState(null);
-  const triggerRef = useRef(null);
-  const modalRef = useRef(null);
-  useFocusTrap(modalRef, modalOpen);
-  useEffect(() => { const onKey = (e) => { if (e.key === 'Escape') closeModal(); }; if (modalOpen) document.addEventListener('keydown', onKey); return () => document.removeEventListener('keydown', onKey); }, [modalOpen]);
 
-  const openFieldModal = (field, event) => {
+  const openFieldModal = (field) => {
     if (isAlreadySigned) return toast.info('Document déjà signé');
     if (!field.editable) return toast.info('Champ non éditable');
-    triggerRef.current = event?.currentTarget || null;
-    setSelectedField(field); setMode('draw'); setUploadPreview(signatureData[field.id] || null); setSavedSelectedId(null); setModalOpen(true);
+    setSelectedField(field);
+    setModalOpen(true);
   };
-  const closeModal = () => { setModalOpen(false); triggerRef.current?.focus(); };
-  const handleUploadChange = async (ev) => {
-    const file = ev.target.files?.[0]; if (!file) return;
-    if (!file.type.startsWith('image/')) return toast.error('Veuillez importer une image (PNG/JPG/SVG)');
-    const reader = new FileReader();
-    reader.onload = () => { const dataUrl = reader.result; setUploadPreview(dataUrl); if (selectedField) setSignatureData((p) => ({ ...p, [selectedField.id]: dataUrl })); };
-    reader.readAsDataURL(file);
-  };
-  const handleModalConfirm = () => {
-    const dataUrl = signatureData[selectedField.id]; if (!dataUrl) return toast.error('Veuillez fournir une signature');
-    setEnvelope((e) => ({ ...e, fields: e.fields.map((f) => (f.id === selectedField.id ? { ...f, signed: true, signature_data: dataUrl } : f)) }));
-    toast.success('Signature ajoutée'); closeModal();
+  const closeModal = () => setModalOpen(false);
+  const handleModalConfirm = (dataUrl, savedId) => {
+    if (!selectedField || !dataUrl) return toast.error('Veuillez fournir une signature');
+    setSignatureData((p) => ({ ...p, [selectedField.id]: dataUrl }));
+    if (savedId) setSavedSelectedIds((p) => ({ ...p, [selectedField.id]: savedId }));
+    setEnvelope((e) => ({
+      ...e,
+      fields: e.fields.map((f) => (f.id === selectedField.id ? { ...f, signed: true, signature_data: dataUrl } : f))
+    }));
+    toast.success('Signature ajoutée');
+    closeModal();
   };
 
   // --------------------------- Bouton signer (API) --------------------------
@@ -357,7 +339,7 @@ export default function DocumentSign() {
                   {fields.map((field) => (
                     <button
                       key={field.id}
-                      onClick={field.editable ? (e) => openFieldModal(field, e) : undefined}
+                      onClick={field.editable ? () => openFieldModal(field) : undefined}
                       title={field.editable ? 'Cliquer pour signer' : 'Champ non éditable'}
                       className={`absolute flex items-center justify-center text-[11px] font-semibold border-2 rounded ${field.signed ? 'border-green-500 bg-green-100' : 'border-red-500 bg-red-100 hover:bg-red-200'} ${field.editable ? 'focus:outline-none focus:ring-2 focus:ring-blue-500' : ''}`}
                       style={{
@@ -520,50 +502,14 @@ export default function DocumentSign() {
       </div>
 
       {/* MODAL Signature */}
-      <Modal isOpen={modalOpen} onRequestClose={closeModal} contentLabel="Signer le champ" ariaHideApp={false} role="dialog" aria-modal="true" contentRef={(node) => (modalRef.current = node)}
-        style={{ overlay: { zIndex: 10000, backgroundColor: 'rgba(0,0,0,0.5)' }, content: { zIndex: 10001, inset: '10% 20%', borderRadius: '12px', padding: '16px' } }}>
-        <h2 className="text-lg font-semibold mb-3">Ajouter une signature</h2>
-        <div className="flex items-center gap-4 mb-3">
-          <label className="flex items-center gap-2"><input type="radio" name="mode" checked={mode==='draw'} onChange={()=>setMode('draw')} /><span>Dessiner</span></label>
-          <label className="flex items-center gap-2"><input type="radio" name="mode" checked={mode==='upload'} onChange={()=>setMode('upload')} /><span>Importer</span></label>
-          {!isGuest && !!savedSignatures.length && (
-            <label className="flex items-center gap-2"><input type="radio" name="mode" checked={mode==='saved'} onChange={()=>setMode('saved')} /><span>Mes signatures</span></label>
-          )}
-        </div>
-        {mode === 'draw' && (
-          <SignaturePadComponent mode="draw" onChange={(d)=> selectedField && setSignatureData((p)=>({ ...p, [selectedField.id]: d }))} onEnd={(d)=> selectedField && setSignatureData((p)=>({ ...p, [selectedField.id]: d }))} initialValue={signatureData[selectedField?.id]} />
-        )}
-        {mode === 'upload' && (
-          <div className="space-y-3">
-            <input type="file" accept="image/*" onChange={handleUploadChange} className="block w-full text-sm" />
-            {uploadPreview ? (
-              <div className="border rounded p-2 inline-block"><img src={uploadPreview} alt="Aperçu signature" style={{ maxWidth: 320, maxHeight: 160 }} /></div>
-            ) : (
-              <p className="text-sm text-gray-600">Choisissez une image (PNG/JPG/SVG).</p>
-            )}
-            {uploadPreview && (<button type="button" onClick={()=> { setUploadPreview(null); if (selectedField) setSignatureData((p)=>{ const c={...p}; delete c[selectedField.id]; return c; }); }} className="px-3 py-1 rounded bg-gray-200 text-gray-800">Effacer</button>)}
-          </div>
-        )}
-        {mode === 'saved' && (
-          <div className="grid grid-cols-2 gap-2 max-h-64 overflow-auto">
-            {savedSignatures.map(sig => (
-              <button type="button" key={sig.id}
-                className={`relative border p-1 rounded flex items-center justify-center h-24 ${savedSelectedId===sig.id ? 'ring-2 ring-blue-600 border-blue-600 bg-blue-50' : 'hover:bg-gray-50'}`}
-                onClick={async ()=>{ if (!selectedField) return; try { const raw = sig.data_url || toAbsolute(sig.image_url); const d = raw.startsWith('data:') ? raw : await urlToDataUrl(raw); setSignatureData((p)=>({ ...p, [selectedField.id]: d })); setUploadPreview(d); setSavedSelectedId(sig.id); } catch { toast.error('Impossible de charger la signature'); } }}
-              >
-                <img src={sig.data_url || toAbsolute(sig.image_url)} alt="saved" className="max-h-20 w-full object-contain" />
-                {savedSelectedId===sig.id && <span className="absolute top-1 right-1 text-[10px] px-1 rounded bg-blue-600 text-white">Choisie</span>}
-              </button>
-            ))}
-            {!savedSignatures.length && <p className="text-sm">Aucune signature enregistrée.</p>}
-          </div>
-        )}
-
-        <div className="mt-4 flex justify-end gap-2">
-          <button onClick={closeModal} className="px-4 py-2 rounded bg-gray-200">Annuler</button>
-          <button onClick={handleModalConfirm} className="px-4 py-2 rounded bg-green-600 text-white">Valider</button>
-        </div>
-      </Modal>
+      <SignatureModal
+        isOpen={modalOpen}
+        onClose={closeModal}
+        onConfirm={handleModalConfirm}
+        savedSignatures={isGuest ? [] : savedSignatures}
+        initialDataUrl={selectedField ? signatureData[selectedField.id] : ''}
+        initialSavedId={selectedField ? savedSelectedIds[selectedField.id] : null}
+      />
     </div>
   );
 }

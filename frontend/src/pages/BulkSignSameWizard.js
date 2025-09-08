@@ -4,74 +4,13 @@ import { toast } from 'react-toastify';
 import { FiLayers, FiDownload, FiMove, FiFile, FiX, FiMenu, FiTrash2 } from 'react-icons/fi';
 import signatureService from '../services/signatureService';
 import { api } from '../services/apiUtils';
-import Modal from 'react-modal';
-import SignaturePadComponent from '../components/SignaturePadComponent';
+import SignatureModal from '../components/SignatureModal';
+import { fileToPngDataURL, blobToPngDataURL, savedSignatureImageUrl, fetchSavedSignatureAsDataURL } from '../utils/signatureUtils';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 
 /* -------------------------- helpers compacts -------------------------- */
 
-const savedSignatureImageUrl = (id) => `${(api?.defaults?.baseURL || '').replace(/\/$/, '')}/api/signature/saved-signatures/${id}/image/`;
-
-// Rasterise n’importe quel blob en data:image/png;base64,...
-const blobToPngDataURL = async (blob) => {
-  try {
-    const bmp = await createImageBitmap(blob);
-    const c = document.createElement('canvas');
-    c.width = bmp.width; c.height = bmp.height;
-    c.getContext('2d').drawImage(bmp, 0, 0);
-    return c.toDataURL('image/png');
-  } catch {
-    const url = URL.createObjectURL(blob);
-    const dataUrl = await new Promise((resolve, reject) => {
-      const img = new Image();
-      img.onload = () => {
-        const c = document.createElement('canvas');
-        c.width = img.naturalWidth; c.height = img.naturalHeight;
-        c.getContext('2d').drawImage(img, 0, 0);
-        resolve(c.toDataURL('image/png'));
-        URL.revokeObjectURL(url);
-      };
-      img.onerror = reject;
-      img.src = url;
-    });
-    return dataUrl;
-  }
-};
-
-// Convertit un File d'image en data:image/png;base64
-const fileToPngDataURL = async (file) => {
-  try {
-    const bmp = await createImageBitmap(file);
-    const c = document.createElement('canvas');
-    c.width = bmp.width; c.height = bmp.height;
-    c.getContext('2d').drawImage(bmp, 0, 0);
-    return c.toDataURL('image/png');
-  } catch {
-    return await new Promise((resolve, reject) => {
-      const fr = new FileReader();
-      fr.onload = () => {
-        const img = new Image();
-        img.onload = () => {
-          const c = document.createElement('canvas');
-          c.width = img.naturalWidth; c.height = img.naturalHeight;
-          c.getContext('2d').drawImage(img, 0, 0);
-          resolve(c.toDataURL('image/png'));
-        };
-        img.onerror = reject; img.src = fr.result;
-      };
-      fr.onerror = reject; fr.readAsDataURL(file);
-    });
-  }
-};
-
-// Charge l’image d’une signature enregistrée → dataURL PNG
-const fetchSavedSignatureAsDataURL = async (sig) => {
-  if (sig?.data_url) return sig.data_url;
-  const res = await fetch(savedSignatureImageUrl(sig.id), { credentials: 'include' });
-  if (!res.ok) throw new Error('HTTP ' + res.status);
-  return blobToPngDataURL(await res.blob());
-};
 
 // Normalise n'importe quelle dataURL (png/jpg/svg) en **PNG** dataURL
 const ensurePngDataURL = async (dataUrl) => {
@@ -265,92 +204,6 @@ const DraggableSignature = React.memo(function DraggableSignature({
   );
 });
 
-/* ------------------------------ Modal UI ------------------------------ */
-
-function SignatureModal({ isOpen, onClose, onConfirm, savedSignatures }) {
-  const [mode, setMode] = useState('draw'); // 'draw' | 'upload' | 'saved'
-  const [tempDataUrl, setTempDataUrl] = useState('');
-  const [savedSelectedId, setSavedSelectedId] = useState(null);
-
-  useEffect(() => { if (isOpen) { setMode('draw'); setTempDataUrl(''); setSavedSelectedId(null); } }, [isOpen]);
-
-  const handleUpload = async (ev) => {
-    const f = ev.target.files?.[0];
-    if (!f) return; if (!f.type.startsWith('image/')) return toast.error('Veuillez importer une image');
-    try { setTempDataUrl(await fileToPngDataURL(f)); } catch { toast.error("Impossible de lire l'image"); }
-  };
-
-  return (
-    <Modal
-      isOpen={isOpen}
-      onRequestClose={onClose}
-      ariaHideApp={false}
-      contentLabel="Signer"
-     style={{
-        overlay: { zIndex: 10000, backgroundColor: 'rgba(0,0,0,0.5)' },
-        content: {
-          zIndex: 10001,
-          top: '50%',
-          left: '50%',
-          transform: 'translate(-50%, -50%)',
-          width: '90%',
-          maxWidth: 600,
-          margin: '0 auto',
-          padding: 16,
-          borderRadius: 12,
-        },
-      }}>
-      <h2 className="text-lg font-semibold mb-3">Ajouter une signature</h2>
-
-      <div className="flex items-center gap-4 mb-3">
-        <label className="flex items-center gap-2"><input type="radio" name="mode" checked={mode==='draw'} onChange={()=>setMode('draw')} /><span>Dessiner</span></label>
-        <label className="flex items-center gap-2"><input type="radio" name="mode" checked={mode==='upload'} onChange={()=>setMode('upload')} /><span>Importer</span></label>
-        {!!savedSignatures.length && (
-          <label className="flex items-center gap-2"><input type="radio" name="mode" checked={mode==='saved'} onChange={()=>setMode('saved')} /><span>Mes signatures</span></label>
-        )}
-      </div>
-
-      {mode === 'draw' && (
-        <SignaturePadComponent mode="draw" onChange={(d)=>setTempDataUrl(d)} onEnd={(d)=>setTempDataUrl(d)} initialValue={tempDataUrl} />
-      )}
-
-      {mode === 'upload' && (
-        <div className="space-y-3">
-          <input type="file" accept="image/*" onChange={handleUpload} className="block w-full text-sm" />
-          {tempDataUrl ? (
-            <div className="border rounded p-2 inline-block"><img src={tempDataUrl} alt="Aperçu signature" style={{ maxWidth: 320, maxHeight: 160 }} /></div>
-          ) : (
-            <p className="text-sm text-gray-600">Choisissez une image (PNG/JPG/SVG).</p>
-          )}
-          {tempDataUrl && (<button type="button" onClick={()=> setTempDataUrl('')} className="px-3 py-1 rounded bg-gray-200 text-gray-800">Effacer</button>)}
-        </div>
-      )}
-
-      {mode === 'saved' && (
-        <div className="grid grid-cols-2 gap-2 max-h-64 overflow-auto">
-          {savedSignatures.map(sig => {
-            const previewSrc = sig.data_url || savedSignatureImageUrl(sig.id);
-            return (
-              <button type="button" key={sig.id}
-                className={`relative border p-1 rounded flex items-center justify-center h-24 ${savedSelectedId===sig.id ? 'ring-2 ring-blue-600 border-blue-600 bg-blue-50' : 'hover:bg-gray-50'}`}
-                onClick={async ()=>{ try { const d = await fetchSavedSignatureAsDataURL(sig); setTempDataUrl(d); setSavedSelectedId(sig.id);} catch { toast.error('Impossible de charger la signature'); } }}>
-                <img src={previewSrc} alt="saved" className="max-h-20 w-full object-contain" />
-                {savedSelectedId===sig.id && <span className="absolute top-1 right-1 text-[10px] px-1 rounded bg-blue-600 text-white">Choisie</span>}
-              </button>
-            );
-          })}
-          {!savedSignatures.length && <p className="text-sm">Aucune signature enregistrée.</p>}
-        </div>
-      )}
-
-      <div className="mt-4 flex justify-end gap-2">
-        <button onClick={onClose} className="px-4 py-2 rounded bg-gray-200">Annuler</button>
-        {/* Passe aussi l'ID sauvegardé si sélectionné */}
-        <button onClick={()=> { if(!tempDataUrl) return toast.error('Veuillez fournir une signature'); onConfirm(tempDataUrl, savedSelectedId); }} className="px-4 py-2 rounded bg-blue-600 text-white">Valider</button>
-      </div>
-    </Modal>
-  );
-}
 
 /* ------------------------------ composant ------------------------------ */
 
@@ -708,7 +561,14 @@ const s = pageWidth / Math.max(1, (pageDims[n]?.width || 1));
       </div>
 
       {/* MODAL signature */}
-      <SignatureModal isOpen={modalOpen} onClose={()=> setModalOpen(false)} onConfirm={handleModalConfirm} savedSignatures={savedSignatures} />
+      <SignatureModal
+        isOpen={modalOpen}
+        onClose={() => setModalOpen(false)}
+        onConfirm={handleModalConfirm}
+        savedSignatures={savedSignatures}
+        initialDataUrl={sigDataUrl}
+        initialSavedId={sigSavedId}
+      />
     </div>
   );
 }

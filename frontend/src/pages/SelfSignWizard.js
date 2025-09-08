@@ -136,6 +136,26 @@ const DraggableSignature = React.memo(function DraggableSignature({
     });
   }, [field.position]);
 
+  const handleTouchStart = useCallback((e) => {
+    const t = e.target;
+    const blocked = t.classList?.contains('resize-handle') || t.closest?.('.delete-handle') || t.closest?.('.sig-open');
+    mouseDownBlockedRef.current = !!blocked;
+    if (blocked) return;
+
+    const touch = e.touches[0];
+    if (!touch) return;
+    e.preventDefault();
+    e.stopPropagation();
+    dragMovedRef.current = false;
+    setIsDragging(true);
+    setDragStart({
+      x: touch.clientX,
+      y: touch.clientY,
+      fieldX: field.position.x,
+      fieldY: field.position.y,
+    });
+  }, [field.position]);
+
   const handleResizeStart = useCallback((e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -146,6 +166,21 @@ const DraggableSignature = React.memo(function DraggableSignature({
       y: e.clientY,
       width: field.position.width,
       height: field.position.height
+    });
+  }, [field.position]);
+
+  const handleResizeTouchStart = useCallback((e) => {
+    const touch = e.touches[0];
+    if (!touch) return;
+    e.preventDefault();
+    e.stopPropagation();
+    mouseDownBlockedRef.current = true;
+    setIsResizing(true);
+    setResizeStart({
+      x: touch.clientX,
+      y: touch.clientY,
+      width: field.position.width,
+      height: field.position.height,
     });
   }, [field.position]);
 
@@ -182,12 +217,49 @@ const DraggableSignature = React.memo(function DraggableSignature({
       setIsResizing(false);
     };
 
+    const handleTouchMove = (e) => {
+      const touch = e.touches[0];
+      if (!touch) return;
+      e.preventDefault();
+      if (isDragging) {
+        const deltaX = (touch.clientX - dragStart.x) / factor;
+        const deltaY = (touch.clientY - dragStart.y) / factor;
+        if (Math.abs(deltaX) > 3 / factor || Math.abs(deltaY) > 3 / factor) {
+          dragMovedRef.current = true;
+        }
+        const newPosition = {
+          ...field.position,
+          x: Math.max(0, dragStart.fieldX + deltaX),
+          y: Math.max(0, dragStart.fieldY + deltaY),
+        };
+        onUpdate(field, { position: newPosition });
+      } else if (isResizing) {
+        const deltaX = (touch.clientX - resizeStart.x) / factor;
+        const deltaY = (touch.clientY - resizeStart.y) / factor;
+        const newPosition = {
+          ...field.position,
+          width: Math.max(50 / factor, resizeStart.width + deltaX),
+          height: Math.max(20 / factor, resizeStart.height + deltaY),
+        };
+        onUpdate(field, { position: newPosition });
+      }
+    };
+
+    const handleTouchEnd = () => {
+      setIsDragging(false);
+      setIsResizing(false);
+    };
+
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
+    document.addEventListener('touchmove', handleTouchMove, { passive: false });
+    document.addEventListener('touchend', handleTouchEnd);
 
     return () => {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
+      document.removeEventListener('touchmove', handleTouchMove);
+      document.removeEventListener('touchend', handleTouchEnd);
     };
   }, [isDragging, isResizing, dragStart, resizeStart, factor, field, onUpdate]);
 
@@ -203,6 +275,9 @@ const DraggableSignature = React.memo(function DraggableSignature({
       ref={elementRef}
       style={style}
       onMouseDown={handleMouseDown}
+      onTouchStart={handleTouchStart}
+      onTouchMove={(e) => e.preventDefault()}
+      onTouchEnd={(e) => e.preventDefault()}
       onClick={image ? handleClickToOpen : undefined}
       className={`signature-field ${isDragging ? 'dragging' : ''} hover:shadow-lg transition-shadow`}
       title={image ? 'Cliquer pour modifier la signature' : undefined}
@@ -231,6 +306,7 @@ const DraggableSignature = React.memo(function DraggableSignature({
       <div
         className="resize-handle"
         onMouseDown={handleResizeStart}
+        onTouchStart={handleResizeTouchStart}
         style={{
           position: 'absolute',
           bottom: -4,

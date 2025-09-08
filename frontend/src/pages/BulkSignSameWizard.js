@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useLayoutEffect, useCallback, useMemo } from 'react';
+import useResponsivePdf from '../hooks/useResponsivePdf';
 import { Document, Page } from 'react-pdf';
 import { toast } from 'react-toastify';
 import { FiLayers, FiDownload, FiMove, FiFile, FiX, FiMenu, FiTrash2 } from 'react-icons/fi';
@@ -232,6 +233,8 @@ export default function BulkSignSameWizard() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const toggleSidebar = useCallback(() => setSidebarOpen((o) => !o), []);
 
+  const { pageWidth, pageScale } = useResponsivePdf(viewerWidth, pageDims, isMobile);
+
   /* ---------------- layout & responsive (aligné sur SelfSign) ---------------- */
   useLayoutEffect(() => {
     const measure = () => setViewerWidth(viewerRef.current?.clientWidth || 600);
@@ -287,13 +290,6 @@ export default function BulkSignSameWizard() {
     setPageDims((d) => ({ ...d, [n]: { width: vp.width, height: vp.height } }));
   };
 
-  // Calcul d’échelle façon SelfSign
-  const pageScale = (pageNumber) => {
-    const containerPadding = isMobile ? 24 : 48; // p-3 / md:p-6
-    const pageWidth = Math.min(Math.max((viewerWidth || 600) - containerPadding, 320), 900);
-    const natural = pageDims[pageNumber]?.width || 1;
-    return pageWidth / natural;
-  };
 
   // Placement zone
   const handleOverlayClick = (e, pageNumber) => {
@@ -502,9 +498,7 @@ export default function BulkSignSameWizard() {
                             error={<div className="text-red-500 text-center p-8">Erreur lors du chargement du PDF</div>}>
                     {Array.from({ length: numPages }, (_, i) => {
                       const n = i + 1;
-                       const containerPadding = isMobile ? 24 : 48; // p-3/md:p-6
- const pageWidth = Math.min(Math.max((viewerWidth || 320) - containerPadding, 320), 900);
-const s = pageWidth / Math.max(1, (pageDims[n]?.width || 1));
+                      const s = pageScale(n);
 
                       const fieldObj = placement && placement.page === n ? { position: { x: placement.x, y: placement.y, width: placement.width, height: placement.height } } : null;
 

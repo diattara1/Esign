@@ -419,7 +419,7 @@ export default function BulkSignSameWizard() {
     if (!sigDataUrl && !sigSavedId) return toast.error('Ajoute une image de signature');
 
     const fd = new FormData();
-    files.forEach((f) => fd.append('files[]', f)); // aligné avec SelfSign
+    files.forEach((f) => fd.append('files', f)); // aligné avec SelfSign
     fd.append('mode', 'bulk_same_spot');
     fd.append('placements', JSON.stringify([placement]));
     fd.append('include_qr', includeQr ? 'true' : 'false');

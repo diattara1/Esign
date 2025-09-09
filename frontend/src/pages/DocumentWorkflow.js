@@ -25,7 +25,8 @@ function debounce(func, wait) {
    ========================= */
 const DraggableSignature = React.memo(function DraggableSignature({
   field,
-  factor,
+  pageWidth,
+  pageHeight,
   isMobileView,
   onUpdate,
   onDelete
@@ -38,10 +39,10 @@ const DraggableSignature = React.memo(function DraggableSignature({
 
   const style = useMemo(() => ({
     position: 'absolute',
-    left: field.position.x * factor,
-    top: field.position.y * factor,
-    width: field.position.width * factor,
-    height: field.position.height * factor,
+    left: field.position.x * pageWidth,
+    top: field.position.y * pageHeight,
+    width: field.position.width * pageWidth,
+    height: field.position.height * pageHeight,
     borderRadius: 8,
     boxShadow: '0 0 0 1px rgba(0,0,0,.20), 0 2px 6px rgba(0,0,0,.08)',
     background: '#fff',
@@ -52,7 +53,7 @@ const DraggableSignature = React.memo(function DraggableSignature({
     cursor: isDragging ? 'grabbing' : 'grab',
     border: '2px solid transparent',
     userSelect: 'none',
-  }), [field.position, factor, isDragging]);
+  }), [field.position, pageWidth, pageHeight, isDragging]);
 
   const handleMouseDown = useCallback((e) => {
     if (e.target.classList.contains('resize-handle')) return;
@@ -113,8 +114,8 @@ const DraggableSignature = React.memo(function DraggableSignature({
 
     const handleMouseMove = (e) => {
       if (isDragging) {
-        const deltaX = (e.clientX - dragStart.x) / factor;
-        const deltaY = (e.clientY - dragStart.y) / factor;
+        const deltaX = (e.clientX - dragStart.x) / pageWidth;
+        const deltaY = (e.clientY - dragStart.y) / pageHeight;
         const newPosition = {
           ...field.position,
           x: Math.max(0, dragStart.fieldX + deltaX),
@@ -122,12 +123,12 @@ const DraggableSignature = React.memo(function DraggableSignature({
         };
         onUpdate(field, { position: newPosition });
       } else if (isResizing) {
-        const deltaX = (e.clientX - resizeStart.x) / factor;
-        const deltaY = (e.clientY - resizeStart.y) / factor;
+        const deltaX = (e.clientX - resizeStart.x) / pageWidth;
+        const deltaY = (e.clientY - resizeStart.y) / pageHeight;
         const newPosition = {
           ...field.position,
-          width: Math.max(50 / factor, resizeStart.width + deltaX),
-          height: Math.max(20 / factor, resizeStart.height + deltaY)
+          width: Math.max(50 / pageWidth, resizeStart.width + deltaX),
+          height: Math.max(20 / pageHeight, resizeStart.height + deltaY)
         };
         onUpdate(field, { position: newPosition });
       }
@@ -143,8 +144,8 @@ const DraggableSignature = React.memo(function DraggableSignature({
       if (!touch) return;
       e.preventDefault();
       if (isDragging) {
-        const deltaX = (touch.clientX - dragStart.x) / factor;
-        const deltaY = (touch.clientY - dragStart.y) / factor;
+        const deltaX = (touch.clientX - dragStart.x) / pageWidth;
+        const deltaY = (touch.clientY - dragStart.y) / pageHeight;
         const newPosition = {
           ...field.position,
           x: Math.max(0, dragStart.fieldX + deltaX),
@@ -152,12 +153,12 @@ const DraggableSignature = React.memo(function DraggableSignature({
         };
         onUpdate(field, { position: newPosition });
       } else if (isResizing) {
-        const deltaX = (touch.clientX - resizeStart.x) / factor;
-        const deltaY = (touch.clientY - resizeStart.y) / factor;
+        const deltaX = (touch.clientX - resizeStart.x) / pageWidth;
+        const deltaY = (touch.clientY - resizeStart.y) / pageHeight;
         const newPosition = {
           ...field.position,
-          width: Math.max(50 / factor, resizeStart.width + deltaX),
-          height: Math.max(20 / factor, resizeStart.height + deltaY),
+          width: Math.max(50 / pageWidth, resizeStart.width + deltaX),
+          height: Math.max(20 / pageHeight, resizeStart.height + deltaY),
         };
         onUpdate(field, { position: newPosition });
       }
@@ -179,7 +180,7 @@ const DraggableSignature = React.memo(function DraggableSignature({
        document.removeEventListener('touchmove', handleTouchMove);
        document.removeEventListener('touchend', handleTouchEnd);
     };
-  }, [isDragging, isResizing, dragStart, resizeStart, factor, field, onUpdate]);
+  }, [isDragging, isResizing, dragStart, resizeStart, pageWidth, pageHeight, field, onUpdate]);
 
   return (
     <div
@@ -324,12 +325,14 @@ const PDFViewer = React.memo(function PDFViewer({
                             width: 600,
                             height: 800,
                           };
-                          const factor = pdfWidth / vp.width;
+                          const pageWidthPx = pdfWidth;
+                          const pageHeightPx = (vp.height / vp.width) * pdfWidth;
                           return (
                             <DraggableSignature
                               key={`${field.recipient_id}-${field.document_id}-${field.page}-${field.field_type}`}
                               field={field}
-                              factor={factor}
+                              pageWidth={pageWidthPx}
+                              pageHeight={pageHeightPx}
                               isMobileView={isMobileView}
                               onUpdate={onUpdateField}
                               onDelete={onDeleteField}
@@ -1006,12 +1009,12 @@ export default function DocumentWorkflow() {
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
     const vp = pageDimensions[selectedDocId]?.[pageNumber] || { width: 600, height: 800 };
-    const factor = pdfWidth / vp.width;
+    const pdfHeight = (vp.height / vp.width) * pdfWidth;
     const normalized = {
-      x: x / factor,
-      y: y / factor,
-      width: 150 / factor,
-      height: 50 / factor,
+      x: x / pdfWidth,
+      y: y / pdfHeight,
+      width: 150 / pdfWidth,
+      height: 50 / pdfHeight,
     };
     setFields((prev) =>
       prev.filter(

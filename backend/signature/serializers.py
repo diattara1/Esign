@@ -187,13 +187,14 @@ class SigningFieldSerializer(serializers.ModelSerializer):
         required_keys = {'x', 'y', 'width', 'height'}
         if not isinstance(value, dict) or not required_keys.issubset(value.keys()):
             raise serializers.ValidationError('position doit contenir x, y, width, height')
-        # bornes simples (>=0)
+        # bornes : valeurs relatives entre 0 et 1
         for k in ['x', 'y', 'width', 'height']:
             try:
-                if float(value[k]) < 0:
-                    raise serializers.ValidationError(f'position.{k} doit être >= 0')
+                v = float(value[k])
             except Exception:
                 raise serializers.ValidationError(f'position.{k} invalide')
+            if not 0 <= v <= 1:
+                raise serializers.ValidationError(f'position.{k} doit être entre 0 et 1')
         return value
 
     def validate_page(self, value):

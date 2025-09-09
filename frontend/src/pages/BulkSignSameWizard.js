@@ -49,7 +49,8 @@ const dataURLtoBlob = (dataUrl) => {
 
 const DraggableSignature = React.memo(function DraggableSignature({
   field,
-  factor,
+  pageWidth,
+  pageHeight,
   isMobileView,
   onUpdate,
   onDelete,
@@ -65,10 +66,10 @@ const DraggableSignature = React.memo(function DraggableSignature({
 
   const style = useMemo(() => ({
     position: 'absolute',
-    left: field.position.x * factor,
-    top: field.position.y * factor,
-    width: field.position.width * factor,
-    height: field.position.height * factor,
+    left: field.position.x * pageWidth,
+    top: field.position.y * pageHeight,
+    width: field.position.width * pageWidth,
+    height: field.position.height * pageHeight,
     borderRadius: 8,
     boxShadow: '0 0 0 1px rgba(0,0,0,.20), 0 2px 6px rgba(0,0,0,.08)',
     background: '#fff',
@@ -77,7 +78,7 @@ const DraggableSignature = React.memo(function DraggableSignature({
     cursor: isDragging ? 'grabbing' : 'grab',
     border: '2px solid transparent',
     userSelect: 'none'
-  }), [field.position, factor, isDragging]);
+  }), [field.position, pageWidth, pageHeight, isDragging]);
 
   const handleMouseDown = useCallback((e) => {
     const t = e.target;
@@ -121,14 +122,14 @@ const DraggableSignature = React.memo(function DraggableSignature({
     if (!isDragging && !isResizing) return;
     const handleMouseMove = (e) => {
       if (isDragging) {
-        const dx = (e.clientX - dragStart.x) / factor;
-        const dy = (e.clientY - dragStart.y) / factor;
-        if (Math.abs(dx) > 3 / factor || Math.abs(dy) > 3 / factor) dragMovedRef.current = true;
+        const dx = (e.clientX - dragStart.x) / pageWidth;
+        const dy = (e.clientY - dragStart.y) / pageHeight;
+        if (Math.abs(dx) > 3 / pageWidth || Math.abs(dy) > 3 / pageHeight) dragMovedRef.current = true;
         onUpdate(field, { position: { ...field.position, x: Math.max(0, dragStart.fieldX + dx), y: Math.max(0, dragStart.fieldY + dy) } });
       } else if (isResizing) {
-        const dx = (e.clientX - resizeStart.x) / factor;
-        const dy = (e.clientY - resizeStart.y) / factor;
-        onUpdate(field, { position: { ...field.position, width: Math.max(50 / factor, resizeStart.width + dx), height: Math.max(20 / factor, resizeStart.height + dy) } });
+        const dx = (e.clientX - resizeStart.x) / pageWidth;
+        const dy = (e.clientY - resizeStart.y) / pageHeight;
+        onUpdate(field, { position: { ...field.position, width: Math.max(50 / pageWidth, resizeStart.width + dx), height: Math.max(20 / pageHeight, resizeStart.height + dy) } });
       }
     };
     const handleMouseUp = () => { setIsDragging(false); setIsResizing(false); };
@@ -137,14 +138,14 @@ const DraggableSignature = React.memo(function DraggableSignature({
       if (!touch) return;
       e.preventDefault();
       if (isDragging) {
-        const dx = (touch.clientX - dragStart.x) / factor;
-        const dy = (touch.clientY - dragStart.y) / factor;
-        if (Math.abs(dx) > 3 / factor || Math.abs(dy) > 3 / factor) dragMovedRef.current = true;
+        const dx = (touch.clientX - dragStart.x) / pageWidth;
+        const dy = (touch.clientY - dragStart.y) / pageHeight;
+        if (Math.abs(dx) > 3 / pageWidth || Math.abs(dy) > 3 / pageHeight) dragMovedRef.current = true;
         onUpdate(field, { position: { ...field.position, x: Math.max(0, dragStart.fieldX + dx), y: Math.max(0, dragStart.fieldY + dy) } });
       } else if (isResizing) {
-        const dx = (touch.clientX - resizeStart.x) / factor;
-        const dy = (touch.clientY - resizeStart.y) / factor;
-        onUpdate(field, { position: { ...field.position, width: Math.max(50 / factor, resizeStart.width + dx), height: Math.max(20 / factor, resizeStart.height + dy) } });
+        const dx = (touch.clientX - resizeStart.x) / pageWidth;
+        const dy = (touch.clientY - resizeStart.y) / pageHeight;
+        onUpdate(field, { position: { ...field.position, width: Math.max(50 / pageWidth, resizeStart.width + dx), height: Math.max(20 / pageHeight, resizeStart.height + dy) } });
       }
     };
     const handleTouchEnd = () => { setIsDragging(false); setIsResizing(false); };
@@ -158,7 +159,7 @@ const DraggableSignature = React.memo(function DraggableSignature({
       document.removeEventListener('touchmove', handleTouchMove);
       document.removeEventListener('touchend', handleTouchEnd);
     };
-  }, [isDragging, isResizing, dragStart, resizeStart, factor, field, onUpdate]);
+  }, [isDragging, isResizing, dragStart, resizeStart, pageWidth, pageHeight, field, onUpdate]);
 
   const handleClickToOpen = useCallback(() => {
     if (mouseDownBlockedRef.current) { mouseDownBlockedRef.current = false; return; }
@@ -296,13 +297,20 @@ export default function BulkSignSameWizard() {
     if (!placing) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const scale = pageScale(pageNumber);
-    const x = (e.clientX - rect.left) / scale;
-    const y = (e.clientY - rect.top) / scale;
-    setPlacement({ page: pageNumber, x, y, width: 160, height: 50 });
+    const pageHeightPx = (pageDims[pageNumber]?.height || 0) * scale;
+    const x = (e.clientX - rect.left) / pageWidth;
+    const y = (e.clientY - rect.top) / pageHeightPx;
+    setPlacement({
+      page: pageNumber,
+      x,
+      y,
+      width: 160 / pageWidth,
+      height: 50 / pageHeightPx,
+    });
     setPlacing(false);
     toast.success(`Zone définie (page ${pageNumber}) — appliquée à tous les documents`);
     if (isMobile) setSidebarOpen(false);
-    setTimeout(()=> setModalOpen(true), 0);
+    setTimeout(() => setModalOpen(true), 0);
   };
 
   const [modalOpen, setModalOpen] = useState(false);
@@ -517,7 +525,8 @@ export default function BulkSignSameWizard() {
                           {fieldObj && (
                             <DraggableSignature
                               field={fieldObj}
-                              factor={s}
+                              pageWidth={pageWidth}
+                              pageHeight={(pageDims[n]?.height || 0) * s}
                               isMobileView={isMobile}
                               onUpdate={(field, { position }) => setPlacement(p => ({ ...p, ...position }))}
                               onDelete={() => { setPlacement(null); setSigDataUrl(''); setSigSavedId(null); }}

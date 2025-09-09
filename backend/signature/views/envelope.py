@@ -660,13 +660,26 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
         # 3) TRAITEMENT CHAMP PAR CHAMP : overlay + signature immédiatement
         for i, fmeta in enumerate(my_fields_meta):
             pos = fmeta.get('position') or {}
-            try:
-                x = float(pos.get('x', 0)); y_top = float(pos.get('y', 0))
-                w = float(pos.get('width', 0)); h = float(pos.get('height', 0))
-            except Exception:
-                x, y_top, w, h = 0, 0, 180, 60
             page_num = int(fmeta.get('page') or 1)
             page_ix = max(0, page_num - 1)
+
+            reader_dim = PdfReader(io.BytesIO(base_bytes))
+            page = reader_dim.pages[page_ix]
+            page_w = float(page.mediabox.width)
+            page_h = float(page.mediabox.height)
+
+            try:
+                x_rel = float(pos.get('x', 0)); y_rel = float(pos.get('y', 0))
+                w_rel = float(pos.get('width', 0)); h_rel = float(pos.get('height', 0))
+            except Exception:
+                x_rel = y_rel = 0
+                w_rel = 180 / page_w
+                h_rel = 60 / page_h
+
+            x = x_rel * page_w
+            y_top = y_rel * page_h
+            w = w_rel * page_w
+            h = h_rel * page_h
     
             # Extraire l'image de signature POUR CE CHAMP
             field_id = str(fmeta.get('id') or fmeta.get('field_id') or '')

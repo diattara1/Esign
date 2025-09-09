@@ -27,7 +27,7 @@ from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 def _paste_signature_on_pdf(pdf_bytes: bytes, sig_img_bytes: bytes, placements: list) -> bytes:
     """
     Appose l'image de signature aux positions indiquées (page,x,y,width,height)
-    - x,y,width,height : unités PDF (points) mesurées depuis le HAUT-GAUCHE de la CropBox dans le front.
+    - x,y,width,height : valeurs relatives (0-1) mesurées depuis le HAUT-GAUCHE de la CropBox dans le front.
     - Conversion ici vers repère PDF (bas-gauche) + offset CropBox.
     Retourne un PDF bytes (non signé crypto).
     """
@@ -63,10 +63,16 @@ def _paste_signature_on_pdf(pdf_bytes: bytes, sig_img_bytes: bytes, placements: 
         c = canvas.Canvas(overlay_buf, pagesize=(page_w, page_h))
 
         for pl in by_page.get(page_num, []):
+            # valeurs relatives → points PDF
+            x_ui = pl["x"] * page_w
+            y_ui = pl["y"] * page_h
+            w = pl["width"] * page_w
+            h = pl["height"] * page_h
+
             # front en haut-gauche → PDF en bas-gauche
-            x_pdf = crop_llx + pl["x"]
-            y_pdf = crop_lly + (page_h - pl["y"] - pl["height"])
-            c.drawImage(sig_reader, x_pdf, y_pdf, width=pl["width"], height=pl["height"], mask='auto')
+            x_pdf = crop_llx + x_ui
+            y_pdf = crop_lly + (page_h - y_ui - h)
+            c.drawImage(sig_reader, x_pdf, y_pdf, width=w, height=h, mask='auto')
 
         c.showPage()
         c.save()

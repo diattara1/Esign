@@ -101,8 +101,14 @@ class PasswordResetSerializer(serializers.Serializer):
         # Envoi d'email (try/except pour ne rien révéler en cas d'erreur)
         try:
             EmailTemplates.password_reset_email(user, reset_link)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error(
+                f"Erreur envoi email de réinitialisation pour {email}: {e}",
+                exc_info=True,
+            )
+            raise serializers.ValidationError(
+                "Erreur lors de l'envoi de l'email de réinitialisation."
+            )
 
 
 

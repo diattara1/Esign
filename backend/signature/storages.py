@@ -107,7 +107,10 @@ class EncryptedFileSystemStorage(FileSystemStorage):
                     return
             except ValueError:
                 # Fichier fermé → tenter de le rouvrir
-                pass
+                logger.error(
+                    "Flux fermé lors de la tentative de repositionnement ; tentative de réouverture",
+                    exc_info=True,
+                )
             # Essayer d'ouvrir sur l'objet lui-même…
             if hasattr(f, "open"):
                 try:
@@ -116,8 +119,10 @@ class EncryptedFileSystemStorage(FileSystemStorage):
                         f.seek(0)
                         return
                 except Exception:
-                    pass
-            # …sinon sur l'attribut .file (cas UploadedFile/File)
+                    logger.error(
+                        "Erreur lors de la réouverture du fichier source",
+                        exc_info=True,
+                    )
             inner = getattr(f, "file", None)
             if inner and hasattr(inner, "open"):
                 inner.open("rb")

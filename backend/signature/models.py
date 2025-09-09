@@ -93,13 +93,17 @@ class EnvelopeDocument(models.Model):
                 if hasattr(src, "open"):
                     try:
                         src.open("rb")
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.warning(
+                            "Unable to open uploaded file in binary mode: %s", exc
+                        )
                 if hasattr(src, "seek"):
                     try:
                         src.seek(0)
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.warning(
+                            "Unable to seek to start of uploaded file: %s", exc
+                        )
                 if hasattr(src, "chunks"):
                     data = b"".join(chunk for chunk in src.chunks())
                 else:
@@ -109,8 +113,10 @@ class EnvelopeDocument(models.Model):
                     # on ne *ferme* pas explicitement l'upload : Django gère
                     if hasattr(src, "seek"):
                         src.seek(0)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.warning(
+                        "Unable to reset uploaded file position after read: %s", exc
+                    )
 
             # --- Validations & métadonnées sur les *octets*
             self.name = orig_name

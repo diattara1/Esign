@@ -241,8 +241,8 @@ def _crypto_sign_pdf(pdf_bytes: bytes, field_name: str | None = None) -> bytes:
 
     try:
         reload(cu)
-    except Exception:
-        pass
+    except ImportError as exc:
+        logging.exception("Failed to reload crypto_utils: %s", exc)
     return cu.sign_pdf_bytes(pdf_bytes, field_name=field_name)
 
 
@@ -365,9 +365,13 @@ def _zip_results(job):
                     it.signed_file.close()
         memzip.seek(0)
         job.result_zip.save(f"batch_{job.id}.zip", ContentFile(memzip.read()), save=False)
-    except Exception:
-        # pas bloquant pour le statut
-        pass
+    
+        job.result_zip.save(
+            f"batch_{job.id}.zip", ContentFile(memzip.read()), save=False
+        )
+    except Exception as exc:
+        
+        logger.error("Échec de la création du ZIP pour le job %s: %s", job.id, exc)
 
 
 @shared_task

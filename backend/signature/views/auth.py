@@ -86,8 +86,8 @@ def logout(request):
         from rest_framework_simplejwt.tokens import RefreshToken
         try:
             RefreshToken(refresh).blacklist()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("Failed to blacklist refresh token: %s", exc)
     response = Response({'detail': 'Logout successful'}, status=status.HTTP_200_OK)
     response.delete_cookie('access_token', samesite='None', secure=True)
     response.delete_cookie('refresh_token', samesite='None', secure=True)

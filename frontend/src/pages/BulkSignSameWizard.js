@@ -3,7 +3,8 @@ import useResponsivePdf from '../hooks/useResponsivePdf';
 import useIsMobile from '../hooks/useIsMobile';
 import { Document, Page } from 'react-pdf';
 import { toast } from 'react-toastify';
-import { FiLayers, FiDownload, FiMove, FiFile, FiX, FiTrash2 } from 'react-icons/fi';
+import { FiLayers, FiDownload, FiMove, FiFile, FiTrash2 } from 'react-icons/fi';
+import DraggableSignature from '../components/DraggableSignature';
 import signatureService from '../services/signatureService';
 import { api } from '../services/apiUtils';
 import SignatureModal from '../components/SignatureModal';
@@ -44,170 +45,6 @@ const dataURLtoBlob = (dataUrl) => {
   for (let i = 0; i < len; i++) u8[i] = bin.charCodeAt(i);
   return new Blob([u8], { type: mime });
 };
-
-/* ----------------------------- Draggable ------------------------------ */
-
-const DraggableSignature = React.memo(function DraggableSignature({
-  field,
-  pageWidth,
-  pageHeight,
-  isMobileView,
-  onUpdate,
-  onDelete,
-  onOpenModal,
-  image
-}) {
-  const [isDragging, setIsDragging] = useState(false);
-  const [isResizing, setIsResizing] = useState(false);
-  const [dragStart, setDragStart] = useState({ x: 0, y: 0, fieldX: 0, fieldY: 0 });
-  const [resizeStart, setResizeStart] = useState({ x: 0, y: 0, width: 0, height: 0 });
-  const dragMovedRef = useRef(false);
-  const mouseDownBlockedRef = useRef(false);
-
-  const style = useMemo(() => ({
-    position: 'absolute',
-    left: field.position.x * pageWidth,
-    top: field.position.y * pageHeight,
-    width: field.position.width * pageWidth,
-    height: field.position.height * pageHeight,
-    borderRadius: 8,
-    boxShadow: '0 0 0 1px rgba(0,0,0,.20), 0 2px 6px rgba(0,0,0,.08)',
-    background: '#fff',
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    zIndex: 15,
-    cursor: isDragging ? 'grabbing' : 'grab',
-    border: '2px solid transparent',
-    userSelect: 'none'
-  }), [field.position, pageWidth, pageHeight, isDragging]);
-
-  const handleMouseDown = useCallback((e) => {
-    const t = e.target;
-    const blocked = t.classList?.contains('resize-handle') || t.closest?.('.delete-handle') || t.closest?.('.sig-open');
-    mouseDownBlockedRef.current = !!blocked;
-    if (blocked) return;
-    e.preventDefault(); e.stopPropagation();
-    dragMovedRef.current = false; setIsDragging(true);
-    setDragStart({ x: e.clientX, y: e.clientY, fieldX: field.position.x, fieldY: field.position.y });
-  }, [field.position]);
-
-  const handleTouchStart = useCallback((e) => {
-    const t = e.target;
-    const blocked = t.classList?.contains('resize-handle') || t.closest?.('.delete-handle') || t.closest?.('.sig-open');
-    mouseDownBlockedRef.current = !!blocked;
-    if (blocked) return;
-    const touch = e.touches[0];
-    if (!touch) return;
-    e.preventDefault(); e.stopPropagation();
-    dragMovedRef.current = false; setIsDragging(true);
-    setDragStart({ x: touch.clientX, y: touch.clientY, fieldX: field.position.x, fieldY: field.position.y });
-  }, [field.position]);
-
-  const handleResizeStart = useCallback((e) => {
-    e.preventDefault(); e.stopPropagation();
-    mouseDownBlockedRef.current = true;
-    setIsResizing(true);
-    setResizeStart({ x: e.clientX, y: e.clientY, width: field.position.width, height: field.position.height });
-  }, [field.position]);
-
-  const handleResizeTouchStart = useCallback((e) => {
-    const touch = e.touches[0];
-    if (!touch) return;
-    e.preventDefault(); e.stopPropagation();
-    mouseDownBlockedRef.current = true;
-    setIsResizing(true);
-    setResizeStart({ x: touch.clientX, y: touch.clientY, width: field.position.width, height: field.position.height });
-  }, [field.position]);
-
-  useEffect(() => {
-    if (!isDragging && !isResizing) return;
-    const handleMouseMove = (e) => {
-      if (isDragging) {
-        const dx = (e.clientX - dragStart.x) / pageWidth;
-        const dy = (e.clientY - dragStart.y) / pageHeight;
-        if (Math.abs(dx) > 3 / pageWidth || Math.abs(dy) > 3 / pageHeight) dragMovedRef.current = true;
-        onUpdate(field, { position: { ...field.position, x: Math.max(0, dragStart.fieldX + dx), y: Math.max(0, dragStart.fieldY + dy) } });
-      } else if (isResizing) {
-        const dx = (e.clientX - resizeStart.x) / pageWidth;
-        const dy = (e.clientY - resizeStart.y) / pageHeight;
-        onUpdate(field, { position: { ...field.position, width: Math.max(50 / pageWidth, resizeStart.width + dx), height: Math.max(20 / pageHeight, resizeStart.height + dy) } });
-      }
-    };
-    const handleMouseUp = () => { setIsDragging(false); setIsResizing(false); };
-    const handleTouchMove = (e) => {
-      const touch = e.touches[0];
-      if (!touch) return;
-      e.preventDefault();
-      if (isDragging) {
-        const dx = (touch.clientX - dragStart.x) / pageWidth;
-        const dy = (touch.clientY - dragStart.y) / pageHeight;
-        if (Math.abs(dx) > 3 / pageWidth || Math.abs(dy) > 3 / pageHeight) dragMovedRef.current = true;
-        onUpdate(field, { position: { ...field.position, x: Math.max(0, dragStart.fieldX + dx), y: Math.max(0, dragStart.fieldY + dy) } });
-      } else if (isResizing) {
-        const dx = (touch.clientX - resizeStart.x) / pageWidth;
-        const dy = (touch.clientY - resizeStart.y) / pageHeight;
-        onUpdate(field, { position: { ...field.position, width: Math.max(50 / pageWidth, resizeStart.width + dx), height: Math.max(20 / pageHeight, resizeStart.height + dy) } });
-      }
-    };
-    const handleTouchEnd = () => { setIsDragging(false); setIsResizing(false); };
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-    document.addEventListener('touchmove', handleTouchMove, { passive: false });
-    document.addEventListener('touchend', handleTouchEnd);
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-      document.removeEventListener('touchmove', handleTouchMove);
-      document.removeEventListener('touchend', handleTouchEnd);
-    };
-  }, [isDragging, isResizing, dragStart, resizeStart, pageWidth, pageHeight, field, onUpdate]);
-
-  const handleClickToOpen = useCallback(() => {
-    if (mouseDownBlockedRef.current) { mouseDownBlockedRef.current = false; return; }
-    if (dragMovedRef.current) { dragMovedRef.current = false; return; }
-    onOpenModal?.();
-  }, [onOpenModal]);
-
-  return (
-    <div
-      style={style}
-      onMouseDown={handleMouseDown}
-      onTouchStart={handleTouchStart}
-      onTouchMove={(e) => e.preventDefault()}
-      onTouchEnd={(e) => e.preventDefault()}
-      onClick={image ? handleClickToOpen : undefined}
-      className={`signature-field ${isDragging ? 'dragging' : ''} hover:shadow-lg transition-shadow`}
-      title={image ? 'Cliquer pour modifier la signature' : undefined}
-    >
-      {image ? (
-        <img src={image} alt="signature" className="max-w-full max-h-full object-contain" draggable={false} />
-      ) : (
-        <div
-          className="sig-open px-3 py-1 text-xs font-semibold text-white bg-blue-600 rounded shadow cursor-pointer select-none"
-          onClick={(e) => { e.stopPropagation(); onOpenModal?.(); }}
-          title="Cliquer pour signer"
-        >
-          Cliquer pour signer
-        </div>
-      )}
-
-      <div
-        className="resize-handle"
-        onMouseDown={handleResizeStart}
-        onTouchStart={handleResizeTouchStart}
-        style={{ position: 'absolute', bottom: -4, right: -4, width: 12, height: 12, background: '#3b82f6', borderRadius: '50%', cursor: 'se-resize', border: '2px solid white', boxShadow: '0 2px 4px rgba(0,0,0,0.2)' }}
-      />
-
-      <button
-        onClick={(e) => { e.stopPropagation(); onDelete(field); }}
-        className="delete-handle absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center text-xs hover:bg-red-600"
-        title="Supprimer la zone"
-      >
-        <FiX className="w-3 h-3" />
-      </button>
-    </div>
-  );
-});
-
 
 /* ------------------------------ composant ------------------------------ */
 
@@ -528,6 +365,7 @@ export default function BulkSignSameWizard() {
                               pageWidth={pageWidth}
                               pageHeight={(pageDims[n]?.height || 0) * s}
                               isMobileView={isMobile}
+                              tapToPlace={isMobile}
                               onUpdate={(field, { position }) => setPlacement(p => ({ ...p, ...position }))}
                               onDelete={() => { setPlacement(null); setSigDataUrl(''); setSigSavedId(null); }}
                               onOpenModal={openSignatureModal}

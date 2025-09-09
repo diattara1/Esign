@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import {
   FiUser,
   FiLogOut,
@@ -18,7 +18,6 @@ import { useAuth } from '../AuthContext';
 const SignatureNavbar = () => {
   const { logout } = useAuth();
   const location = useLocation();
-  const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [signMenuOpen, setSignMenuOpen] = useState(false);
@@ -58,9 +57,8 @@ const SignatureNavbar = () => {
     }
   ];
 
-  const handleLogout = () => {
-    logout();
-    navigate('/login');
+  const handleLogout = async () => {
+    await logout();
   };
 
   // Fermer les menus quand on clique à l'extérieur

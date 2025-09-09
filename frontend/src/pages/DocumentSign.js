@@ -400,25 +400,7 @@ export default function DocumentSign() {
           </div>
         )}
 
-        {/* Bouton Signer dynamique */}
-        {(!isGuest || otpVerified) && !isAlreadySigned && (
-          <button
-            onClick={handleSign}
-            disabled={!canSign() || signing}
-            className={`px-4 py-2 rounded-md text-white font-medium transition ${canSign() && !signing ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-400 cursor-not-allowed'}`}
-          >
-            {signing ? 'Signature en cours…' : 'Signer'}
-          </button>
-        )}
-        {isGuest && !otpVerified && !isAlreadySigned && (
-          <button
-            onClick={otpSent ? handleVerifyOtp : handleSendOtp}
-            disabled={sendingOtp || verifyingOtp || (cooldownUntil && cooldownUntil > Date.now())}
-            className="px-4 py-2 rounded-md text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-60"
-          >
-            {otpSent ? (verifyingOtp ? 'Vérification…' : 'Vérifier OTP') : (sendingOtp ? 'Envoi…' : 'Envoyer OTP')}
-          </button>
-        )}
+      
       </div>
     </div>
   );

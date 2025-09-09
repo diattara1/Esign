@@ -1,24 +1,16 @@
-// DocumentSign.js — version responsive avec navbar dynamique (bouton "Signer")
-// - Page et PDF 100% responsives (aligné sur le comportement SelfSign)
-// - Navbar sticky avec bouton Signer dynamique (état, OTP, loading)
-// - Sidebar devient un drawer sur mobile
-
-import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
-import { Document, Page } from 'react-pdf';
 import signatureService from '../services/signatureService';
 import { api } from '../services/apiUtils';
 import SignatureModal from '../components/SignatureModal';
-import { fileToPngDataURL, blobToPngDataURL, savedSignatureImageUrl, fetchSavedSignatureAsDataURL } from '../utils/signatureUtils';
 import logService from '../services/logService';
-import sanitize from '../utils/sanitize';
-import { FiMenu, FiX, FiShield, FiCheckCircle, FiAlertCircle } from 'react-icons/fi';
-import 'react-pdf/dist/Page/AnnotationLayer.css';
-import 'react-pdf/dist/Page/TextLayer.css';
-
-const MAX_OTP_ATTEMPTS = 3;
-const COOLDOWN_SECONDS = 30;
+import useResponsive from '../hooks/useResponsive';
+import useOtp from '../hooks/useOtp';
+import usePdfViewer from '../hooks/usePdfViewer';
+import SignNavbar from '../components/SignNavbar';
+import SignSidebar from '../components/SignSidebar';
+import PdfViewer from '../components/PdfViewer';
 
 export default function DocumentSign() {
   const { id } = useParams();
@@ -27,86 +19,30 @@ export default function DocumentSign() {
   const isGuest = Boolean(token);
   const navigate = useNavigate();
 
-  // ---------------------------- Responsive state ----------------------------
-  const [isMobile, setIsMobile] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const toggleSidebar = () => setSidebarOpen((o) => !o);
+  const { isMobile, sidebarOpen, toggleSidebar, setSidebarOpen } = useResponsive();
+  const { viewerRef, viewerWidth, numPages, pageDims, onDocumentLoad, onPageLoadSuccess, reset } = usePdfViewer();
 
-  useEffect(() => {
-    const onResize = () => setIsMobile(window.innerWidth < 1024);
-    onResize();
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
-  }, []);
-
-  useEffect(() => {
-    if (!isMobile) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = sidebarOpen ? 'hidden' : prev || '';
-    return () => { document.body.style.overflow = prev; };
-  }, [isMobile, sidebarOpen]);
-
-  // Mesure largeur viewer pour l'échelle PDF
-  const viewerRef = useRef(null);
-  const [viewerWidth, setViewerWidth] = useState(0);
-  useLayoutEffect(() => {
-    const measure = () => setViewerWidth(viewerRef.current?.getBoundingClientRect().width || 0);
-    const ro = new ResizeObserver(measure);
-    if (viewerRef.current) ro.observe(viewerRef.current);
-    measure();
-    window.addEventListener('resize', measure);
-    return () => { ro.disconnect(); window.removeEventListener('resize', measure); };
-  }, []);
-
-  // ------------------------------ Données API ------------------------------
   const [loading, setLoading] = useState(true);
   const [envelope, setEnvelope] = useState(null);
   const [documents, setDocuments] = useState([]);
   const [selectedDoc, setSelectedDoc] = useState(null);
   const [pdfUrl, setPdfUrl] = useState(null);
 
-  // PDF pages
-  const [numPages, setNumPages] = useState(0);
-  const [pageDims, setPageDims] = useState({}); // {n:{width,height}}
-
-  // État signature globale
   const [isAlreadySigned, setIsAlreadySigned] = useState(false);
+  const { otp, setOtp, otpSent, otpVerified, sendingOtp, verifyingOtp, otpError, otpStatus, cooldownUntil, handleSendOtp, handleVerifyOtp } = useOtp(id, token, isAlreadySigned);
+
   const [signing, setSigning] = useState(false);
-
-  // OTP invité
-  const [otp, setOtp] = useState('');
-  const [otpSent, setOtpSent] = useState(false);
-  const [otpVerified, setOtpVerified] = useState(false);
-  const [sendingOtp, setSendingOtp] = useState(false);
-  const [verifyingOtp, setVerifyingOtp] = useState(false);
-  const [otpError, setOtpError] = useState('');
-  const [otpAttempts, setOtpAttempts] = useState(MAX_OTP_ATTEMPTS);
-  const [cooldownUntil, setCooldownUntil] = useState(null);
-  const [otpStatus, setOtpStatus] = useState('');
-
-  useEffect(() => {
-    if (!cooldownUntil) return;
-    const t = setInterval(() => {
-      const remaining = Math.ceil((cooldownUntil - Date.now()) / 1000);
-      if (remaining <= 0) {
-        setCooldownUntil(null); setOtpAttempts(MAX_OTP_ATTEMPTS); setOtpStatus('');
-      } else setOtpStatus(`Réessayez dans ${remaining}s`);
-    }, 1000);
-    return () => clearInterval(t);
-  }, [cooldownUntil]);
-
-  // Signatures locales par champ
-  const [signatureData, setSignatureData] = useState({}); // {fieldId: dataURL}
+  const [signatureData, setSignatureData] = useState({});
   const [savedSignatures, setSavedSignatures] = useState([]);
   const [savedSelectedIds, setSavedSelectedIds] = useState({});
 
-  // Helpers URL absolue + PDF invité
   const toAbsolute = (url) => {
     if (!url) return url;
     if (/^https?:\/\//i.test(url)) return url;
     const base = (api.defaults.baseURL || '').replace(/\/$/, '');
     return `${base}/${url.replace(/^\//, '')}`;
   };
+
   const fetchPdfBlobWithToken = async (url) => {
     const headers = token ? { 'X-Signature-Token': token } : {};
     const abs = toAbsolute(url);
@@ -115,6 +51,7 @@ export default function DocumentSign() {
     if (!blob || !(blob instanceof Blob) || blob.size === 0) throw new Error('Fichier PDF vide ou invalide');
     return URL.createObjectURL(blob);
   };
+
   const loadGuestPdfForDoc = async (docId, fallbackUrl) => {
     const docSpecificUrl = signatureService.getDecryptedDocumentUrl(id, token);
     try { return await fetchPdfBlobWithToken(docSpecificUrl); }
@@ -125,7 +62,6 @@ export default function DocumentSign() {
     }
   };
 
-  // ------------------------------- Chargement ------------------------------
   useEffect(() => {
     const init = async () => {
       try {
@@ -136,7 +72,7 @@ export default function DocumentSign() {
           setDocuments(data.documents || []);
           const mine = (data.fields || []).filter(f => f.recipient_id === data.recipient_id);
           const already = mine.length && mine.every(f => f.signed);
-          if (already) { setIsAlreadySigned(true); setOtpVerified(true); }
+          if (already) { setIsAlreadySigned(true); }
           if (data.documents?.length) setSelectedDoc(data.documents[0]);
           if (already) {
             const url = signatureService.getDecryptedDocumentUrl(id, token);
@@ -157,16 +93,21 @@ export default function DocumentSign() {
             const { download_url } = await signatureService.downloadEnvelope(id);
             setPdfUrl(download_url);
           }
-          setOtpVerified(true);
         }
       } catch (err) {
-        logService.error(err); toast.error(err?.response?.data?.error || 'Impossible de charger la page de signature'); navigate('/');
-      } finally { setLoading(false); }
+        logService.error(err);
+        toast.error(err?.response?.data?.error || 'Impossible de charger la page de signature');
+        navigate('/');
+      } finally {
+        setLoading(false);
+      }
     };
     init();
   }, [id, token, isGuest, navigate]);
 
-  useEffect(() => { if (!isGuest) signatureService.listSavedSignatures().then(setSavedSignatures).catch(()=>{}); }, [isGuest]);
+  useEffect(() => {
+    if (!isGuest) signatureService.listSavedSignatures().then(setSavedSignatures).catch(() => {});
+  }, [isGuest]);
 
   const prevUrlRef = useRef(null);
   useEffect(() => {
@@ -177,7 +118,7 @@ export default function DocumentSign() {
   useEffect(() => {
     let alive = true;
     const load = async () => {
-      setNumPages(0); setPageDims({});
+      reset();
       if (!selectedDoc) return;
       try {
         let blobUrl;
@@ -188,62 +129,20 @@ export default function DocumentSign() {
         } else {
           blobUrl = await signatureService.fetchDocumentBlob(id, selectedDoc.id);
         }
-        if (!alive) return; setPdfUrl(blobUrl);
+        if (!alive) return;
+        setPdfUrl(blobUrl);
       } catch (e) {
-        if (!alive) return; logService.error('Erreur chargement doc:', e); toast.error(`Impossible de charger ce PDF: ${e.message}`);
+        if (!alive) return;
+        logService.error('Erreur chargement doc:', e);
+        toast.error(`Impossible de charger ce PDF: ${e.message}`);
       }
     };
     load();
     return () => { alive = false; };
-  }, [selectedDoc, otpVerified, envelope, id, token, isGuest]);
+  }, [selectedDoc, otpVerified, envelope, id, token, isGuest, reset]);
 
-  // ------------------------------- OTP actions -----------------------------
-  const handleSendOtp = async () => {
-    if (isAlreadySigned) return toast.info('Déjà signé');
-    setSendingOtp(true);
-    try { await signatureService.sendOtp(id, token); setOtpSent(true); toast.success('Code OTP envoyé'); }
-    catch (e) { logService.error(e); toast.error(e?.response?.data?.error || 'Erreur envoi OTP'); }
-    finally { setSendingOtp(false); }
-  };
-  const handleVerifyOtp = async () => {
-    if (cooldownUntil && cooldownUntil > Date.now()) return;
-    setVerifyingOtp(true);
-    try {
-      await signatureService.verifyOtp(id, otp, token);
-      setOtpVerified(true); setOtpError(''); setOtpStatus(''); setOtpAttempts(MAX_OTP_ATTEMPTS); setCooldownUntil(null); toast.success('OTP vérifié');
-      await new Promise(r => setTimeout(r, 400));
-      try {
-        let blobUrl;
-        if (selectedDoc?.id) {
-          const fallback = envelope?.document_url || signatureService.getDecryptedDocumentUrl(id, token);
-          blobUrl = await loadGuestPdfForDoc(selectedDoc.id, fallback);
-        } else {
-          const fallbackUrl = signatureService.getDecryptedDocumentUrl(id, token);
-          blobUrl = await fetchPdfBlobWithToken(fallbackUrl);
-        }
-        if (blobUrl) setPdfUrl(blobUrl);
-      } catch (pdfError) { logService.error('Erreur rechargement PDF:', pdfError); toast.error('PDF vérifié mais erreur de chargement. Rafraîchissez.'); }
-    } catch (e) {
-      logService.error(e);
-      const msg = e?.response?.data?.error || 'OTP invalide';
-      setOtpError(msg); const remaining = otpAttempts - 1; setOtpAttempts(remaining);
-      if (remaining <= 0) { setCooldownUntil(Date.now() + COOLDOWN_SECONDS * 1000); setOtpStatus(`Trop d\'échecs. Réessayez dans ${COOLDOWN_SECONDS}s`); }
-      else setOtpStatus(`Il reste ${remaining} tentative(s).`);
-      toast.error(msg);
-    } finally { setVerifyingOtp(false); }
-  };
-
-  // ----------------------------- PDF callbacks -----------------------------
-  const onDocumentLoad = ({ numPages }) => setNumPages(numPages);
-  const onPageLoadSuccess = (num, page) => {
-    const vp = page.getViewport({ scale: 1 });
-    setPageDims((d) => (d[num]?.width === vp.width && d[num]?.height === vp.height ? d : { ...d, [num]: { width: vp.width, height: vp.height } }));
-  };
-
-  // Champs du doc courant
   const currentFields = useMemo(() => (envelope?.fields || []).filter(f => (selectedDoc ? f.document_id === selectedDoc.id : !f.document_id)), [envelope, selectedDoc]);
 
-  // ---------------------------- Modal signature ----------------------------
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedField, setSelectedField] = useState(null);
 
@@ -266,7 +165,6 @@ export default function DocumentSign() {
     closeModal();
   };
 
-  // --------------------------- Bouton signer (API) --------------------------
   const toBase64 = (val) => { if (typeof val !== 'string') return ''; const m = val.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/); return m ? m[2] : val; };
   const normalizeAllSignatures = (sigMap) => Object.fromEntries(Object.entries(sigMap || {}).map(([k, v]) => [k, toBase64(v)]));
   const canSign = () => {
@@ -287,221 +185,105 @@ export default function DocumentSign() {
     finally { setSigning(false); }
   };
 
-  // ----------------------------- PDF RENDERER ------------------------------
-  const renderPdfViewer = () => {
-    const canShowPdf = ((!isGuest) || otpVerified) && pdfUrl;
-    if (!canShowPdf) {
-      return (
-        <div className="text-center text-gray-600 p-8">
-          {isGuest && !otpVerified ? (
-            <>
-              <p className="text-lg mb-2">📄 PDF protégé</p>
-              <p>Veuillez vérifier votre code OTP pour afficher le document.</p>
-            </>
-          ) : (
-            <>
-              <p className="text-lg mb-2">⏳ Chargement du document…</p>
-              <p>Veuillez patienter.</p>
-            </>
-          )}
-        </div>
-      );
-    }
-
-    return (
-      <Document
-        key={String(pdfUrl || 'empty')}
-        file={pdfUrl}
-        onLoadSuccess={onDocumentLoad}
-        loading={<div className="text-center p-8"><div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600 mx-auto mb-4"></div>Chargement PDF…</div>}
-        error={<div className="text-center text-red-600 p-8">Erreur de chargement PDF.</div>}
-      >
-        {numPages > 0 && Array.from({ length: numPages }, (_, i) => {
-          const n = i + 1;
-          const padding = isMobile ? 24 : 48; // SelfSign-like
-          const pageMaxWidth = Math.max(0, Math.min(viewerWidth - padding, 900));
-          const s = pageMaxWidth / (pageDims[n]?.width || 1);
-          const fields = currentFields.filter((f) => f.page === n);
-
-          return (
-            <div key={n} className="relative mb-6">
-              <div className="relative" style={{ width: '100%', maxWidth: pageMaxWidth, margin: '0 auto' }}>
-                <Page
-                  pageNumber={n}
-                  width={pageMaxWidth}
-                  renderTextLayer={false}
-                  renderAnnotationLayer={false}
-                  onLoadSuccess={(p) => onPageLoadSuccess(n, p)}
-                  className="border border-gray-200 rounded-lg shadow-sm"
-                />
-                {/* Overlay centré pour les champs */}
-                <div className="absolute top-0 left-1/2 -translate-x-1/2" style={{ width: pageMaxWidth, height: (pageDims[n]?.height || 0) * s }}>
-                  {fields.map((field) => (
-                    <button
-                      key={field.id}
-                      onClick={field.editable ? () => openFieldModal(field) : undefined}
-                      title={field.editable ? 'Cliquer pour signer' : 'Champ non éditable'}
-                      className={`absolute flex items-center justify-center text-[11px] font-semibold border-2 rounded ${field.signed ? 'border-green-500 bg-green-100' : 'border-red-500 bg-red-100 hover:bg-red-200'} ${field.editable ? 'focus:outline-none focus:ring-2 focus:ring-blue-500' : ''}`}
-                      style={{
-                        top: field.position.y * s,
-                        left: field.position.x * s,
-                        width: field.position.width * s,
-                        height: field.position.height * s,
-                      }}
-                    >
-                      {field.signed ? (
-                        (() => {
-                          const raw = field.signature_data; const match = raw?.match(/data:image\/[\w.+-]+;base64,[^\"']+/);
-                          const src = match ? match[0] : '';
-                          return src ? <img src={src} alt="signature" className="max-w-full max-h-full object-contain" /> : 'Signé';
-                        })()
-                      ) : 'Signer'}
-                    </button>
-                  ))}
-                </div>
-                <div className="absolute bottom-2 right-2 bg-gray-900/75 text-white text-xs px-2 py-1 rounded">Page {n}/{numPages}</div>
-              </div>
-            </div>
-          );
-        })}
-      </Document>
-    );
+  const handleSelectDoc = (doc) => {
+    if (selectedDoc?.id !== doc.id) setSelectedDoc(doc);
+    if (isMobile) setSidebarOpen(false);
   };
-
-  // ------------------------------- NAVBAR UI -------------------------------
-  const Navbar = () => (
-    <div className="sticky top-0 z-30 bg-white/90 backdrop-blur border-b border-gray-200">
-      <div className="px-3 md:px-6 py-3 flex items-center gap-3">
-        {/* Mobile: burger */}
-        <button onClick={toggleSidebar} className="lg:hidden p-2 rounded border border-gray-200 active:scale-95" aria-label={sidebarOpen ? 'Fermer le menu' : 'Ouvrir le menu'}>
-          {sidebarOpen ? <FiX className="w-5 h-5" /> : <FiMenu className="w-5 h-5" />}
-        </button>
-
-        {/* Titre & sélecteur de document */}
-        <div className="flex-1 min-w-0">
-          <div className="text-base md:text-lg font-semibold text-gray-900 truncate">{isAlreadySigned ? 'Document déjà signé :' : 'Signer le document :'} {sanitize(envelope?.title)}</div>
-          {documents.length > 1 && (
-            <div className="mt-1">
-              <select
-                className="text-sm border rounded px-2 py-1"
-                value={selectedDoc?.id || ''}
-                onChange={(e) => {
-                  const d = documents.find(x => String(x.id) === String(e.target.value));
-                  if (d && d.id !== selectedDoc?.id) setSelectedDoc(d);
-                }}
-              >
-                {documents.map((d) => (
-                  <option key={d.id} value={d.id}>{d.name || `Document ${d.id}`}</option>
-                ))}
-              </select>
-            </div>
-          )}
-        </div>
-
-        {/* État OTP invité */}
-        {isGuest && !isAlreadySigned && (
-          <div className="hidden md:flex items-center gap-2 mr-2">
-            <FiShield className={otpVerified ? 'text-green-600' : 'text-gray-400'} />
-            <span className="text-sm text-gray-700">{otpVerified ? 'OTP vérifié' : (otpSent ? 'OTP envoyé' : 'OTP requis')}</span>
-          </div>
-        )}
-
-        {/* Bouton Signer dynamique */}
-        {(!isGuest || otpVerified) && !isAlreadySigned && (
-          <button
-            onClick={handleSign}
-            disabled={!canSign() || signing}
-            className={`px-4 py-2 rounded-md text-white font-medium transition ${canSign() && !signing ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-400 cursor-not-allowed'}`}
-          >
-            {signing ? 'Signature en cours…' : 'Signer'}
-          </button>
-        )}
-        {isGuest && !otpVerified && !isAlreadySigned && (
-          <button
-            onClick={otpSent ? handleVerifyOtp : handleSendOtp}
-            disabled={sendingOtp || verifyingOtp || (cooldownUntil && cooldownUntil > Date.now())}
-            className="px-4 py-2 rounded-md text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-60"
-          >
-            {otpSent ? (verifyingOtp ? 'Vérification…' : 'Vérifier OTP') : (sendingOtp ? 'Envoi…' : 'Envoyer OTP')}
-          </button>
-        )}
-      </div>
-    </div>
-  );
-
-  // ------------------------------- SIDEBAR UI ------------------------------
-  const Sidebar = () => (
-    <div className="h-full flex flex-col">
-      <div className="p-4 md:p-6 border-b border-gray-200">
-        <div className="font-semibold text-gray-800 mb-2">Documents</div>
-        {documents.length === 0 ? (
-          <div className="text-sm text-gray-500">Aucun</div>
-        ) : (
-          <ul className="space-y-1">
-            {documents.map(doc => (
-              <li key={doc.id}>
-                <button
-                  className={`w-full text-left px-2 py-1 rounded ${selectedDoc?.id === doc.id ? 'bg-blue-100' : 'hover:bg-gray-100'}`}
-                  onClick={() => { if (selectedDoc?.id !== doc.id) setSelectedDoc(doc); if (isMobile) setSidebarOpen(false); }}
-                >
-                  {doc.name || `Document ${doc.id}`}
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-
-      {/* OTP panneau (secondaire, la navbar gère l'action principale) */}
-      {isGuest && !isAlreadySigned && (
-        <div className="p-4 md:p-6 space-y-2">
-          {!otpSent && !otpVerified && (
-            <button onClick={handleSendOtp} disabled={sendingOtp} className="w-full bg-blue-600 text-white p-2 rounded disabled:opacity-50">{sendingOtp ? 'Envoi…' : 'Envoyer OTP'}</button>
-          )}
-          {otpSent && !otpVerified && (
-            <>
-              <input type="text" value={otp} onChange={(e) => setOtp(e.target.value)} placeholder="Code OTP" className="w-full border p-2 rounded" disabled={cooldownUntil && cooldownUntil > Date.now()} />
-              <div role="status" aria-live="polite" className="text-sm">
-                {otpError && <p className="text-red-600">{otpError}</p>}
-                {otpStatus && <p className="text-gray-600">{otpStatus}</p>}
-              </div>
-              <button onClick={handleVerifyOtp} disabled={verifyingOtp || (cooldownUntil && cooldownUntil > Date.now())} className="w-full bg-green-600 text-white p-2 rounded disabled:opacity-50">{verifyingOtp ? 'Vérification…' : 'Vérifier OTP'}</button>
-            </>
-          )}
-        </div>
-      )}
-    </div>
-  );
 
   if (loading) return <div className="p-6 text-center">Chargement…</div>;
   if (!envelope) return <div className="p-6 text-center text-red-600">Document introuvable.</div>;
 
   return (
     <div className="h-screen flex flex-col">
-      {/* NAVBAR sticky */}
-      <Navbar />
+      <SignNavbar
+        sidebarOpen={sidebarOpen}
+        toggleSidebar={toggleSidebar}
+        documents={documents}
+        selectedDoc={selectedDoc}
+        setSelectedDoc={setSelectedDoc}
+        isGuest={isGuest}
+        isAlreadySigned={isAlreadySigned}
+        otpSent={otpSent}
+        otpVerified={otpVerified}
+        sendingOtp={sendingOtp}
+        verifyingOtp={verifyingOtp}
+        cooldownUntil={cooldownUntil}
+        handleSendOtp={handleSendOtp}
+        handleVerifyOtp={handleVerifyOtp}
+        canSign={canSign}
+        handleSign={handleSign}
+        signing={signing}
+        envelope={envelope}
+      />
 
       <div className="flex-1 flex overflow-hidden">
-        {/* Drawer / Sidebar */}
         {isMobile && (
           <div className={`fixed inset-0 z-40 ${sidebarOpen ? '' : 'pointer-events-none'}`}>
             <div className={`absolute inset-0 bg-black/50 transition-opacity ${sidebarOpen ? 'opacity-100' : 'opacity-0'}`} onClick={() => setSidebarOpen(false)} />
             <aside className={`absolute inset-y-0 left-0 w-full max-w-sm bg-white border-r shadow-xl transform transition-transform ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-              <Sidebar />
+              <SignSidebar
+                documents={documents}
+                selectedDoc={selectedDoc}
+                onSelectDoc={handleSelectDoc}
+                isGuest={isGuest}
+                isAlreadySigned={isAlreadySigned}
+                otp={otp}
+                setOtp={setOtp}
+                otpSent={otpSent}
+                otpVerified={otpVerified}
+                sendingOtp={sendingOtp}
+                verifyingOtp={verifyingOtp}
+                cooldownUntil={cooldownUntil}
+                handleSendOtp={handleSendOtp}
+                handleVerifyOtp={handleVerifyOtp}
+                otpError={otpError}
+                otpStatus={otpStatus}
+              />
             </aside>
           </div>
         )}
         {!isMobile && (
-          <aside className="w-80 max-w-xs bg-white border-r overflow-auto"><Sidebar /></aside>
+          <aside className="w-80 max-w-xs bg-white border-r overflow-auto">
+            <SignSidebar
+              documents={documents}
+              selectedDoc={selectedDoc}
+              onSelectDoc={handleSelectDoc}
+              isGuest={isGuest}
+              isAlreadySigned={isAlreadySigned}
+              otp={otp}
+              setOtp={setOtp}
+              otpSent={otpSent}
+              otpVerified={otpVerified}
+              sendingOtp={sendingOtp}
+              verifyingOtp={verifyingOtp}
+              cooldownUntil={cooldownUntil}
+              handleSendOtp={handleSendOtp}
+              handleVerifyOtp={handleVerifyOtp}
+              otpError={otpError}
+              otpStatus={otpStatus}
+            />
+          </aside>
         )}
 
-        {/* Viewer */}
         <main className="flex-1 overflow-auto bg-gray-100" ref={viewerRef} style={{ scrollbarGutter: 'stable both-edges' }}>
-          <div className="p-3 md:p-6">{renderPdfViewer()}</div>
+          <div className="p-3 md:p-6">
+            <PdfViewer
+              isGuest={isGuest}
+              otpVerified={otpVerified}
+              pdfUrl={pdfUrl}
+              numPages={numPages}
+              pageDims={pageDims}
+              onDocumentLoad={onDocumentLoad}
+              onPageLoadSuccess={onPageLoadSuccess}
+              currentFields={currentFields}
+              openFieldModal={openFieldModal}
+              isMobile={isMobile}
+              viewerWidth={viewerWidth}
+            />
+          </div>
         </main>
       </div>
 
-      {/* MODAL Signature */}
       <SignatureModal
         isOpen={modalOpen}
         onClose={closeModal}

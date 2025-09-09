@@ -36,15 +36,22 @@ export const AuthProvider = ({ children }) => {
 
   const logout = async () => {
     try {
-      await api.post('/api/logout/');
+       const response = await api.post('/api/logout/');
+
+      if (response.status !== 200) {
+        toast.error('Erreur de déconnexion');
+        return;
+      }
+
+      setUser(null);
+      window.location.replace('/login');
     } catch (err) {
       const msg = err.response?.data?.detail
                || err.response?.data?.error
                || 'Erreur de déconnexion';
       toast.error(msg);
     }
-    setUser(null);
-    navigate('/login');
+    
   };
 
   // Gère l'expiration de session côté client

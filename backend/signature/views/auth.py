@@ -8,10 +8,14 @@ from rest_framework.response import Response
 from django.shortcuts import redirect
 from django.conf import settings
 from django.urls import reverse
+from django.views.decorators.csrf import csrf_exempt
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.utils.encoding import force_bytes, force_str
 from django.contrib.auth.tokens import default_token_generator
 from django.contrib.auth import get_user_model
+from django.views.decorators.csrf import ensure_csrf_cookie
+from django.utils.decorators import method_decorator
+from django.middleware.csrf import get_token
 from rest_framework.throttling import UserRateThrottle, AnonRateThrottle,ScopedRateThrottle
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -34,7 +38,8 @@ class CookieTokenObtainPairView(TokenObtainPairView):
     """Issue JWTs and store them in HttpOnly cookies."""
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "login"
-
+    
+    @method_decorator(ensure_csrf_cookie)
     def post(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -55,6 +60,7 @@ class CookieTokenObtainPairView(TokenObtainPairView):
         response = Response({'detail': 'Login successful'}, status=status.HTTP_200_OK)
         response.set_cookie('access_token', str(access_token), httponly=True, secure=True, samesite='None', max_age=access_max_age)
         response.set_cookie('refresh_token', str(refresh), httponly=True, secure=True, samesite='None', max_age=refresh_max_age)
+        response.set_cookie('csrftoken', get_token(request), secure=True, samesite='None')
         return response
 
 
@@ -76,9 +82,9 @@ class CookieTokenRefreshView(TokenRefreshView):
         response.data = {'detail': 'Token refreshed'}
         return response
 
-
+@csrf_exempt
 @api_view(['POST'])
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated])
 def logout(request):
     """Clear authentication cookies."""
     refresh = request.COOKIES.get('refresh_token')
@@ -89,8 +95,14 @@ def logout(request):
         except Exception as exc:
             logger.warning("Failed to blacklist refresh token: %s", exc)
     response = Response({'detail': 'Logout successful'}, status=status.HTTP_200_OK)
-    response.delete_cookie('access_token', samesite='None', secure=True)
-    response.delete_cookie('refresh_token', samesite='None', secure=True)
+    response.set_cookie(
+        'access_token', '', httponly=True, secure=True, samesite='None',
+        expires=0, max_age=0, path='/', domain=settings.SESSION_COOKIE_DOMAIN
+    )
+    response.set_cookie(
+        'refresh_token', '', httponly=True, secure=True, samesite='None',
+        expires=0, max_age=0, path='/', domain=settings.SESSION_COOKIE_DOMAIN
+    )
     return response
 
 @api_view(['POST'])

@@ -14,7 +14,8 @@ import SignatureModal from '../components/SignatureModal';
 import { fileToPngDataURL, blobToPngDataURL, savedSignatureImageUrl, fetchSavedSignatureAsDataURL } from '../utils/signatureUtils';
 import logService from '../services/logService';
 import sanitize from '../utils/sanitize';
-import { FiMenu, FiX, FiShield, FiCheckCircle, FiAlertCircle } from 'react-icons/fi';
+import DocumentSignNavbar from '../components/DocumentSignNavbar';
+import OtpSection from '../components/OtpSection';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 
@@ -362,66 +363,6 @@ export default function DocumentSign() {
     );
   };
 
-  // ------------------------------- NAVBAR UI -------------------------------
-  const Navbar = () => (
-    <div className="sticky top-0 z-30 bg-white/90 backdrop-blur border-b border-gray-200">
-      <div className="px-3 md:px-6 py-3 flex items-center gap-3">
-        {/* Mobile: burger */}
-        <button onClick={toggleSidebar} className="lg:hidden p-2 rounded border border-gray-200 active:scale-95" aria-label={sidebarOpen ? 'Fermer le menu' : 'Ouvrir le menu'}>
-          {sidebarOpen ? <FiX className="w-5 h-5" /> : <FiMenu className="w-5 h-5" />}
-        </button>
-
-        {/* Titre & sélecteur de document */}
-        <div className="flex-1 min-w-0">
-          <div className="text-base md:text-lg font-semibold text-gray-900 truncate">{isAlreadySigned ? 'Document déjà signé :' : 'Signer le document :'} {sanitize(envelope?.title)}</div>
-          {documents.length > 1 && (
-            <div className="mt-1">
-              <select
-                className="text-sm border rounded px-2 py-1"
-                value={selectedDoc?.id || ''}
-                onChange={(e) => {
-                  const d = documents.find(x => String(x.id) === String(e.target.value));
-                  if (d && d.id !== selectedDoc?.id) setSelectedDoc(d);
-                }}
-              >
-                {documents.map((d) => (
-                  <option key={d.id} value={d.id}>{d.name || `Document ${d.id}`}</option>
-                ))}
-              </select>
-            </div>
-          )}
-        </div>
-
-        {/* État OTP invité */}
-        {isGuest && !isAlreadySigned && (
-          <div className="hidden md:flex items-center gap-2 mr-2">
-            <FiShield className={otpVerified ? 'text-green-600' : 'text-gray-400'} />
-            <span className="text-sm text-gray-700">{otpVerified ? 'OTP vérifié' : (otpSent ? 'OTP envoyé' : 'OTP requis')}</span>
-          </div>
-        )}
-
-        {/* Bouton Signer dynamique */}
-        {(!isGuest || otpVerified) && !isAlreadySigned && (
-          <button
-            onClick={handleSign}
-            disabled={!canSign() || signing}
-            className={`px-4 py-2 rounded-md text-white font-medium transition ${canSign() && !signing ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-400 cursor-not-allowed'}`}
-          >
-            {signing ? 'Signature en cours…' : 'Signer'}
-          </button>
-        )}
-        {isGuest && !otpVerified && !isAlreadySigned && (
-          <button
-            onClick={otpSent ? handleVerifyOtp : handleSendOtp}
-            disabled={sendingOtp || verifyingOtp || (cooldownUntil && cooldownUntil > Date.now())}
-            className="px-4 py-2 rounded-md text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-60"
-          >
-            {otpSent ? (verifyingOtp ? 'Vérification…' : 'Vérifier OTP') : (sendingOtp ? 'Envoi…' : 'Envoyer OTP')}
-          </button>
-        )}
-      </div>
-    </div>
-  );
 
   // ------------------------------- SIDEBAR UI ------------------------------
   const Sidebar = () => (
@@ -448,20 +389,20 @@ export default function DocumentSign() {
 
       {/* OTP panneau (secondaire, la navbar gère l'action principale) */}
       {isGuest && !isAlreadySigned && (
-        <div className="p-4 md:p-6 space-y-2">
-          {!otpSent && !otpVerified && (
-            <button onClick={handleSendOtp} disabled={sendingOtp} className="w-full bg-blue-600 text-white p-2 rounded disabled:opacity-50">{sendingOtp ? 'Envoi…' : 'Envoyer OTP'}</button>
-          )}
-          {otpSent && !otpVerified && (
-            <>
-              <input type="text" value={otp} onChange={(e) => setOtp(e.target.value)} placeholder="Code OTP" className="w-full border p-2 rounded" disabled={cooldownUntil && cooldownUntil > Date.now()} />
-              <div role="status" aria-live="polite" className="text-sm">
-                {otpError && <p className="text-red-600">{otpError}</p>}
-                {otpStatus && <p className="text-gray-600">{otpStatus}</p>}
-              </div>
-              <button onClick={handleVerifyOtp} disabled={verifyingOtp || (cooldownUntil && cooldownUntil > Date.now())} className="w-full bg-green-600 text-white p-2 rounded disabled:opacity-50">{verifyingOtp ? 'Vérification…' : 'Vérifier OTP'}</button>
-            </>
-          )}
+        <div className="p-4 md:p-6">
+          <OtpSection
+            otp={otp}
+            setOtp={setOtp}
+            otpSent={otpSent}
+            otpVerified={otpVerified}
+            otpError={otpError}
+            otpStatus={otpStatus}
+            sendingOtp={sendingOtp}
+            verifyingOtp={verifyingOtp}
+            cooldownUntil={cooldownUntil}
+            onSend={handleSendOtp}
+            onVerify={handleVerifyOtp}
+          />
         </div>
       )}
     </div>
@@ -473,7 +414,26 @@ export default function DocumentSign() {
   return (
     <div className="h-screen flex flex-col">
       {/* NAVBAR sticky */}
-      <Navbar />
+      <DocumentSignNavbar
+        isMobile={isMobile}
+        toggleSidebar={toggleSidebar}
+        isGuest={isGuest}
+        isAlreadySigned={isAlreadySigned}
+        envelopeTitle={sanitize(envelope?.title)}
+        documents={documents}
+        selectedDoc={selectedDoc}
+        setSelectedDoc={setSelectedDoc}
+        otpSent={otpSent}
+        otpVerified={otpVerified}
+        sendingOtp={sendingOtp}
+        verifyingOtp={verifyingOtp}
+        cooldownUntil={cooldownUntil}
+        handleSendOtp={handleSendOtp}
+        handleVerifyOtp={handleVerifyOtp}
+        handleSign={handleSign}
+        canSign={canSign}
+        signing={signing}
+      />
 
       <div className="flex-1 flex overflow-hidden">
         {/* Drawer / Sidebar */}

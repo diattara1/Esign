@@ -18,11 +18,9 @@ import {
   Calendar,
   Download,
   Eye,
-  MoreHorizontal,
   Bell,
   Filter,
   Search,
-  Plus,
   Edit3,
   ChevronDown
 } from 'lucide-react';
@@ -49,6 +47,7 @@ const DashboardSignature = () => {
   const [previewLoadingId, setPreviewLoadingId] = useState(null);
   const [actionEnvelopes, setActionEnvelopes] = useState([]);
   const [expandedCards, setExpandedCards] = useState(new Set());
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   const filterByDate = (arr) => {
     const now = new Date();
@@ -242,40 +241,8 @@ const DashboardSignature = () => {
           
         </div>
 
-        {/* Filtre de date global responsive */}
-        <div className="mb-6 space-y-3 sm:space-y-0 sm:flex sm:flex-wrap sm:items-center sm:gap-3">
-          <select
-            value={dateFilter}
-            onChange={e => setDateFilter(e.target.value)}
-            className="w-full sm:w-auto border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
-          >
-            <option value="month">Ce mois</option>
-            <option value="90days">90 jours</option>
-            <option value="custom">Personnalisé</option>
-          </select>
-          
-          {dateFilter === 'custom' && (
-            <div className="flex flex-col space-y-2 sm:flex-row sm:space-y-0 sm:space-x-2">
-              <input
-                type="date"
-                value={customRange.start}
-                onChange={e => setCustomRange({ ...customRange, start: e.target.value })}
-                className="w-full sm:w-auto border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
-                placeholder="Date début"
-              />
-              <input
-                type="date"
-                value={customRange.end}
-                onChange={e => setCustomRange({ ...customRange, end: e.target.value })}
-                className="w-full sm:w-auto border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
-                placeholder="Date fin"
-              />
-            </div>
-          )}
-        </div>
-
-        {/* Statistiques responsive */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4 lg:gap-6 mb-6 sm:mb-8">
+        {/* Statistiques principales */}
+        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6 mb-4">
           {/* Brouillons */}
           <Link
             to="/signature/envelopes/drafts"
@@ -332,50 +299,102 @@ const DashboardSignature = () => {
             </div>
           </Link>
 
-          {/* Total période */}
-          <Link
-            to="/signature/envelopes"
-            className="bg-white shadow rounded-lg p-3 sm:p-4 lg:p-5 flex flex-col sm:flex-row items-center hover:bg-gray-50 hover:shadow-md transition-all duration-200"
-          >
-            <div className="flex-shrink-0 mb-2 sm:mb-0">
-              <Calendar className="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-yellow-500" />
-            </div>
-            <div className="sm:ml-3 lg:ml-4 text-center sm:text-left min-w-0 flex-1">
-              <p className="text-xs sm:text-sm font-medium text-gray-500 truncate">Période</p>
-              <p className="text-base sm:text-lg lg:text-xl font-semibold text-gray-900">{stats.totalThisMonth}</p>
-            </div>
-          </Link>
-
-          {/* Taux de completion */}
-          <Link
-            to="/signature/envelopes"
-            className="bg-white shadow rounded-lg p-3 sm:p-4 lg:p-5 flex flex-col sm:flex-row items-center hover:bg-gray-50 hover:shadow-md transition-all duration-200"
-          >
-            <div className="flex-shrink-0 mb-2 sm:mb-0">
-              <TrendingUp className="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-indigo-500" />
-            </div>
-            <div className="sm:ml-3 lg:ml-4 text-center sm:text-left min-w-0 flex-1">
-              <p className="text-xs sm:text-sm font-medium text-gray-500 truncate">Taux compl.</p>
-              <p className="text-base sm:text-lg lg:text-xl font-semibold text-gray-900">{stats.completionRate}%</p>
-            </div>
-          </Link>
         </div>
 
-        {/* Tendances responsive */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 mb-6 sm:mb-8">
-          <div className="bg-white shadow rounded-lg p-4">
-            <p className="text-xs font-medium text-gray-500 mb-3">7 derniers jours</p>
-            <div className="h-8">
-              <Sparkline data={trend7} />
-            </div>
-          </div>
-          <div className="bg-white shadow rounded-lg p-4">
-            <p className="text-xs font-medium text-gray-500 mb-3">30 derniers jours</p>
-            <div className="h-8">
-              <Sparkline data={trend30} />
-            </div>
-          </div>
+        <div className="mb-6">
+          <button
+            onClick={() => setShowAdvanced(!showAdvanced)}
+            className="flex items-center text-sm text-blue-600 hover:text-blue-800"
+          >
+            <span>{showAdvanced ? 'Moins de stats' : 'Plus de stats'}</span>
+            <ChevronDown
+              className={`w-4 h-4 ml-1 transform transition-transform ${showAdvanced ? 'rotate-180' : ''}`}
+            />
+          </button>
         </div>
+
+        {showAdvanced && (
+          <>
+            {/* Filtre de date global responsive */}
+            <div className="mb-6 space-y-3 sm:space-y-0 sm:flex sm:flex-wrap sm:items-center sm:gap-3">
+              <select
+                value={dateFilter}
+                onChange={e => setDateFilter(e.target.value)}
+                className="w-full sm:w-auto border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+              >
+                <option value="month">Ce mois</option>
+                <option value="90days">90 jours</option>
+                <option value="custom">Personnalisé</option>
+              </select>
+
+              {dateFilter === 'custom' && (
+                <div className="flex flex-col space-y-2 sm:flex-row sm:space-y-0 sm:space-x-2">
+                  <input
+                    type="date"
+                    value={customRange.start}
+                    onChange={e => setCustomRange({ ...customRange, start: e.target.value })}
+                    className="w-full sm:w-auto border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+                    placeholder="Date début"
+                  />
+                  <input
+                    type="date"
+                    value={customRange.end}
+                    onChange={e => setCustomRange({ ...customRange, end: e.target.value })}
+                    className="w-full sm:w-auto border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+                    placeholder="Date fin"
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Statistiques avancées */}
+            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-2 gap-3 sm:gap-4 lg:gap-6 mb-6 sm:mb-8">
+              {/* Total période */}
+              <Link
+                to="/signature/envelopes"
+                className="bg-white shadow rounded-lg p-3 sm:p-4 lg:p-5 flex flex-col sm:flex-row items-center hover:bg-gray-50 hover:shadow-md transition-all duration-200"
+              >
+                <div className="flex-shrink-0 mb-2 sm:mb-0">
+                  <Calendar className="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-yellow-500" />
+                </div>
+                <div className="sm:ml-3 lg:ml-4 text-center sm:text-left min-w-0 flex-1">
+                  <p className="text-xs sm:text-sm font-medium text-gray-500 truncate">Période</p>
+                  <p className="text-base sm:text-lg lg:text-xl font-semibold text-gray-900">{stats.totalThisMonth}</p>
+                </div>
+              </Link>
+
+              {/* Taux de completion */}
+              <Link
+                to="/signature/envelopes"
+                className="bg-white shadow rounded-lg p-3 sm:p-4 lg:p-5 flex flex-col sm:flex-row items-center hover:bg-gray-50 hover:shadow-md transition-all duration-200"
+              >
+                <div className="flex-shrink-0 mb-2 sm:mb-0">
+                  <TrendingUp className="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-indigo-500" />
+                </div>
+                <div className="sm:ml-3 lg:ml-4 text-center sm:text-left min-w-0 flex-1">
+                  <p className="text-xs sm:text-sm font-medium text-gray-500 truncate">Taux compl.</p>
+                  <p className="text-base sm:text-lg lg:text-xl font-semibold text-gray-900">{stats.completionRate}%</p>
+                </div>
+              </Link>
+            </div>
+
+            {/* Tendances responsive */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 mb-6 sm:mb-8">
+              <div className="bg-white shadow rounded-lg p-4">
+                <p className="text-xs font-medium text-gray-500 mb-3">7 derniers jours</p>
+                <div className="h-8">
+                  <Sparkline data={trend7} />
+                </div>
+              </div>
+              <div className="bg-white shadow rounded-lg p-4">
+                <p className="text-xs font-medium text-gray-500 mb-3">30 derniers jours</p>
+                <div className="h-8">
+                  <Sparkline data={trend30} />
+                </div>
+              </div>
+            </div>
+          </>
+        )}
 
         {/* Section principale - Documents récents */}
         <div className="bg-white shadow rounded-lg overflow-hidden">

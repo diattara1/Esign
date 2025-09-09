@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState, useLayoutEffect, useCallback, useMemo } from 'react';
 import useResponsivePdf from '../hooks/useResponsivePdf';
+import useIsMobile from '../hooks/useIsMobile';
 import { Document, Page } from 'react-pdf';
 import { toast } from 'react-toastify';
 import { FiLayers, FiDownload, FiMove, FiFile, FiX, FiTrash2 } from 'react-icons/fi';
@@ -230,7 +231,7 @@ export default function BulkSignSameWizard() {
   const [isProcessing, setIsProcessing] = useState(false);
 
   // responsive UI
-  const [isMobile, setIsMobile] = useState(false);
+  const isMobile = useIsMobile();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const toggleSidebar = useCallback(() => setSidebarOpen((o) => !o), []);
 
@@ -239,13 +240,11 @@ export default function BulkSignSameWizard() {
   /* ---------------- layout & responsive (aligné sur SelfSign) ---------------- */
   useLayoutEffect(() => {
     const measure = () => setViewerWidth(viewerRef.current?.clientWidth || 600);
-    const onResize = () => setIsMobile(window.innerWidth < 768);
-    measure(); onResize();
+    measure();
     const ro = new ResizeObserver(measure);
     if (viewerRef.current) ro.observe(viewerRef.current);
     window.addEventListener('resize', measure);
-    window.addEventListener('resize', onResize);
-    return () => { ro.disconnect(); window.removeEventListener('resize', measure); window.removeEventListener('resize', onResize); };
+    return () => { ro.disconnect(); window.removeEventListener('resize', measure); };
   }, []);
 
   // Échap ferme le panneau mobile

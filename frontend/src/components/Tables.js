@@ -1,6 +1,7 @@
 // Table.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { FiChevronLeft, FiChevronRight } from 'react-icons/fi';
+import useIsMobile from '../hooks/useIsMobile';
 
 const Table = ({
   columns,
@@ -17,21 +18,7 @@ const Table = ({
   itemsPerPage = 10,
 }) => {
   const [currentPage, setCurrentPage] = useState(1);
-  const [isMobile, setIsMobile] = useState(false);
-
-  // Détecter si l'écran est mobile (SSR safe)
-  useEffect(() => {
-    const checkMobile = () => {
-      if (typeof window !== 'undefined') {
-        setIsMobile(window.innerWidth < 768);
-      }
-    };
-    checkMobile();
-    if (typeof window !== 'undefined') {
-      window.addEventListener('resize', checkMobile);
-      return () => window.removeEventListener('resize', checkMobile);
-    }
-  }, []);
+  const isMobile = useIsMobile();
 
   // Pagination
   const totalItems = data?.length || 0;

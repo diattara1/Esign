@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState, useLayoutEffect, useMemo, useCallback } from 'react';
 import useResponsivePdf from '../hooks/useResponsivePdf';
+import useIsMobile from '../hooks/useIsMobile';
 import { Document, Page } from 'react-pdf';
 import { toast } from 'react-toastify';
 import { FiUpload, FiX, FiEdit3, FiTrash2 } from 'react-icons/fi';
@@ -283,7 +284,7 @@ export default function SelfSignWizard() {
   const [viewerWidth, setViewerWidth] = useState(0);
 
   // UI
-  const [isMobile, setIsMobile] = useState(false);
+  const isMobile = useIsMobile();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const toggleSidebar = useCallback(() => setSidebarOpen((o) => !o), []);
   const [placing, setPlacing] = useState(false);
@@ -305,13 +306,11 @@ export default function SelfSignWizard() {
   /* layout + responsive width (mesure + breakpoints) */
   useLayoutEffect(() => {
     const measure = () => setViewerWidth(viewerRef.current?.clientWidth || 600);
-    const onResize = () => setIsMobile(window.innerWidth < 768);
-    measure(); onResize();
+    measure();
     const ro = new ResizeObserver(measure);
     if (viewerRef.current) ro.observe(viewerRef.current);
     window.addEventListener('resize', measure);
-    window.addEventListener('resize', onResize);
-    return () => { ro.disconnect(); window.removeEventListener('resize', measure); window.removeEventListener('resize', onResize); };
+    return () => { ro.disconnect(); window.removeEventListener('resize', measure); };
   }, []);
 
   // Fermer le tiroir sur Échap (mobile)

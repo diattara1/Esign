@@ -2,6 +2,7 @@
 // Version responsive avec sidebar mobile
 
 import React, { useState, useEffect } from 'react';
+import useIsMobile from '../hooks/useIsMobile';
 import { Outlet, NavLink, useLocation } from 'react-router-dom';
 import { FiMenu, FiX } from 'react-icons/fi';
 import SignatureNavbar from '../components/SignatureNavbar';
@@ -24,6 +25,7 @@ const SignatureLayout = () => {
     return () => document.removeEventListener('keydown', handleEscape);
   }, []);
 
+  const isMobile = useIsMobile(1024);
   const navigationItems = [
     { path: '/signature/envelopes/sent', label: 'Envoyé', badge: null },
     { path: '/signature/envelopes/completed', label: 'Complété(s)', badge: null },
@@ -84,7 +86,7 @@ const SignatureLayout = () => {
                         : 'text-gray-700 hover:bg-gray-100 hover:text-gray-900'
                       }
                     `}
-                    onClick={() => window.innerWidth < 1024 && setSidebarOpen(false)}
+                    onClick={() => isMobile && setSidebarOpen(false)}
                   >
                     <span>{item.label}</span>
                     {item.badge && (

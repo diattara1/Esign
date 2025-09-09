@@ -12,6 +12,7 @@ import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 import logService from '../services/logService';
 import useFocusTrap from '../hooks/useFocusTrap';
+import useIsMobile from '../hooks/useIsMobile';
 
 function ReminderModal({ open, count, onClose }) {
   const dialogRef = useRef(null);
@@ -91,18 +92,17 @@ const DocumentDetail = () => {
   const viewerRef = useRef(null);
   const [viewerWidth, setViewerWidth] = useState(0);
 
+  const isMobile = useIsMobile();
   // Gestion responsive du viewer width
   useLayoutEffect(() => {
     const el = viewerRef.current;
     if (!el) return;
-    
+
     const measure = () => {
       const width = el.clientWidth || 0;
-      // Ajuster la largeur selon la taille d'écran
-      const isMobile = window.innerWidth < 768;
       setViewerWidth(isMobile ? Math.min(width - 32, 400) : width - 32);
     };
-    
+
     measure();
     let ro;
     if (window.ResizeObserver) {
@@ -114,7 +114,7 @@ const DocumentDetail = () => {
       window.removeEventListener('resize', measure);
       if (ro) ro.disconnect();
     };
-  }, []);
+  }, [isMobile]);
 
   // Libération URL blob
   useEffect(() => {

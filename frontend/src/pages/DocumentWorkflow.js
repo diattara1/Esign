@@ -8,8 +8,17 @@ import 'react-pdf/dist/Page/TextLayer.css';
 import logService from '../services/logService';
 import sanitize from '../utils/sanitize';
 import Countdown from '../components/Countdown';
+import useIsMobile from '../hooks/useIsMobile';
 
 pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js';
+
+function debounce(func, wait) {
+  let timeout;
+  return (...args) => {
+    clearTimeout(timeout);
+    timeout = setTimeout(() => func(...args), wait);
+  };
+}
 
 /* =========================
    COMPOSANT SIGNATURE DRAGGABLE (conservé)
@@ -763,7 +772,7 @@ export default function DocumentWorkflow() {
   const [documents, setDocuments] = useState([]);
   const [selectedDocId, setSelectedDocId] = useState(null);
   const [pdfUrl, setPdfUrl] = useState(null);
-  const [isMobileView, setIsMobileView] = useState(false);
+  const isMobileView = useIsMobile(1024);
   const [showLeftSidebar, setShowLeftSidebar] = useState(true);
   const [showRightSidebar, setShowRightSidebar] = useState(true);
   const [currentMobileTab, setCurrentMobileTab] = useState('recipients');
@@ -816,36 +825,16 @@ export default function DocumentWorkflow() {
     stableSelectedDocId.current = selectedDocId;
   }, [pdfUrl, selectedDocId]);
 
-  // Responsive
+  // Adjust sidebars when screen size changes
   useEffect(() => {
-    const checkScreenSize = () => {
-      const isMobile = window.innerWidth < 1024;
-      setIsMobileView(isMobile);
-      if (isMobile) {
-        setShowLeftSidebar(false);
-        setShowRightSidebar(false);
-      } else {
-        setShowLeftSidebar(true);
-        setShowRightSidebar(true);
-      }
-    };
-    checkScreenSize();
-    const debouncedResize = debounce(checkScreenSize, 100);
-    window.addEventListener('resize', debouncedResize);
-    return () => window.removeEventListener('resize', debouncedResize);
-  }, []);
-
-  function debounce(func, wait) {
-    let timeout;
-    return function executedFunction(...args) {
-      const later = () => {
-        clearTimeout(timeout);
-        func(...args);
-      };
-      clearTimeout(timeout);
-      timeout = setTimeout(later, wait);
-    };
-  }
+    if (isMobileView) {
+      setShowLeftSidebar(false);
+      setShowRightSidebar(false);
+    } else {
+      setShowLeftSidebar(true);
+      setShowRightSidebar(true);
+    }
+  }, [isMobileView]);
 
   useEffect(() => {
     const prev = prevUrlRef.current;

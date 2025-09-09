@@ -4,6 +4,7 @@
 // - Sidebar devient un drawer sur mobile
 
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from 'react';
+import useIsMobile from '../hooks/useIsMobile';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import { Document, Page } from 'react-pdf';
@@ -28,16 +29,9 @@ export default function DocumentSign() {
   const navigate = useNavigate();
 
   // ---------------------------- Responsive state ----------------------------
-  const [isMobile, setIsMobile] = useState(false);
+  const isMobile = useIsMobile(1024);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const toggleSidebar = () => setSidebarOpen((o) => !o);
-
-  useEffect(() => {
-    const onResize = () => setIsMobile(window.innerWidth < 1024);
-    onResize();
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
-  }, []);
 
   useEffect(() => {
     if (!isMobile) return;

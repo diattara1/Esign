@@ -514,34 +514,7 @@ const DocumentDetail = () => {
         </div>
       </div>
 
-      {/* Actions flottantes mobile */}
-      <div className="lg:hidden fixed bottom-4 left-4 right-4 z-30">
-        <div className="bg-white rounded-xl shadow-xl border border-gray-200 p-4">
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              onClick={handlePreview}
-              className="flex items-center justify-center px-3 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors text-sm font-medium"
-            >
-              <FiExternalLink className="w-4 h-4 mr-2" />
-              Ouvrir
-            </button>
-            <button
-              onClick={handleDownload}
-              className="flex items-center justify-center px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors text-sm font-medium"
-            >
-              <FiDownload className="w-4 h-4 mr-2" />
-              Télécharger
-            </button>
-          </div>
-          <Link
-            to="/signature/list"
-            className="mt-3 w-full bg-gray-500 text-white px-4 py-2 rounded-lg hover:bg-gray-600 transition-colors text-center text-sm font-medium flex items-center justify-center"
-          >
-            <FiArrowLeft className="w-4 h-4 mr-2" />
-            Retour à la liste
-          </Link>
-        </div>
-      </div>
+      
 
       {/* Modal rappel */}
       <ReminderModal

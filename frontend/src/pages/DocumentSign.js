@@ -337,10 +337,10 @@ export default function DocumentSign() {
                       title={field.editable ? 'Cliquer pour signer' : 'Champ non éditable'}
                       className={`absolute flex items-center justify-center text-[11px] font-semibold border-2 rounded ${field.signed ? 'border-green-500 bg-green-100' : 'border-red-500 bg-red-100 hover:bg-red-200'} ${field.editable ? 'focus:outline-none focus:ring-2 focus:ring-blue-500' : ''}`}
                       style={{
-                        top: field.position.y * s,
-                        left: field.position.x * s,
-                        width: field.position.width * s,
-                        height: field.position.height * s,
+                        top: field.position.y * (pageDims[n]?.height || 0) * s,
+                        left: field.position.x * (pageDims[n]?.width || 0) * s,
+                        width: field.position.width * (pageDims[n]?.width || 0) * s,
+                        height: field.position.height * (pageDims[n]?.height || 0) * s,
                       }}
                     >
                       {field.signed ? (

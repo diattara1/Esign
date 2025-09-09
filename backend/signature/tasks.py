@@ -126,7 +126,7 @@ def send_signed_pdf_to_all_signers(envelope_id: int):
 def _paste_signature_on_pdf(pdf_bytes: bytes, sig_img_bytes: bytes, placements: list) -> bytes:
     """
     Appose l'image de signature aux positions indiquées (page,x,y,width,height)
-    - x,y,width,height : unités PDF (points) mesurées depuis le HAUT-GAUCHE de la CropBox dans le front.
+    - x,y,width,height : valeurs relatives (0-1) mesurées depuis le HAUT-GAUCHE de la CropBox dans le front.
     - Conversion ici vers repère PDF (bas-gauche) + offset CropBox.
     Retourne un PDF bytes (non signé crypto).
     """
@@ -175,11 +175,11 @@ def _paste_signature_on_pdf(pdf_bytes: bytes, sig_img_bytes: bytes, placements: 
         c = canvas.Canvas(packet, pagesize=(media_w, media_h))
 
         for pl in by_page[page_num]:
-            # UI: x,y depuis TOP-LEFT de CropBox  → PDF: BOTTOM-LEFT MediaBox
-            x_ui = pl["x"]
-            y_ui = pl["y"]
-            w = pl["width"]
-            h = pl["height"]
+            # UI: x,y,width,height relatifs [0,1]
+            x_ui = pl["x"] * crop_w
+            y_ui = pl["y"] * crop_h
+            w = pl["width"] * crop_w
+            h = pl["height"] * crop_h
 
             # inverser Y dans la CropBox
             y_from_bottom_in_crop = crop_h - y_ui - h

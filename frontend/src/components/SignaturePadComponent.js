@@ -1,21 +1,37 @@
-import React, { useRef, useEffect, useCallback } from 'react';
+import React, { useRef, useEffect, useCallback, useState } from 'react';
 import SignatureCanvas from 'react-signature-canvas';
 import logService from '../services/logService';
 
 const SignaturePadComponent = ({ onEnd, onChange, initialValue, canvasProps }) => {
   const sigRef = useRef(null);
+  const containerRef = useRef(null);
+  const [size, setSize] = useState({ width: 0, height: 220 });
 
-  // Charger une valeur initiale (dataURL) si fournie
+  // Ajuste la taille du canvas selon le conteneur
   useEffect(() => {
-    if (!sigRef.current || !initialValue) return;
-    try {
-      sigRef.current.fromDataURL(initialValue);
-    } catch (error) {
-      logService.error('Erreur lors du chargement de la signature :', error);
-    }
-  }, [initialValue]);
+    const resize = () => {
+      const width = containerRef.current?.offsetWidth || 0;
+      setSize((s) => ({ ...s, width }));
+    };
+    resize();
+    window.addEventListener('resize', resize);
+    return () => window.removeEventListener('resize', resize);
+  }, []);
 
-  // Nettoyage à l’unmount uniquement (évite de clear à chaque changement d'initialValue en plein trait)
+  // Charge une valeur initiale (dataURL) si fournie
+  useEffect(() => {
+    if (!sigRef.current) return;
+    sigRef.current.clear();
+    if (initialValue) {
+      try {
+        sigRef.current.fromDataURL(initialValue);
+      } catch (error) {
+        logService.error('Erreur lors du chargement de la signature :', error);
+      }
+    }
+  }, [initialValue, size]);
+
+  // Nettoyage à l’unmount uniquement
   useEffect(() => {
     return () => {
       sigRef.current?.clear();
@@ -31,7 +47,7 @@ const SignaturePadComponent = ({ onEnd, onChange, initialValue, canvasProps }) =
   }, [onEnd, onChange]);
 
   return (
-    <div className="border border-gray-300 rounded-md p-2 bg-white">
+    <div ref={containerRef} className="border border-gray-300 rounded-md p-2 bg-white">
       <SignatureCanvas
         ref={sigRef}
         penColor="black"
@@ -46,7 +62,9 @@ const SignaturePadComponent = ({ onEnd, onChange, initialValue, canvasProps }) =
         onEnd={handleEnd}
         canvasProps={{
           className: 'sigCanvas',
-          style: { width: '100%', height: '220px', display: 'block' },
+          width: size.width,
+          height: size.height,
+          style: { width: `${size.width}px`, height: `${size.height}px`, display: 'block' },
           ...canvasProps,
         }}
       />
@@ -56,12 +74,6 @@ const SignaturePadComponent = ({ onEnd, onChange, initialValue, canvasProps }) =
           className="bg-red-500 text-white px-4 py-1 rounded hover:bg-red-600 text-sm"
         >
           Effacer
-        </button>
-        <button
-          onClick={handleEnd}
-          className="bg-gray-200 text-gray-800 px-3 py-1 rounded hover:bg-gray-300 text-sm"
-        >
-          Enregistrer
         </button>
       </div>
     </div>

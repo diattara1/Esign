@@ -15,6 +15,7 @@ const SavedSignaturesPage = () => {
   const [items, setItems] = useState([]);
   const [drawData, setDrawData] = useState('');
   const [uploading, setUploading] = useState(false);
+  const [tab, setTab] = useState('upload');
 
   const load = async () => {
     try {
@@ -75,32 +76,59 @@ const SavedSignaturesPage = () => {
     <div className="p-6 max-w-4xl mx-auto space-y-6">
       <h1 className="text-2xl font-semibold">Mes signatures enregistrées</h1>
 
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <h2 className="font-medium mb-2">Téléverser</h2>
-          <input type="file" accept="image/*" onChange={handleFile} disabled={uploading} />
-        </div>
-        <div>
-          <h2 className="font-medium mb-2">Dessiner</h2>
-          <SignaturePadComponent
-            onEnd={(d) => setDrawData(d)}
-            onChange={(d) => setDrawData(d)}
-            initialValue={drawData}
-            canvasProps={{ width: 320, height: 160 }}
-          />
+      <div>
+        <div className="flex border-b mb-4">
           <button
-            onClick={saveDrawn}
-            className="mt-2 px-4 py-1 bg-emerald-600 text-white rounded"
+            onClick={() => setTab('upload')}
+            className={`px-4 py-2 -mb-px border-b-2 ${
+              tab === 'upload' ? 'border-emerald-600' : 'border-transparent'
+            }`}
           >
-            Sauvegarder
+            Téléverser
+          </button>
+          <button
+            onClick={() => setTab('draw')}
+            className={`px-4 py-2 -mb-px border-b-2 ${
+              tab === 'draw' ? 'border-emerald-600' : 'border-transparent'
+            }`}
+          >
+            Dessiner
           </button>
         </div>
+
+        {tab === 'upload' && (
+          <div className="flex justify-center">
+            <input
+              type="file"
+              accept="image/*"
+              onChange={handleFile}
+              disabled={uploading}
+            />
+          </div>
+        )}
+
+        {tab === 'draw' && (
+          <div className="flex flex-col items-center">
+            <SignaturePadComponent
+              onEnd={(d) => setDrawData(d)}
+              onChange={(d) => setDrawData(d)}
+              initialValue={drawData}
+              canvasProps={{ width: 320, height: 160 }}
+            />
+            <button
+              onClick={saveDrawn}
+              className="mt-2 px-4 py-1 bg-emerald-600 text-white rounded"
+            >
+              Sauvegarder
+            </button>
+          </div>
+        )}
       </div>
 
       <div>
         <h2 className="font-medium mb-2">Signatures existantes</h2>
         {items.length === 0 && <p>Aucune signature enregistrée.</p>}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
           {items.map(sig => (
             <div key={sig.id} className="border p-2 rounded relative">
               <img

@@ -7,10 +7,12 @@ import { toast } from 'react-toastify';
 import { useNavigate } from 'react-router-dom';
 import { FiEdit2, FiTrash2 } from 'react-icons/fi';
 import logService from '../services/logService';
+import ConfirmDialog from './ConfirmDialog';
 
 const DraftEnvelopes = () => {
   const [envelopes, setEnvelopes] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [confirmId, setConfirmId] = useState(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -33,15 +35,17 @@ const DraftEnvelopes = () => {
     navigate(`/signature/workflow/${id}`);
   };
 
-  const handleDeleteDraft = async (id) => {
-    if (!window.confirm('Voulez-vous vraiment supprimer ce brouillon ?')) return;
+  const confirmDeleteDraft = async () => {
+    if (confirmId === null) return;
     try {
-      await signatureService.cancelEnvelope(id);
-      setEnvelopes(prev => prev.filter(env => env.id !== id));
+      await signatureService.cancelEnvelope(confirmId);
+      setEnvelopes(prev => prev.filter(env => env.id !== confirmId));
       toast.success('Brouillon supprimé');
     } catch (err) {
       toast.error('Échec de la suppression');
       logService.error(err);
+    } finally {
+      setConfirmId(null);
     }
   };
 
@@ -62,8 +66,8 @@ const DraftEnvelopes = () => {
         <FiEdit2 className="w-5 h-5" />
       </button>
       <button
-        onClick={() => handleDeleteDraft(id)}
-        className="text-red-600 hover:text-red-800 p-1"
+        onClick={() => setConfirmId(id)}
+        className="text-red-600 hover:text-red-800 hover:bg-red-50 p-1 rounded"
         title="Supprimer"
       >
         <FiTrash2 className="w-5 h-5" />
@@ -94,20 +98,30 @@ const DraftEnvelopes = () => {
   ];
 
   return (
-    <Table
-      columns={columns}
-      data={envelopes}
-      title="Brouillons"
-      description={`Documents en cours de préparation (${envelopes.length})`}
-      loading={loading}
-      emptyState={
-        <EmptyState
-          message="Aucun brouillon disponible"
-          actionLabel="Créer une enveloppe"
-          onAction={() => navigate('/signature/new')}
-        />
-      }
-    />
+    <>
+      <Table
+        columns={columns}
+        data={envelopes}
+        title="Brouillons"
+        description={`Documents en cours de préparation (${envelopes.length})`}
+        loading={loading}
+        emptyState={
+          <EmptyState
+            message="Aucun brouillon disponible"
+            actionLabel="Créer une enveloppe"
+            onAction={() => navigate('/signature/new')}
+          />
+        }
+      />
+      <ConfirmDialog
+        isOpen={confirmId !== null}
+        title="Supprimer le brouillon"
+        message="Voulez-vous vraiment supprimer ce brouillon ?"
+        secondaryMessage="Cette action est irréversible."
+        onCancel={() => setConfirmId(null)}
+        onConfirm={confirmDeleteDraft}
+      />
+    </>
   );
 };
 

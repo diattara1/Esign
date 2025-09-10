@@ -3,6 +3,7 @@ import SignaturePadComponent from '../components/SignaturePadComponent';
 import signatureService from '../services/signatureService';
 import { toast } from 'react-toastify';
 import { api } from '../services/apiUtils';
+import ConfirmDialog from '../components/ConfirmDialog';
 
 const toAbsolute = (url) => {
   if (!url) return url;
@@ -16,6 +17,7 @@ const SavedSignaturesPage = () => {
   const [drawData, setDrawData] = useState('');
   const [uploading, setUploading] = useState(false);
   const [tab, setTab] = useState('upload');
+  const [confirmId, setConfirmId] = useState(null);
 
   const load = async () => {
     try {
@@ -61,14 +63,20 @@ const SavedSignaturesPage = () => {
     }
   };
 
-  const remove = async (id) => {
-    if (!window.confirm('Supprimer cette signature ?')) return;
+  const remove = (id) => {
+    setConfirmId(id);
+  };
+
+  const confirmRemove = async () => {
+    if (confirmId === null) return;
     try {
-      await signatureService.deleteSavedSignature(id);
+      await signatureService.deleteSavedSignature(confirmId);
       toast.success('Supprimé');
       load();
     } catch {
       toast.error('Suppression impossible');
+    } finally {
+      setConfirmId(null);
     }
   };
 
@@ -148,6 +156,14 @@ const SavedSignaturesPage = () => {
           ))}
         </div>
       </div>
+      <ConfirmDialog
+        isOpen={confirmId !== null}
+        title="Supprimer la signature"
+        message="Supprimer cette signature ?"
+        secondaryMessage="Cette action est irréversible."
+        onCancel={() => setConfirmId(null)}
+        onConfirm={confirmRemove}
+      />
     </div>
   );
 };

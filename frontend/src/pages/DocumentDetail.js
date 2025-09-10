@@ -93,6 +93,8 @@ const DocumentDetail = () => {
   const [viewerWidth, setViewerWidth] = useState(0);
 
   const isMobile = useIsMobile();
+  const signedCount = env?.recipients?.filter(r => r.signed).length || 0;
+  const totalRecipients = env?.recipients?.length || 0;
   // Gestion responsive du viewer width
   useLayoutEffect(() => {
     const el = viewerRef.current;
@@ -151,7 +153,9 @@ const DocumentDetail = () => {
         const docs = data.documents || [];
         setDocuments(docs);
         if (docs.length > 0) setSelectedDoc(docs[0]);
-        await loadConsolidatedPreview();
+        if (!isMobile) {
+          await loadConsolidatedPreview();
+        }
       } catch (err) {
         logService.error(err);
         toast.error("Échec du chargement de l'enveloppe");
@@ -159,13 +163,15 @@ const DocumentDetail = () => {
         setLoading(false);
       }
     })();
-  }, [id, loadConsolidatedPreview]);
+  }, [id, loadConsolidatedPreview, isMobile]);
 
   // Gestion des actions
   const handleClickDoc = async (doc) => {
     if (selectedDoc?.id === doc.id) return;
     setSelectedDoc(doc);
-    await loadConsolidatedPreview();
+    if (!isMobile || pdfUrl) {
+      await loadConsolidatedPreview();
+    }
     setSidebarOpen(false); // Fermer sidebar mobile après sélection
   };
 
@@ -431,6 +437,32 @@ const DocumentDetail = () => {
               </div>
             </div>
 
+            {/* Destinataires */}
+            {totalRecipients > 0 && (
+              <details className="bg-gray-50 rounded-lg p-4">
+                <summary className="cursor-pointer">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-gray-700">
+                      Statut global : {signedCount}/{totalRecipients} signés
+                    </span>
+                    <span className="text-sm font-medium text-blue-600">Voir les destinataires</span>
+                  </div>
+                </summary>
+                <ul className="mt-4 space-y-2">
+                  {env.recipients.map((r, idx) => (
+                    <li key={r.id || idx} className="flex items-center justify-between text-sm">
+                      <span className="text-gray-800">{r.full_name || r.email}</span>
+                      <span
+                        className={`font-medium ${r.signed ? 'text-green-600' : 'text-yellow-600'}`}
+                      >
+                        {r.signed ? 'Signé' : 'En attente'}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
+
             {/* Actions - Desktop uniquement (mobile dans header) */}
             <div className="hidden lg:flex flex-col space-y-3">
               <button
@@ -481,9 +513,20 @@ const DocumentDetail = () => {
                 </div>
               </div>
             ) : !pdfUrl ? (
-              <div className="flex justify-center items-center h-full min-h-96">
-                <p className="text-gray-600 text-center">Prévisualisation indisponible.</p>
-              </div>
+              isMobile ? (
+                <div className="flex justify-center items-center h-full min-h-96">
+                  <button
+                    onClick={loadConsolidatedPreview}
+                    className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700"
+                  >
+                    Voir le document
+                  </button>
+                </div>
+              ) : (
+                <div className="flex justify-center items-center h-full min-h-96">
+                  <p className="text-gray-600 text-center">Prévisualisation indisponible.</p>
+                </div>
+              )
             ) : (
               <div className="flex flex-col items-center space-y-4">
                 <Document

@@ -19,9 +19,9 @@ const Alert = ({ type = 'success', children }) => {
   const { Icon, container, icon } = variant;
 
   return (
-    <div className={`mb-4 p-3 border rounded-lg flex items-start space-x-2 text-sm ${container}`}>\
-      {Icon && <Icon className={`h-4 w-4 mt-0.5 flex-shrink-0 ${icon}`} />}\
-      <div className="flex-1">{children}</div>\
+    <div className={`mb-4 p-3 border rounded-lg flex items-start space-x-2 text-sm ${container}`}>
+      {Icon && <Icon className={`h-4 w-4 mt-0.5 flex-shrink-0 ${icon}`} />}
+      <div className="flex-1">{children}</div>
     </div>
   );
 };

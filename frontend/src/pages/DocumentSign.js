@@ -370,7 +370,7 @@ export default function DocumentSign() {
 
   // ------------------------------- NAVBAR UI -------------------------------
   const Navbar = () => (
-    <div className="sticky top-0 z-30 bg-white/90 backdrop-blur border-b border-gray-200">
+    <div className="sticky top-16 lg:top-0 z-30 bg-white/90 backdrop-blur border-b border-gray-200">
       <div className="px-3 md:px-6 py-3 flex items-center gap-3">
         {/* Mobile: burger */}
         <button onClick={toggleSidebar} className="lg:hidden p-2 rounded border border-gray-200 active:scale-95" aria-label={sidebarOpen ? 'Fermer le menu' : 'Ouvrir le menu'}>

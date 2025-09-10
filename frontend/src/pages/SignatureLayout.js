@@ -149,7 +149,7 @@ const SignatureLayout = () => {
                     onClick={() => isMobile && setSidebarOpen(false)}
                   >
                     <span>{item.label}</span>
-                    {item.badge > 0 && (
+                    {item.path === '/signature/envelopes/action-required' && item.badge > 0 && (
                       <span className="bg-red-100 text-red-600 text-xs px-2 py-0.5 rounded-full font-medium">
                         {item.badge}
                       </span>
@@ -192,7 +192,7 @@ const SignatureLayout = () => {
                   }`}
               >
                 <Icon className="w-5 h-5" />
-                {item.badge > 0 && (
+                {item.path === '/signature/envelopes/action-required' && item.badge > 0 && (
                   <span className="absolute -top-1 right-3 bg-red-500 text-white text-[10px] px-1 rounded-full">
                     {item.badge}
                   </span>

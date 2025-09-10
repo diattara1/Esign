@@ -4,14 +4,12 @@ import { useAuth } from '../AuthContext';
 import { useLocation, Link } from 'react-router-dom';
 import { Mail, Lock, Loader2 } from 'lucide-react';
 import Alert from '../components/Alert';
+import StatusBanner from '../components/StatusBanner';
 import { loginSchema } from '../validation/schemas';
 
 const LoginPage = () => {
   const { login, authLoading } = useAuth();
   const location = useLocation();
-  const params = new URLSearchParams(location.search);
-  const activated = params.get('activated');
-  const reset = params.get('reset');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -42,7 +40,7 @@ const LoginPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-100 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-6 px-4 sm:px-6 lg:px-8">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
         <div className="text-center">
           <div className="mx-auto h-12 w-12 bg-blue-600 rounded-xl flex items-center justify-center">
@@ -58,25 +56,8 @@ const LoginPage = () => {
       </div>
 
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="bg-white py-8 px-4 shadow-xl sm:rounded-2xl sm:px-10 border border-gray-100">
-          {/* Messages d'état */}
-          {activated === '1' && (
-            <Alert type="success">
-              Compte activé avec succès. Vous pouvez maintenant vous connecter.
-            </Alert>
-          )}
-
-          {activated === '0' && (
-            <Alert type="error">
-              Lien d'activation invalide. Veuillez vérifier votre lien ou en demander un nouveau.
-            </Alert>
-          )}
-
-          {reset === '1' && (
-            <Alert type="success">
-              Mot de passe réinitialisé avec succès. Vous pouvez maintenant vous connecter.
-            </Alert>
-          )}
+        <div className="bg-white py-6 px-4 shadow-xl sm:rounded-2xl sm:px-8 border border-gray-100">
+          <StatusBanner />
 
           {error && <Alert type="error">{error}</Alert>}
 

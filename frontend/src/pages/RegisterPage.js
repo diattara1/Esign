@@ -131,9 +131,9 @@ const handleResendEmail = async () => {
   };
   if (success) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-green-50 via-white to-emerald-100 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
+      <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-6 px-4 sm:px-6 lg:px-8">
         <div className="sm:mx-auto sm:w-full sm:max-w-md">
-          <div className="bg-white py-8 px-4 shadow-xl sm:rounded-2xl sm:px-10 border border-gray-100 text-center">
+          <div className="bg-white py-6 px-4 shadow-xl sm:rounded-2xl sm:px-8 border border-gray-100 text-center">
             <div className="mx-auto h-16 w-16 bg-green-500 rounded-full flex items-center justify-center mb-6">
               <CheckCircle className="h-8 w-8 text-white" />
             </div>
@@ -174,7 +174,7 @@ const handleResendEmail = async () => {
   const errorMessages = Object.values(errors).flat().filter(Boolean);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-100 py-12 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-gray-50 py-6 px-4 sm:px-6 lg:px-8">
       <div className="sm:mx-auto sm:w-full sm:max-w-2xl">
         <div className="text-center mb-8">
           <div className="mx-auto h-12 w-12 bg-blue-600 rounded-xl flex items-center justify-center">
@@ -211,7 +211,7 @@ const handleResendEmail = async () => {
           </div>
         </div>
 
-        <div className="bg-white py-8 px-4 shadow-xl sm:rounded-2xl sm:px-10 border border-gray-100">
+        <div className="bg-white py-6 px-4 shadow-xl sm:rounded-2xl sm:px-8 border border-gray-100">
           {/* Messages d'erreur */}
           {message && (
             <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl flex items-start space-x-3">

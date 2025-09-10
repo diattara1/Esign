@@ -4,7 +4,7 @@
 import React, { useEffect, useState, useCallback, useLayoutEffect, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Document, Page } from 'react-pdf';
-import { FiMenu, FiX, FiDownload, FiExternalLink, FiArrowLeft, FiClock } from 'react-icons/fi';
+import { FiDownload, FiExternalLink, FiArrowLeft, FiClock } from 'react-icons/fi';
 import signatureService from '../services/signatureService';
 import { toast } from 'react-toastify';
 import Countdown from '../components/Countdown';
@@ -74,9 +74,6 @@ const DocumentDetail = () => {
   const [documents, setDocuments] = useState([]);
   const [selectedDoc, setSelectedDoc] = useState(null);
   
-  // État mobile
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-
   // PDF
   const [pdfUrl, setPdfUrl] = useState(null);
   const [numPages, setNumPages] = useState(0);
@@ -172,7 +169,7 @@ const DocumentDetail = () => {
     if (!isMobile || pdfUrl) {
       await loadConsolidatedPreview();
     }
-    setSidebarOpen(false); // Fermer sidebar mobile après sélection
+    // Pas de sidebar à fermer sur mobile
   };
 
   const handlePreview = () => {
@@ -224,9 +221,160 @@ const DocumentDetail = () => {
     setReminderModalOpen(false);
     remindBtnRef.current?.focus();
   };
+  const sideContent = (
+    <>
+      {/* Titre desktop */}
+      <div className="hidden lg:block">
+        <h1 className="text-xl lg:text-2xl font-bold mb-2 break-words">{env.title}</h1>
+      </div>
 
+      {/* Documents */}
+      {documents.length > 0 && (
+        <div>
+          <h2 className="text-lg font-semibold mb-3">Documents</h2>
+          <div className="space-y-1">
+            {documents.map(doc => (
+              <button
+                key={doc.id}
+                onClick={() => handleClickDoc(doc)}
+                className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
+                  selectedDoc?.id === doc.id
+                    ? 'bg-blue-100 text-blue-700 border border-blue-200'
+                    : 'hover:bg-gray-100'
+                }`}
+              >
+                {doc.name || `Document ${doc.id}`}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
+      {/* Métadonnées */}
+      <div className="space-y-4">
+        <div className="grid grid-cols-1 gap-3">
+          <div className="flex flex-col sm:flex-row sm:justify-between">
+            <strong className="text-sm text-gray-600">Statut :</strong>
+            <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium mt-1 sm:mt-0 self-start ${
+              env.status === 'completed'
+                ? 'bg-green-100 text-green-800'
+                : env.status === 'sent'
+                ? 'bg-blue-100 text-blue-800'
+                : env.status === 'cancelled'
+                ? 'bg-red-100 text-red-800'
+                : 'bg-gray-100 text-gray-800'
+            }`}>
+              {env.status === 'completed'
+                ? 'Signé'
+                : env.status === 'sent'
+                ? 'Envoyé'
+                : env.status === 'cancelled'
+                ? 'Annulé'
+                : 'Brouillon'}
+            </span>
+          </div>
 
+          <div className="flex flex-col sm:flex-row sm:justify-between">
+            <strong className="text-sm text-gray-600">Version :</strong>
+            <span className="text-sm text-gray-800 mt-1 sm:mt-0">{env.version}</span>
+          </div>
+
+          <div className="flex flex-col sm:flex-row sm:justify-between">
+            <strong className="text-sm text-gray-600">Créé le :</strong>
+            <span className="text-sm text-gray-800 mt-1 sm:mt-0">
+              {new Date(env.created_at).toLocaleDateString()}
+            </span>
+          </div>
+
+          {env.deadline_at && (
+            <div className="flex flex-col sm:flex-row sm:justify-between">
+              <strong className="text-sm text-gray-600">Échéance :</strong>
+              <span className="text-sm text-gray-800 mt-1 sm:mt-0">
+                {new Date(env.deadline_at).toLocaleDateString()}
+              </span>
+            </div>
+          )}
+
+          <div className="flex flex-col sm:flex-row sm:justify-between">
+            <strong className="text-sm text-gray-600">Flux :</strong>
+            <span className="text-sm text-gray-800 mt-1 sm:mt-0">
+              {env.flow_type === 'sequential' ? 'Séquentiel' : 'Parallèle'}
+            </span>
+          </div>
+
+          {env.hash_original && (
+            <div className="flex flex-col">
+              <strong className="text-sm text-gray-600 mb-1">Hachage original :</strong>
+              <span className="text-xs font-mono bg-gray-100 px-2 py-1 rounded break-all">
+                {env.hash_original.substring(0, 32)}...
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* Countdown */}
+        {env.deadline_at && env.status !== 'completed' && (
+          <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
+            <div className="flex items-center mb-2">
+              <FiClock className="w-4 h-4 text-orange-600 mr-2" />
+              <span className="text-sm font-medium text-orange-800">Temps restant</span>
+            </div>
+            <Countdown targetIso={env.deadline_at} className="text-orange-700" />
+          </div>
+        )}
+      </div>
+
+      {/* Progression */}
+      <div className="bg-gray-50 rounded-lg p-4 space-y-3">
+        <div className="flex justify-between items-center">
+          <span className="text-sm font-medium text-gray-700">Progression</span>
+          <span className="text-sm font-bold text-gray-800">
+            {env.completion_rate?.toFixed(0) || 0}%
+          </span>
+        </div>
+        <div className="w-full bg-gray-200 rounded-full h-2">
+          <div
+            className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+            style={{ width: `${env.completion_rate || 0}%` }}
+          />
+        </div>
+      </div>
+
+      {/* Destinataires */}
+      {totalRecipients > 0 && (
+        <details className="bg-gray-50 rounded-lg p-4">
+          <summary className="cursor-pointer">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium text-gray-700">
+                Statut global : {signedCount}/{totalRecipients} signés
+              </span>
+              <span className="text-sm font-medium text-blue-600">Voir les destinataires</span>
+            </div>
+          </summary>
+          <ul className="mt-4 space-y-2">
+            {env.recipients.map((r, idx) => (
+              <li key={r.id || idx} className="flex items-center justify-between text-sm">
+                <span className="text-gray-800">{r.full_name || r.email}</span>
+                <span
+                  className={`font-medium ${r.signed ? 'text-green-600' : 'text-yellow-600'}`}
+                >
+                  {r.signed ? 'Signé' : 'En attente'}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+
+      <Link
+        to="/signature/list"
+        className="w-full bg-gray-500 text-white px-4 py-2 rounded-lg hover:bg-gray-600 transition-colors text-center text-sm font-medium flex items-center justify-center"
+      >
+        <FiArrowLeft className="w-4 h-4 mr-2" />
+        Retour à la liste
+      </Link>
+    </>
+  );
   // Callbacks react-pdf
   const onDocumentLoad = ({ numPages }) => setNumPages(numPages);
   const onDocumentError = (err) => {
@@ -263,243 +411,28 @@ const DocumentDetail = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header mobile avec bouton menu */}
-      <div className="lg:hidden bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between sticky top-0 z-40">
-        <button
-          onClick={() => setSidebarOpen(true)}
-          className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
-        >
-          <FiMenu className="w-5 h-5" />
-        </button>
-        <h1 className="font-semibold text-gray-900 truncate mx-4 flex-1">{env.title}</h1>
-        <div className="flex space-x-2">
-          <button
-            onClick={handlePreview}
-            className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
-            title="Ouvrir dans un nouvel onglet"
-          >
-            <FiExternalLink className="w-5 h-5 text-gray-600" />
-          </button>
-          <button
-            onClick={handleDownload}
-            className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
-            title="Télécharger"
-          >
-            <FiDownload className="w-5 h-5 text-gray-600" />
-          </button>
-        </div>
+    <div className="min-h-screen bg-gray-50 pb-24">
+      {/* Header mobile */}
+      <div className="lg:hidden bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-center sticky top-0 z-40">
+        <h1 className="font-semibold text-gray-900 truncate">{env.title}</h1>
       </div>
 
-      <div className="flex h-screen lg:h-auto">
-        {/* Sidebar - responsive */}
-        <div className={`
-          fixed inset-y-0 left-0 z-50 w-80 bg-white border-r border-gray-200 transform transition-transform duration-300 ease-in-out
-          lg:relative lg:translate-x-0 lg:w-1/3 lg:min-w-0 lg:max-w-md
-          ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
-        `}>
-          {/* Header sidebar mobile */}
-          <div className="lg:hidden flex items-center justify-between p-4 border-b border-gray-200">
-            <h2 className="text-lg font-semibold">Détails</h2>
-            <button
-              onClick={() => setSidebarOpen(false)}
-              className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
-            >
-              <FiX className="w-5 h-5" />
-            </button>
+      {/* Mobile dropdown for details */}
+      {isMobile && (
+        <details className="lg:hidden bg-white border-b border-gray-200">
+          <summary className="px-4 py-3 cursor-pointer font-medium">Détails</summary>
+          <div className="p-4 space-y-6">{sideContent}</div>
+        </details>
+      )}
+
+        <div className="flex h-screen lg:h-auto">
+          {/* Sidebar desktop */}
+          <div className="hidden lg:block w-1/3 max-w-md bg-white border-r border-gray-200">
+            <div className="overflow-y-auto h-full p-6 space-y-6">{sideContent}</div>
           </div>
 
-          {/* Contenu sidebar */}
-          <div className="overflow-y-auto h-full lg:h-auto p-4 lg:p-6 space-y-6">
-            {/* Titre desktop */}
-            <div className="hidden lg:block">
-              <h1 className="text-xl lg:text-2xl font-bold mb-2 break-words">{env.title}</h1>
-            </div>
-
-            {/* Documents */}
-            {documents.length > 0 && (
-              <div>
-                <h2 className="text-lg font-semibold mb-3">Documents</h2>
-                <div className="space-y-1">
-                  {documents.map(doc => (
-                    <button
-                      key={doc.id}
-                      onClick={() => handleClickDoc(doc)}
-                      className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
-                        selectedDoc?.id === doc.id 
-                          ? 'bg-blue-100 text-blue-700 border border-blue-200' 
-                          : 'hover:bg-gray-100'
-                      }`}
-                    >
-                      {doc.name || `Document ${doc.id}`}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Métadonnées */}
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 gap-3">
-                <div className="flex flex-col sm:flex-row sm:justify-between">
-                  <strong className="text-sm text-gray-600">Statut :</strong>
-                  <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium mt-1 sm:mt-0 self-start ${
-                    env.status === 'completed' ? 'bg-green-100 text-green-800' :
-                    env.status === 'sent' ? 'bg-blue-100 text-blue-800' :
-                    env.status === 'cancelled' ? 'bg-red-100 text-red-800' :
-                    'bg-gray-100 text-gray-800'
-                  }`}>
-                    {env.status === 'completed' ? 'Signé' :
-                     env.status === 'sent' ? 'Envoyé' :
-                     env.status === 'cancelled' ? 'Annulé' : 'Brouillon'}
-                  </span>
-                </div>
-                
-                <div className="flex flex-col sm:flex-row sm:justify-between">
-                  <strong className="text-sm text-gray-600">Version :</strong>
-                  <span className="text-sm text-gray-800 mt-1 sm:mt-0">{env.version}</span>
-                </div>
-                
-                <div className="flex flex-col sm:flex-row sm:justify-between">
-                  <strong className="text-sm text-gray-600">Créé le :</strong>
-                  <span className="text-sm text-gray-800 mt-1 sm:mt-0">
-                    {new Date(env.created_at).toLocaleDateString()}
-                  </span>
-                </div>
-
-                {env.deadline_at && (
-                  <div className="flex flex-col sm:flex-row sm:justify-between">
-                    <strong className="text-sm text-gray-600">Échéance :</strong>
-                    <span className="text-sm text-gray-800 mt-1 sm:mt-0">
-                      {new Date(env.deadline_at).toLocaleDateString()}
-                    </span>
-                  </div>
-                )}
-                
-                <div className="flex flex-col sm:flex-row sm:justify-between">
-                  <strong className="text-sm text-gray-600">Flux :</strong>
-                  <span className="text-sm text-gray-800 mt-1 sm:mt-0">
-                    {env.flow_type === 'sequential' ? 'Séquentiel' : 'Parallèle'}
-                  </span>
-                </div>
-
-                {env.hash_original && (
-                  <div className="flex flex-col">
-                    <strong className="text-sm text-gray-600 mb-1">Hachage original :</strong>
-                    <span className="text-xs font-mono bg-gray-100 px-2 py-1 rounded break-all">
-                      {env.hash_original.substring(0, 32)}...
-                    </span>
-                  </div>
-                )}
-              </div>
-
-              {/* Countdown */}
-              {env.deadline_at && (
-                <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
-                  <div className="flex items-center mb-2">
-                    <FiClock className="w-4 h-4 text-orange-600 mr-2" />
-                    <span className="text-sm font-medium text-orange-800">Temps restant</span>
-                  </div>
-                  <Countdown targetIso={env.deadline_at} className="text-orange-700" />
-                </div>
-              )}
-
-              {/* Bouton relance */}
-              {(env.status === 'sent' || env.status === 'pending') && (
-                <button
-                  ref={remindBtnRef}
-                  onClick={handleRemind}
-                  disabled={reminding}
-                  className={`w-full px-4 py-2 rounded-lg transition-colors text-white text-sm font-medium ${
-                    reminding 
-                      ? 'bg-amber-300 cursor-wait' 
-                      : 'bg-amber-500 hover:bg-amber-600 active:bg-amber-700'
-                  }`}
-                >
-                  {reminding ? 'Envoi...' : 'Relancer maintenant'}
-                </button>
-              )}
-            </div>
-
-            {/* Progression */}
-            <div className="bg-gray-50 rounded-lg p-4 space-y-3">
-              <div className="flex justify-between items-center">
-                <span className="text-sm font-medium text-gray-700">Progression</span>
-                <span className="text-sm font-bold text-gray-800">
-                  {env.completion_rate?.toFixed(0) || 0}%
-                </span>
-              </div>
-              <div className="w-full bg-gray-200 rounded-full h-2">
-                <div
-                  className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                  style={{ width: `${env.completion_rate || 0}%` }}
-                />
-              </div>
-            </div>
-
-            {/* Destinataires */}
-            {totalRecipients > 0 && (
-              <details className="bg-gray-50 rounded-lg p-4">
-                <summary className="cursor-pointer">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-gray-700">
-                      Statut global : {signedCount}/{totalRecipients} signés
-                    </span>
-                    <span className="text-sm font-medium text-blue-600">Voir les destinataires</span>
-                  </div>
-                </summary>
-                <ul className="mt-4 space-y-2">
-                  {env.recipients.map((r, idx) => (
-                    <li key={r.id || idx} className="flex items-center justify-between text-sm">
-                      <span className="text-gray-800">{r.full_name || r.email}</span>
-                      <span
-                        className={`font-medium ${r.signed ? 'text-green-600' : 'text-yellow-600'}`}
-                      >
-                        {r.signed ? 'Signé' : 'En attente'}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </details>
-            )}
-
-            {/* Actions - Desktop uniquement (mobile dans header) */}
-            <div className="hidden lg:flex flex-col space-y-3">
-              <button
-                onClick={handlePreview}
-                className="w-full bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 transition-colors text-sm font-medium"
-              >
-                <FiExternalLink className="w-4 h-4 inline mr-2" />
-                Ouvrir dans un nouvel onglet
-              </button>
-              <button
-                onClick={handleDownload}
-                className="w-full bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition-colors text-sm font-medium"
-              >
-                <FiDownload className="w-4 h-4 inline mr-2" />
-                Télécharger
-              </button>
-              <Link
-                to="/signature/list"
-                className="w-full bg-gray-500 text-white px-4 py-2 rounded-lg hover:bg-gray-600 transition-colors text-center text-sm font-medium flex items-center justify-center"
-              >
-                <FiArrowLeft className="w-4 h-4 mr-2" />
-                Retour à la liste
-              </Link>
-            </div>
-          </div>
-        </div>
-
-        {/* Overlay mobile pour fermer sidebar */}
-        {sidebarOpen && (
-          <div
-            className="lg:hidden fixed inset-0 bg-black bg-opacity-25 z-40"
-            onClick={() => setSidebarOpen(false)}
-          />
-        )}
-
-        {/* Viewer PDF - Responsive */}
-        <div className="flex-1 min-w-0">
+          {/* Viewer PDF - Responsive */}
+          <div className="flex-1 min-w-0">
           <div
             className="h-screen lg:h-auto overflow-y-auto bg-gray-100 p-2 lg:p-4"
             ref={viewerRef}
@@ -560,13 +493,41 @@ const DocumentDetail = () => {
       
 
       {/* Modal rappel */}
-      <ReminderModal
-        open={reminderModalOpen}
-        count={reminderCount}
-        onClose={closeReminderModal}
-      />
-    </div>
-  );
-};
+        <ReminderModal
+          open={reminderModalOpen}
+          count={reminderCount}
+          onClose={closeReminderModal}
+        />
+
+        {/* Barre d'actions fixe */}
+        <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-3 flex gap-2 z-50">
+          <button
+            onClick={handlePreview}
+            className="flex-1 bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 text-sm font-medium"
+          >
+            <FiExternalLink className="w-4 h-4 inline mr-2" /> Prévisualiser
+          </button>
+          <button
+            onClick={handleDownload}
+            className="flex-1 bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 text-sm font-medium"
+          >
+            <FiDownload className="w-4 h-4 inline mr-2" /> Télécharger
+          </button>
+          {(env.status === 'sent' || env.status === 'pending') && (
+            <button
+              ref={remindBtnRef}
+              onClick={handleRemind}
+              disabled={reminding}
+              className={`flex-1 px-4 py-2 rounded-lg text-white text-sm font-medium ${
+                reminding ? 'bg-amber-300 cursor-wait' : 'bg-amber-500 hover:bg-amber-600 active:bg-amber-700'
+              }`}
+            >
+              {reminding ? 'Envoi...' : 'Relancer'}
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  };
 
 export default DocumentDetail;

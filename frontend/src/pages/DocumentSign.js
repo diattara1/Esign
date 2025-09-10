@@ -43,13 +43,13 @@ export default function DocumentSign() {
   // Mesure largeur viewer pour l'échelle PDF
   const viewerRef = useRef(null);
   const [viewerWidth, setViewerWidth] = useState(0);
+  const recomputeWidth = () => setViewerWidth(viewerRef.current?.getBoundingClientRect().width || 0);
   useLayoutEffect(() => {
-    const measure = () => setViewerWidth(viewerRef.current?.getBoundingClientRect().width || 0);
-    const ro = new ResizeObserver(measure);
+    const ro = new ResizeObserver(recomputeWidth);
     if (viewerRef.current) ro.observe(viewerRef.current);
-    measure();
-    window.addEventListener('resize', measure);
-    return () => { ro.disconnect(); window.removeEventListener('resize', measure); };
+    recomputeWidth();
+    window.addEventListener('resize', recomputeWidth);
+    return () => { ro.disconnect(); window.removeEventListener('resize', recomputeWidth); };
   }, []);
 
   // ------------------------------ Données API ------------------------------
@@ -228,10 +228,14 @@ export default function DocumentSign() {
   };
 
   // ----------------------------- PDF callbacks -----------------------------
-  const onDocumentLoad = ({ numPages }) => setNumPages(numPages);
+  const onDocumentLoad = ({ numPages }) => {
+    setNumPages(numPages);
+    recomputeWidth();
+  };
   const onPageLoadSuccess = (num, page) => {
     const vp = page.getViewport({ scale: 1 });
     setPageDims((d) => (d[num]?.width === vp.width && d[num]?.height === vp.height ? d : { ...d, [num]: { width: vp.width, height: vp.height } }));
+    recomputeWidth();
   };
 
   // Champs du doc courant
@@ -329,30 +333,32 @@ export default function DocumentSign() {
                   className="border border-gray-200 rounded-lg shadow-sm"
                 />
                 {/* Overlay centré pour les champs */}
-                <div className="absolute top-0 left-1/2 -translate-x-1/2" style={{ width: pageMaxWidth, height: (pageDims[n]?.height || 0) * s }}>
-                  {fields.map((field) => (
-                    <button
-                      key={field.id}
-                      onClick={field.editable ? () => openFieldModal(field) : undefined}
-                      title={field.editable ? 'Cliquer pour signer' : 'Champ non éditable'}
-                      className={`absolute flex items-center justify-center text-[11px] font-semibold border-2 rounded ${field.signed ? 'border-green-500 bg-green-100' : 'border-red-500 bg-red-100 hover:bg-red-200'} ${field.editable ? 'focus:outline-none focus:ring-2 focus:ring-blue-500' : ''}`}
-                      style={{
-                        top: field.position.y * (pageDims[n]?.height || 0) * s,
-                        left: field.position.x * (pageDims[n]?.width || 0) * s,
-                        width: field.position.width * (pageDims[n]?.width || 0) * s,
-                        height: field.position.height * (pageDims[n]?.height || 0) * s,
-                      }}
-                    >
-                      {field.signed ? (
-                        (() => {
-                          const raw = field.signature_data; const match = raw?.match(/data:image\/[\w.+-]+;base64,[^\"']+/);
-                          const src = match ? match[0] : '';
-                          return src ? <img src={src} alt="signature" className="max-w-full max-h-full object-contain" /> : 'Signé';
-                        })()
-                      ) : 'Signer'}
-                    </button>
-                  ))}
-                </div>
+                {pageDims[n] && (
+                  <div className="absolute top-0 left-1/2 -translate-x-1/2" style={{ width: pageMaxWidth, height: pageDims[n].height * s }}>
+                    {fields.map((field) => (
+                      <button
+                        key={field.id}
+                        onClick={field.editable ? () => openFieldModal(field) : undefined}
+                        title={field.editable ? 'Cliquer pour signer' : 'Champ non éditable'}
+                        className={`absolute flex items-center justify-center text-[11px] font-semibold border-2 rounded ${field.signed ? 'border-green-500 bg-green-100' : 'border-red-500 bg-red-100 hover:bg-red-200'} ${field.editable ? 'focus:outline-none focus:ring-2 focus:ring-blue-500' : ''}`}
+                        style={{
+                          top: field.position.y * pageDims[n].height * s,
+                          left: field.position.x * pageDims[n].width * s,
+                          width: field.position.width * pageDims[n].width * s,
+                          height: field.position.height * pageDims[n].height * s,
+                        }}
+                      >
+                        {field.signed ? (
+                          (() => {
+                            const raw = field.signature_data; const match = raw?.match(/data:image\/[\w.+-]+;base64,[^\"']+/);
+                            const src = match ? match[0] : '';
+                            return src ? <img src={src} alt="signature" className="max-w-full max-h-full object-contain" /> : 'Signé';
+                          })()
+                        ) : 'Signer'}
+                      </button>
+                    ))}
+                  </div>
+                )}
                 <div className="absolute bottom-2 right-2 bg-gray-900/75 text-white text-xs px-2 py-1 rounded">Page {n}/{numPages}</div>
               </div>
             </div>

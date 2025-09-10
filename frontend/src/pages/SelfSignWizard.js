@@ -1,12 +1,11 @@
-import React, { useEffect, useRef, useState, useLayoutEffect, useMemo, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useLayoutEffect } from 'react';
 import useResponsivePdf from '../hooks/useResponsivePdf';
 import useIsMobile from '../hooks/useIsMobile';
 import { Document, Page } from 'react-pdf';
 import { toast } from 'react-toastify';
-import { FiUpload, FiEdit3, FiTrash2 } from 'react-icons/fi';
+import { FiUpload } from 'react-icons/fi';
 import DraggableSignature from '../components/DraggableSignature';
 import signatureService from '../services/signatureService';
-import { api } from '../services/apiUtils';
 import SignatureModal from '../components/SignatureModal';
 import { fileToPngDataURL, blobToPngDataURL, savedSignatureImageUrl, fetchSavedSignatureAsDataURL } from '../utils/signatureUtils';
 import SignatureHeader from '../components/SignatureHeader';
@@ -30,10 +29,9 @@ export default function SelfSignWizard() {
 
   // UI
   const isMobile = useIsMobile();
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const toggleSidebar = useCallback(() => setSidebarOpen((o) => !o), []);
   const [placing, setPlacing] = useState(false);
   const [placement, setPlacement] = useState(null); // {page,x,y,width,height}
+  const [step, setStep] = useState(0); // 0: upload, 1: zone, 2: signature
 
   // Signatures
   const [sigDataUrl, setSigDataUrl] = useState('');
@@ -58,20 +56,7 @@ export default function SelfSignWizard() {
     return () => { ro.disconnect(); window.removeEventListener('resize', measure); };
   }, []);
 
-  // Fermer le tiroir sur Échap (mobile)
-  useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape') setSidebarOpen(false); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, []);
-
-  // Empêche le scroll derrière le tiroir mobile
-  useEffect(() => {
-    if (!isMobile) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = sidebarOpen ? 'hidden' : prev || '';
-    return () => { document.body.style.overflow = prev; };
-  }, [isMobile, sidebarOpen]);
+  // plus de tiroir latéral
 
   // Charger les signatures enregistrées
   useEffect(() => {
@@ -99,6 +84,7 @@ export default function SelfSignWizard() {
       setFile(null);
       setPdfUrl(null);
       setDocKey((k) => k + 1);
+      setStep(0);
       return;
     }
 
@@ -107,11 +93,10 @@ export default function SelfSignWizard() {
     setFile(f);
     setPdfUrl(url);
     setDocKey((k) => k + 1);
+    setStep(1);
 
     // réinitialiser l'input pour permettre re-sélection du même fichier
     if (fileInputRef.current) fileInputRef.current.value = '';
-
-    if (isMobile) setSidebarOpen(false);
   };
 
   // react-pdf
@@ -138,7 +123,7 @@ export default function SelfSignWizard() {
     });
     setPlacing(false);
     toast.success(`Zone posée p.${pageNumber}`);
-    if (isMobile) setSidebarOpen(false);
+    setStep(2);
     // Ouvre direct le modal à la création
     setTimeout(() => setModalOpen(true), 0);
   };
@@ -152,6 +137,19 @@ export default function SelfSignWizard() {
     setSigDataUrl(dataUrl);
     setModalOpen(false);
     toast.success('Signature ajoutée');
+  };
+
+  const resetAll = () => {
+    if (pdfUrl) URL.revokeObjectURL(pdfUrl);
+    setFile(null);
+    setPdfUrl(null);
+    setPlacement(null);
+    setSigDataUrl('');
+    setNumPages(0);
+    setPageDims({});
+    setDocKey((k) => k + 1);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    setStep(0);
   };
 
   // envoi (sync)
@@ -175,6 +173,7 @@ export default function SelfSignWizard() {
       const a = document.createElement('a'); a.href = url; a.download = `${name}_signed.pdf`; a.click();
       URL.revokeObjectURL(url);
       toast.success('Document signé et téléchargé');
+      resetAll();
     } catch (e) {
       const msg = (await (async () => {
         if (e?.response?.data instanceof Blob) {
@@ -188,174 +187,117 @@ export default function SelfSignWizard() {
     }
   };
 
-  const containerOverlayStyle = isMobile && sidebarOpen ? { touchAction: 'none' } : {};
-
   return (
-    <div className="flex h-screen bg-gray-50" style={containerOverlayStyle}>
-      {/* Overlay mobile (fluide, intégré) */}
-      {isMobile && (
-        <div
-          className={`fixed inset-0 bg-black/50 z-30 transition-opacity duration-200 ${sidebarOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
+    <div className="flex flex-col h-screen bg-gray-50">
+      <SignatureHeader
+        title={file ? file.name : 'Aperçu PDF'}
+        placement={placement}
+        placing={placing}
+        isMobile={false}
+        sidebarOpen={false}
+        toggleSidebar={() => {}}
+      />
 
-      {/* Sidebar / panneau d'options */}
-      <aside
-        id="mobile-panel"
-        className={`${isMobile ? `fixed inset-y-0 left-0 z-40 w-full max-w-sm transform transition-transform duration-300 ease-in-out will-change-transform ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}` : 'w-1/3 max-w-md'} bg-white border-r border-gray-200 flex flex-col`}
-        aria-hidden={!sidebarOpen && isMobile}
-      >
-        {/* Upload + options */}
-        <div className="relative z-40 bg-white h-full flex flex-col">
-          {/* Upload PDF */}
-          <div className="p-4 md:p-6 border-b border-gray-200">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-emerald-100 rounded-lg"><FiEdit3 className="w-5 h-5 text-emerald-600" /></div>
-                <h1 className="text-lg md:text-xl font-bold text-gray-900">Auto-signature</h1>
-              </div>
+      <div className="flex-1 overflow-auto bg-gray-100" ref={viewerRef} style={isProcessing ? { pointerEvents: 'none', filter: 'grayscale(0.2)', opacity: 0.7 } : {}}>
+        {!pdfUrl ? (
+          <div className="flex items-center justify-center h-full p-6 text-center">
+            <div>
+              <FiUpload className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+              <p className="text-gray-600 text-lg">Ajoute un PDF pour prévisualiser</p>
+              <p className="text-gray-400 text-sm mt-2">Signature rapide d’un document</p>
             </div>
-
-            <label className="block text-sm font-medium text-gray-700 mb-2">PDF</label>
-            <div className="relative">
-              <input ref={fileInputRef} type="file" accept="application/pdf" onChange={onFile} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
-              <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center hover:border-emerald-400 hover:bg-emerald-50 transition-colors">
-                <FiUpload className="w-7 h-7 text-gray-400 mx-auto mb-2" />
-                <p className="text-sm text-gray-600">Clique ou glisse ton PDF</p>
-                <p className="text-xs text-gray-400 mt-1">Un seul document</p>
-              </div>
-            </div>
-            {file && (
-              <div className="mt-3 flex items-center justify-between p-2 bg-gray-50 rounded text-sm">
-                <span className="truncate">{file.name}</span>
-                <button onClick={() => {
-                  // Nettoyage complet
-                  if (pdfUrl) URL.revokeObjectURL(pdfUrl);
-                  setFile(null);
-                  setPdfUrl(null);
-                  setPlacement(null);
-                  setSigDataUrl('');
-                  setNumPages(0);
-                  setPageDims({});
-                  setDocKey((k) => k + 1);
-                  if (fileInputRef.current) fileInputRef.current.value = '';
-                }} className="ml-2 text-red-500 hover:text-red-700"><FiTrash2 className="w-4 h-4" /></button>
-              </div>
-            )}
           </div>
+        ) : (
+          <div className="p-3 md:p-6">
+            <Document key={docKey} file={pdfUrl} onLoadSuccess={onDocLoad}
+                      loading={<div className="flex items-center justify-center p-8"><div className="w-8 h-8 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" /></div>}
+                      error={<div className="text-red-500 text-center p-8">Erreur lors du chargement du PDF</div>}> 
+              {Array.from({ length: numPages }, (_, i) => {
+                const n = i + 1;
+                const scale = pageScale(n);
+                const fieldObj = placement && placement.page === n
+                  ? { position: { x: placement.x, y: placement.y, width: placement.width, height: placement.height } }
+                  : null;
 
-          {/* Options */}
-          <div className="p-4 md:p-6 border-b border-gray-200">
-            <label className="inline-flex items-center gap-2 text-sm text-gray-700">
-              <input
-                type="checkbox"
-                checked={includeQr}
-                onChange={(e) => setIncludeQr(e.target.checked)}
-                className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
-              />
-              Apposer un code QR (recommandé)
-            </label>
-          </div>
-
-          {/* Actions */}
-          <div className="p-4 md:p-6 bg-gray-50 mt-auto">
-            <button onClick={() => { setPlacing(true); if (isMobile) setSidebarOpen(false); }}
-                    disabled={!pdfUrl}
-                    className={`w-full mb-3 px-4 py-3 rounded-lg font-medium ${placing ? 'bg-yellow-500 text-white' : 'bg-emerald-500 text-white hover:bg-emerald-600'} disabled:opacity-50`}>
-              {placement ? 'Redéfinir la zone' : 'Définir la zone'}
-            </button>
-
-            {/* plus de bouton "modifier" : on clique directement dans la zone */}
-            <p className="text-xs text-gray-500 mb-3">Astuce : cliquez sur la zone pour signer ou modifier.</p>
-
-            <button onClick={submit}
-                    disabled={isProcessing || !file || !placement || !sigDataUrl}
-                    className="w-full px-4 py-3 bg-gradient-to-r from-emerald-600 to-blue-600 text-white font-medium rounded-lg hover:from-emerald-700 hover:to-blue-700 disabled:opacity-50">
-              {isProcessing ? 'Signature…' : 'Signer et télécharger'}
-            </button>
-          </div>
-        </div>
-      </aside>
-
-      {/* Viewer */}
-      <div className="flex-1 flex flex-col" ref={viewerRef}>
-        <SignatureHeader
-          title={file ? file.name : 'Aperçu PDF'}
-          placement={placement}
-          placing={placing}
-          isMobile={isMobile}
-          sidebarOpen={sidebarOpen}
-          toggleSidebar={toggleSidebar}
-        />
-
-        <div className="flex-1 overflow-auto bg-gray-100" style={isProcessing ? { pointerEvents: 'none', filter: 'grayscale(0.2)', opacity: 0.7 } : {}}>
-          {!pdfUrl ? (
-            <div className="flex items-center justify-center h-full p-6 text-center">
-              <div>
-                <FiUpload className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                <p className="text-gray-600 text-lg">Ajoute un PDF pour prévisualiser</p>
-                <p className="text-gray-400 text-sm mt-2">Signature rapide d’un document</p>
-                {isMobile && <button onClick={toggleSidebar} className="mt-4 px-4 py-2 bg-emerald-500 text-white rounded-lg">Ouvrir les options</button>}
-              </div>
-            </div>
-          ) : (
-            <div className="p-3 md:p-6">
-              <Document key={docKey} file={pdfUrl} onLoadSuccess={onDocLoad}
-                        loading={<div className="flex items-center justify-center p-8"><div className="w-8 h-8 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" /></div>}
-                        error={<div className="text-red-500 text-center p-8">Erreur lors du chargement du PDF</div>}>
-                {Array.from({ length: numPages }, (_, i) => {
-                  const n = i + 1;
-                  const scale = pageScale(n);
-
-                  const fieldObj = placement && placement.page === n
-                    ? { position: { x: placement.x, y: placement.y, width: placement.width, height: placement.height } }
-                    : null;
-
-                  return (
-                    <div key={i} className="relative mb-6 bg-white shadow-lg rounded-lg overflow-hidden">
-                      <Page pageNumber={n} width={pageWidth} renderTextLayer={false} onLoadSuccess={(p) => onPageLoad(n, p)} className="mx-auto" />
-                      {pageDims[n] && (
-                        <div onClick={(e) => handleOverlayClick(e, n)}
-                             className="absolute top-0 left-1/2 -translate-x-1/2"
-                             style={{ width: pageWidth, height: pageDims[n].height * scale, cursor: placing ? 'crosshair' : 'default', zIndex: 10, backgroundColor: placing ? 'rgba(16,185,129,.08)' : 'transparent' }} />
-                      )}
-
-                      {fieldObj && (
-                        <DraggableSignature
-                          field={fieldObj}
-                          pageWidth={pageWidth}
-                          pageHeight={(pageDims[n]?.height || 0) * scale}
-                          isMobileView={isMobile}
-                          tapToPlace={isMobile}
-                          onUpdate={(field, { position }) => setPlacement(p => ({ ...p, ...position }))}
-                          onDelete={() => { setPlacement(null); setSigDataUrl(''); }}
-                          onOpenModal={openSignatureModal}
-                          image={sigDataUrl}
-                        />
-                      )}
-
-                      <div className="absolute bottom-2 right-2 bg-gray-900/75 text-white text-sm px-2 py-1 rounded">Page {n}/{numPages}</div>
-                    </div>
-                  );
-                })}
-              </Document>
-            </div>
-          )}
-        </div>
-
-        {isProcessing && (
-          <div className="fixed inset-0 z-[1000] bg-black/50 backdrop-blur-sm flex items-center justify-center">
-            <div className="bg-white rounded-xl shadow-xl p-6 w-80 text-center">
-              <div className="mx-auto mb-4 w-10 h-10 border-4 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
-              <h3 className="text-lg font-semibold text-gray-900">Signature en cours…</h3>
-              <p className="text-sm text-gray-600 mt-1">Merci de patienter quelques secondes.</p>
-            </div>
+                return (
+                  <div key={i} className="relative mb-6 bg-white shadow-lg rounded-lg overflow-hidden">
+                    <Page pageNumber={n} width={pageWidth} renderTextLayer={false} onLoadSuccess={(p) => onPageLoad(n, p)} className="mx-auto" />
+                    {pageDims[n] && (
+                      <div onClick={(e) => handleOverlayClick(e, n)}
+                           className="absolute top-0 left-1/2 -translate-x-1/2"
+                           style={{ width: pageWidth, height: pageDims[n].height * scale, cursor: placing ? 'crosshair' : 'default', zIndex: 10, backgroundColor: placing ? 'rgba(16,185,129,.08)' : 'transparent' }} />
+                    )}
+                    {fieldObj && (
+                      <DraggableSignature
+                        field={fieldObj}
+                        pageWidth={pageWidth}
+                        pageHeight={(pageDims[n]?.height || 0) * scale}
+                        isMobileView={isMobile}
+                        tapToPlace={isMobile}
+                        onUpdate={(field, { position }) => setPlacement(p => ({ ...p, ...position }))}
+                        onDelete={() => { setPlacement(null); setSigDataUrl(''); setStep(1); }}
+                        onOpenModal={openSignatureModal}
+                        image={sigDataUrl}
+                      />
+                    )}
+                    <div className="absolute bottom-2 right-2 bg-gray-900/75 text-white text-sm px-2 py-1 rounded">Page {n}/{numPages}</div>
+                  </div>
+                );
+              })}
+            </Document>
           </div>
         )}
       </div>
 
-      {/* MODAL signature */}
+      <div className="border-t bg-white p-4 space-y-4">
+        {step === 0 && (
+          <div className="text-center">
+            <label className="block text-sm font-medium text-gray-700 mb-2">PDF</label>
+            <div className="relative max-w-md mx-auto">
+              <input ref={fileInputRef} type="file" accept="application/pdf" onChange={onFile} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+              <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center">
+                <FiUpload className="w-7 h-7 text-gray-400 mx-auto mb-2" />
+                <p className="text-sm text-gray-600">Clique ou glisse ton PDF</p>
+              </div>
+            </div>
+            <div className="mt-4">
+              <label className="inline-flex items-center gap-2 text-sm text-gray-700">
+                <input type="checkbox" checked={includeQr} onChange={(e) => setIncludeQr(e.target.checked)} className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500" />
+                Apposer un code QR (recommandé)
+              </label>
+            </div>
+          </div>
+        )}
+
+        {step === 1 && (
+          <div className="text-center space-y-4">
+            <p className="text-sm text-gray-600">Définis la zone de signature sur le document.</p>
+            <button onClick={() => setPlacing(true)} disabled={!pdfUrl} className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg disabled:opacity-50">
+              {placement ? 'Redéfinir la zone' : 'Définir la zone'}
+            </button>
+          </div>
+        )}
+
+        {step === 2 && (
+          <div className="text-center space-y-4">
+            <p className="text-sm text-gray-600">Clique la zone pour modifier la signature si besoin.</p>
+            <button onClick={submit} disabled={isProcessing || !file || !placement || !sigDataUrl} className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-blue-600 text-white rounded-lg disabled:opacity-50">
+              {isProcessing ? 'Signature…' : 'Signer et télécharger'}
+            </button>
+          </div>
+        )}
+      </div>
+
+      {isProcessing && (
+        <div className="fixed inset-0 z-[1000] bg-black/50 backdrop-blur-sm flex items-center justify-center">
+          <div className="bg-white rounded-xl shadow-xl p-6 w-80 text-center">
+            <div className="mx-auto mb-4 w-10 h-10 border-4 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
+            <h3 className="text-lg font-semibold text-gray-900">Signature en cours…</h3>
+            <p className="text-sm text-gray-600 mt-1">Merci de patienter quelques secondes.</p>
+          </div>
+        </div>
+      )}
+
       <SignatureModal
         isOpen={modalOpen}
         onClose={() => setModalOpen(false)}

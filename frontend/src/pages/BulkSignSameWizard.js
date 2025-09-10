@@ -1,12 +1,11 @@
-import React, { useEffect, useRef, useState, useLayoutEffect, useCallback, useMemo } from 'react';
+import React, { useEffect, useRef, useState, useLayoutEffect } from 'react';
 import useResponsivePdf from '../hooks/useResponsivePdf';
 import useIsMobile from '../hooks/useIsMobile';
 import { Document, Page } from 'react-pdf';
 import { toast } from 'react-toastify';
-import { FiLayers, FiDownload, FiMove, FiFile, FiTrash2 } from 'react-icons/fi';
+import { FiLayers, FiDownload, FiMove, FiFile } from 'react-icons/fi';
 import DraggableSignature from '../components/DraggableSignature';
 import signatureService from '../services/signatureService';
-import { api } from '../services/apiUtils';
 import SignatureModal from '../components/SignatureModal';
 import { fileToPngDataURL, blobToPngDataURL, savedSignatureImageUrl, fetchSavedSignatureAsDataURL } from '../utils/signatureUtils';
 import SignatureHeader from '../components/SignatureHeader';
@@ -70,8 +69,7 @@ export default function BulkSignSameWizard() {
 
   // responsive UI
   const isMobile = useIsMobile();
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const toggleSidebar = useCallback(() => setSidebarOpen((o) => !o), []);
+  const [step, setStep] = useState(0); // 0: upload, 1: zone, 2: signature
 
   const { pageWidth, pageScale } = useResponsivePdf(viewerWidth, pageDims, isMobile);
 
@@ -85,20 +83,7 @@ export default function BulkSignSameWizard() {
     return () => { ro.disconnect(); window.removeEventListener('resize', measure); };
   }, []);
 
-  // Échap ferme le panneau mobile
-  useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape') setSidebarOpen(false); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, []);
-
-  // Empêche le scroll derrière le drawer
-  useEffect(() => {
-    if (!isMobile) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = sidebarOpen ? 'hidden' : prev || '';
-    return () => { document.body.style.overflow = prev; };
-  }, [isMobile, sidebarOpen]);
+  // plus de panneau latéral
 
   // Charger les signatures enregistrées
   useEffect(() => { signatureService.listSavedSignatures().then(setSavedSignatures).catch(()=>{}); }, []);
@@ -109,7 +94,7 @@ export default function BulkSignSameWizard() {
   // ---- uploads ----
   const onFiles = (e) => {
     const arr = Array.from(e.target.files || []).filter((f) => f.type === 'application/pdf');
-    if (!arr.length) { setFiles([]); setPdfUrl(null); setDocKey(k=>k+1); return; }
+    if (!arr.length) { setFiles([]); setPdfUrl(null); setDocKey(k=>k+1); setStep(0); return; }
 
     if (pdfUrl) URL.revokeObjectURL(pdfUrl);
     setNumPages(0); setPageDims({}); setPlacement(null); setSigDataUrl(''); setSigSavedId(null);
@@ -117,8 +102,8 @@ export default function BulkSignSameWizard() {
     setFiles(arr);
     setPdfUrl(URL.createObjectURL(arr[0]));
     setDocKey((k) => k + 1);
+    setStep(1);
     if (pdfsInputRef.current) pdfsInputRef.current.value = '';
-    if (isMobile) setSidebarOpen(false);
   };
 
   // react-pdf
@@ -146,7 +131,7 @@ export default function BulkSignSameWizard() {
     });
     setPlacing(false);
     toast.success(`Zone définie (page ${pageNumber}) — appliquée à tous les documents`);
-    if (isMobile) setSidebarOpen(false);
+    setStep(2);
     setTimeout(() => setModalOpen(true), 0);
   };
 
@@ -188,6 +173,8 @@ export default function BulkSignSameWizard() {
           }
           toast.info(`Terminé: ${j.done}/${j.total} — échecs: ${j.failed || 0}`);
           setIsProcessing(false);
+          resetAll();
+          setStep(0);
         }
       };
       await poll();
@@ -211,191 +198,136 @@ export default function BulkSignSameWizard() {
     setFiles([]); setPdfUrl(null); setPlacement(null); setSigDataUrl(''); setSigSavedId(null);
     setNumPages(0); setPageDims({}); setDocKey((k) => k + 1);
     if (pdfsInputRef.current) pdfsInputRef.current.value = '';
+    setStep(0);
   };
 
   /* ------------------------------ UI ------------------------------ */
 
-  const Sidebar = () => (
-    <div className="h-full flex flex-col">
-      <div className="p-4 md:p-6 border-b border-gray-200 flex items-center justify-between">
-        <div className="flex items-center gap-3"><FiLayers className="w-6 h-6 text-blue-600" /><h1 className="text-lg md:text-xl font-bold text-gray-800">Signature en lot</h1></div>
-        {(files.length || placement || sigDataUrl) && (
-          <button onClick={resetAll} className="text-gray-500 hover:text-gray-700 text-sm flex items-center gap-1" title="Réinitialiser"><FiTrash2 className="w-4 h-4" /> Reset</button>
-        )}
-      </div>
-
-      <div className="p-4 md:p-6">
-        <p className="text-sm text-gray-600 mb-6">Définis une zone sur le premier PDF, elle sera appliquée à tous.</p>
-
-        {/* Upload PDFs */}
-        <div className="mb-6">
-          <label className="block font-medium mb-2 text-gray-700">PDF(s)</label>
-          <input ref={pdfsInputRef} type="file" accept="application/pdf" multiple onChange={onFiles}
-                 className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" />
-          <p className="text-xs text-gray-500 mt-1">Sélectionne plusieurs PDF (même emplacement).</p>
-        </div>
-
-        {/* Files list */}
-        {!!files.length && (
-          <div className="mb-6">
-            <label className="block font-medium mb-2 text-gray-700">Documents ({files.length})</label>
-            <div className="bg-gray-50 rounded-lg p-3 max-h-32 overflow-y-auto">
-              {files.map((f, i) => (
-                <div key={i} className="flex items-center text-sm text-gray-700 mb-1 last:mb-0"><FiFile className="w-4 h-4 mr-2 text-blue-500" /><span className="truncate">{f.name}</span></div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Zone + signature */}
-        <div className="mb-6">
-          <label className="block font-medium mb-2 text-gray-700">Zone & signature</label>
-          {placement ? (
-            <div className="p-3 bg-green-50 border border-green-200 rounded-lg mb-3 text-sm text-green-800 flex items-center justify-between">
-              <span>Zone définie ✓ — Page {placement.page}</span>
-              {sigDataUrl ? <span className="ml-3 text-green-700">Signature prête ✓</span> : <span className="ml-3 text-yellow-700">Clique la zone pour signer</span>}
-            </div>
-          ) : (
-            <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg mb-3 text-sm text-yellow-800">Aucune zone définie. Clique “Définir la zone” puis clique sur le PDF.</div>
-          )}
-          <button onClick={() => { setPlacing(true); if (isMobile) setSidebarOpen(false); }} disabled={!files.length}
-                  className={`w-full px-4 py-2 rounded-lg text-white font-medium transition ${placing ? 'bg-yellow-600 hover:bg-yellow-700' : 'bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400'}`}>
-            {placing ? (<><FiMove className="inline w-4 h-4 mr-2" />Clique sur le PDF</>) : (placement ? 'Redéfinir la zone' : 'Définir la zone')}
-          </button>
-          <p className="text-xs text-gray-500 mt-2">Astuce : <strong>clique sur la zone</strong> pour ouvrir le modal (dessiner / importer / mes signatures).</p>
-        </div>
-
-        {/* Options */}
-        <div className="mb-6">
-          <label className="inline-flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={includeQr} onChange={(e) => setIncludeQr(e.target.checked)} className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />Apposer un code QR (recommandé)</label>
-        </div>
-
-        {/* Summary */}
-        <div className="mb-6 p-4 bg-blue-50 rounded-lg text-sm text-blue-800 space-y-1">
-          <div><strong>Documents :</strong> {files.length}</div>
-          <div><strong>Zone :</strong> {placement ? '✓' : '✗'}</div>
-          <div><strong>Signature :</strong> {sigDataUrl ? '✓' : '✗'}</div>
-        </div>
-
-        {/* Submit */}
-        <button onClick={submit} disabled={!files.length || !placement || (!sigDataUrl && !sigSavedId) || isProcessing} className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white py-3 rounded-lg font-medium transition">
-          <FiDownload className="inline w-4 h-4 mr-2" />
-          {isProcessing ? 'Lancement…' : 'Lancer la signature'}
-        </button>
-      </div>
-    </div>
-  );
-
-  const containerOverlayStyle = isMobile && sidebarOpen ? { touchAction: 'none' } : {};
 
   return (
-    <div className="h-screen bg-gray-50 flex" style={containerOverlayStyle}>
-      {/* Overlay mobile */}
-      {isMobile && (
-        <div className={`fixed inset-0 bg-black/50 z-30 transition-opacity duration-200 ${sidebarOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} onClick={() => setSidebarOpen(false)} />
-      )}
+    <div className="flex flex-col h-screen bg-gray-50">
+      <SignatureHeader
+        title={files[0]?.name || 'Aperçu PDF'}
+        placement={placement}
+        placing={placing}
+        isMobile={false}
+        sidebarOpen={false}
+        toggleSidebar={() => {}}
+      />
 
-      {/* Sidebar (drawer intégré) */}
-      <aside
-       id="mobile-panel"
-        className={`${isMobile
-         ? `fixed inset-y-0 left-0 z-40 w-full max-w-sm transform transition-transform duration-300 ease-in-out will-change-transform ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}` : 'w-1/3 max-w-md flex-shrink-0'} bg-white border-r border-gray-200`} aria-hidden={!sidebarOpen && isMobile}>
-        <div className="relative z-40 bg-white h-full overflow-auto"><Sidebar /></div>
-      </aside>
-
-      {/* Viewer */}
-      <div className="flex-1 flex flex-col" ref={viewerRef} style={isProcessing ? { pointerEvents: 'none', filter: 'grayscale(0.2)', opacity: 0.7 } : {}}>
-        <SignatureHeader
-          title={files[0]?.name || 'Aperçu PDF'}
-          placement={placement}
-          placing={placing}
-          isMobile={isMobile}
-          sidebarOpen={sidebarOpen}
-          toggleSidebar={toggleSidebar}
-        />
-
-        <div className="flex-1 overflow-auto bg-gray-100">
-          {!pdfUrl ? (
-            <div className="flex items-center justify-center h-full p-6 text-center">
-              <div>
-                <FiLayers className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-                <p className="text-gray-600 text-lg">Ajoute des PDF pour commencer</p>
-                <p className="text-gray-400 text-sm mt-2">La zone choisie sera appliquée à tous les documents</p>
-                {isMobile && <button onClick={toggleSidebar} className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg">Ouvrir les options</button>}
-              </div>
+      <div className="flex-1 overflow-auto bg-gray-100" ref={viewerRef} style={isProcessing ? { pointerEvents: 'none', filter: 'grayscale(0.2)', opacity: 0.7 } : {}}>
+        {!pdfUrl ? (
+          <div className="flex items-center justify-center h-full p-6 text-center">
+            <div>
+              <FiLayers className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+              <p className="text-gray-600 text-lg">Ajoute des PDF pour commencer</p>
+              <p className="text-gray-400 text-sm mt-2">La zone choisie sera appliquée à tous les documents</p>
             </div>
-          ) : (
-            <div className="p-3 md:p-6">
-              <div className="bg-white rounded-lg shadow-sm">
-                <div className="p-4 border-b border-gray-200 bg-gray-50 rounded-t-lg">
-                  <h3 className="font-medium text-gray-800">Aperçu du premier document</h3>
-                  <p className="text-sm text-gray-600">Définis la zone de signature qui sera appliquée sur {files.length} document(s)</p>
-                </div>
-                <div className="py-3 md:py-6">
-                  <Document key={docKey} file={pdfUrl} onLoadSuccess={onDocLoad}
-                            loading={<div className="flex items-center justify-center p-8"><div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" /></div>}
-                            error={<div className="text-red-500 text-center p-8">Erreur lors du chargement du PDF</div>}>
-                    {Array.from({ length: numPages }, (_, i) => {
-                      const n = i + 1;
-                      const s = pageScale(n);
-
-                      const fieldObj = placement && placement.page === n ? { position: { x: placement.x, y: placement.y, width: placement.width, height: placement.height } } : null;
-
-                      return (
-                        <div key={i} className="relative mb-6 bg-white shadow rounded-lg overflow-hidden">
-                          <Page
-                            pageNumber={n}
-                            width={pageWidth}
-                            renderTextLayer={false}
-                            renderAnnotationLayer={false}
-                            onLoadSuccess={(p) => onPageLoad(n, p)}
-                            className="mx-auto"
+          </div>
+        ) : (
+          <div className="p-3 md:p-6">
+            <div className="bg-white rounded-lg shadow-sm">
+              <div className="p-4 border-b border-gray-200 bg-gray-50 rounded-t-lg">
+                <h3 className="font-medium text-gray-800">Aperçu du premier document</h3>
+                <p className="text-sm text-gray-600">Définis la zone de signature qui sera appliquée sur {files.length} document(s)</p>
+              </div>
+              <div className="py-3 md:py-6">
+                <Document key={docKey} file={pdfUrl} onLoadSuccess={onDocLoad}
+                          loading={<div className="flex items-center justify-center p-8"><div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" /></div>}
+                          error={<div className="text-red-500 text-center p-8">Erreur lors du chargement du PDF</div>}>
+                  {Array.from({ length: numPages }, (_, i) => {
+                    const n = i + 1;
+                    const s = pageScale(n);
+                    const fieldObj = placement && placement.page === n ? { position: { x: placement.x, y: placement.y, width: placement.width, height: placement.height } } : null;
+                    return (
+                      <div key={i} className="relative mb-6 bg-white shadow rounded-lg overflow-hidden">
+                        <Page
+                          pageNumber={n}
+                          width={pageWidth}
+                          renderTextLayer={false}
+                          renderAnnotationLayer={false}
+                          onLoadSuccess={(p) => onPageLoad(n, p)}
+                          className="mx-auto"
+                        />
+                        {pageDims[n] && (
+                          <div
+                            onClick={(e) => handleOverlayClick(e, n)}
+                            className="absolute top-0 left-1/2 -translate-x-1/2"
+                            style={{ width: pageWidth, height: pageDims[n].height * s, cursor: placing ? 'crosshair' : 'default', zIndex: 10, backgroundColor: placing ? 'rgba(59,130,246,.06)' : 'transparent' }}
                           />
-                          {pageDims[n] && (
-                            <div
-                              onClick={(e) => handleOverlayClick(e, n)}
-                              className="absolute top-0 left-1/2 -translate-x-1/2"
-                              style={{ width: pageWidth, height: pageDims[n].height * s, cursor: placing ? 'crosshair' : 'default', zIndex: 10, backgroundColor: placing ? 'rgba(59,130,246,.06)' : 'transparent' }}
-                            />
-                          )}
-
-                          {fieldObj && (
-                            <DraggableSignature
-                              field={fieldObj}
-                              pageWidth={pageWidth}
-                              pageHeight={(pageDims[n]?.height || 0) * s}
-                              isMobileView={isMobile}
-                              tapToPlace={isMobile}
-                              onUpdate={(field, { position }) => setPlacement(p => ({ ...p, ...position }))}
-                              onDelete={() => { setPlacement(null); setSigDataUrl(''); setSigSavedId(null); }}
-                              onOpenModal={openSignatureModal}
-                              image={sigDataUrl}
-                            />
-                          )}
-
-                          <div className="absolute bottom-2 right-2 bg-gray-900/75 text-white text-xs px-2 py-1 rounded">Page {n}/{numPages}</div>
-                        </div>
-                      );
-                    })}
-                  </Document>
-                </div>
+                        )}
+                        {fieldObj && (
+                          <DraggableSignature
+                            field={fieldObj}
+                            pageWidth={pageWidth}
+                            pageHeight={(pageDims[n]?.height || 0) * s}
+                            isMobileView={isMobile}
+                            tapToPlace={isMobile}
+                            onUpdate={(field, { position }) => setPlacement(p => ({ ...p, ...position }))}
+                            onDelete={() => { setPlacement(null); setSigDataUrl(''); setSigSavedId(null); setStep(1); }}
+                            onOpenModal={openSignatureModal}
+                            image={sigDataUrl}
+                          />
+                        )}
+                        <div className="absolute bottom-2 right-2 bg-gray-900/75 text-white text-xs px-2 py-1 rounded">Page {n}/{numPages}</div>
+                      </div>
+                    );
+                  })}
+                </Document>
               </div>
-            </div>
-          )}
-        </div>
-
-        {isProcessing && (
-          <div className="fixed inset-0 z-[1000] bg-black/50 backdrop-blur-sm flex items-center justify-center">
-            <div className="bg-white rounded-xl shadow-xl p-6 w-80 text-center">
-              <div className="mx-auto mb-4 w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-              <h3 className="text-lg font-semibold text-gray-900">Traitement en cours…</h3>
-              <p className="text-sm text-gray-600 mt-1">Signature en lot — quelques secondes.</p>
             </div>
           </div>
         )}
       </div>
 
-      {/* MODAL signature */}
+      <div className="border-t bg-white p-4 space-y-4">
+        {step === 0 && (
+          <div className="text-center">
+            <label className="block font-medium mb-2 text-gray-700">PDF(s)</label>
+            <input ref={pdfsInputRef} type="file" accept="application/pdf" multiple onChange={onFiles}
+                   className="w-full max-w-md mx-auto text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" />
+            <div className="mt-4">
+              <label className="inline-flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={includeQr} onChange={(e) => setIncludeQr(e.target.checked)} className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />Apposer un code QR (recommandé)</label>
+            </div>
+          </div>
+        )}
+
+        {step === 1 && (
+          <div className="text-center space-y-4">
+            {!!files.length && (
+              <div className="max-w-md mx-auto bg-gray-50 rounded-lg p-3 overflow-y-auto max-h-32">
+                {files.map((f, i) => (
+                  <div key={i} className="flex items-center text-sm text-gray-700 mb-1 last:mb-0"><FiFile className="w-4 h-4 mr-2 text-blue-500" /><span className="truncate">{f.name}</span></div>
+                ))}
+              </div>
+            )}
+            <p className="text-sm text-gray-600">Définis la zone de signature.</p>
+            <button onClick={() => setPlacing(true)} disabled={!files.length} className={`px-4 py-2 rounded-lg text-white font-medium transition ${placing ? 'bg-yellow-600 hover:bg-yellow-700' : 'bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400'}`}>
+              {placing ? (<><FiMove className="inline w-4 h-4 mr-2" />Clique sur le PDF</>) : (placement ? 'Redéfinir la zone' : 'Définir la zone')}
+            </button>
+          </div>
+        )}
+
+        {step === 2 && (
+          <div className="text-center space-y-4">
+            <p className="text-sm text-gray-600">Clique la zone pour modifier la signature si besoin.</p>
+            <button onClick={submit} disabled={!files.length || !placement || (!sigDataUrl && !sigSavedId) || isProcessing} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:bg-gray-400">
+              <FiDownload className="inline w-4 h-4 mr-2" />{isProcessing ? 'Lancement…' : 'Lancer la signature'}
+            </button>
+          </div>
+        )}
+      </div>
+
+      {isProcessing && (
+        <div className="fixed inset-0 z-[1000] bg-black/50 backdrop-blur-sm flex items-center justify-center">
+          <div className="bg-white rounded-xl shadow-xl p-6 w-80 text-center">
+            <div className="mx-auto mb-4 w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+            <h3 className="text-lg font-semibold text-gray-900">Traitement en cours…</h3>
+            <p className="text-sm text-gray-600 mt-1">Signature en lot — quelques secondes.</p>
+          </div>
+        </div>
+      )}
+
       <SignatureModal
         isOpen={modalOpen}
         onClose={() => setModalOpen(false)}

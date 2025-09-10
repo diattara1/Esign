@@ -474,7 +474,7 @@ const DashboardSignature = () => {
                         <th className="px-4 lg:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Échéance
                         </th>
-                        <th className="px-4 lg:px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <th className="hidden md:table-cell px-4 lg:px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Actions
                         </th>
                       </tr>
@@ -534,7 +534,7 @@ const DashboardSignature = () => {
                               }) : '-'}
                             </p>
                           </td>
-                          <td className="px-4 lg:px-6 py-4 whitespace-nowrap text-right">
+                          <td className="hidden md:table-cell px-4 lg:px-6 py-4 whitespace-nowrap text-right">
                             <div className="flex items-center justify-end space-x-2">
                               <button
                                 onClick={() => handlePreview(doc.id)}
@@ -551,8 +551,8 @@ const DashboardSignature = () => {
                               >
                                 <Download className="w-4 h-4" />
                               </button>
-                              <button 
-                                className="p-1 text-gray-400 hover:text-indigo-600 transition-colors duration-200" 
+                              <button
+                                className="p-1 text-gray-400 hover:text-indigo-600 transition-colors duration-200"
                                 title="Modifier"
                               >
                                 <Edit3 className="w-4 h-4" />
@@ -641,13 +641,13 @@ const DashboardSignature = () => {
                           </div>
                           
                           {/* Actions */}
-                          <div className="flex items-center justify-end space-x-3 pt-2">
+                          <div className="hidden">
                             <button
                               onClick={() => handlePreview(doc.id)}
                               disabled={previewLoadingId === doc.id}
                               className={`flex items-center space-x-1 px-3 py-2 text-xs font-medium rounded-md transition-colors duration-200 ${
-                                previewLoadingId === doc.id 
-                                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
+                                previewLoadingId === doc.id
+                                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
                                   : 'bg-blue-50 text-blue-600 hover:bg-blue-100'
                               }`}
                               title="Prévisualiser"
@@ -663,8 +663,8 @@ const DashboardSignature = () => {
                               <Download className="w-4 h-4" />
                               <span>Télécharger</span>
                             </button>
-                            <button 
-                              className="flex items-center space-x-1 px-3 py-2 text-xs font-medium text-indigo-600 bg-indigo-50 rounded-md hover:bg-indigo-100 transition-colors duration-200" 
+                            <button
+                              className="flex items-center space-x-1 px-3 py-2 text-xs font-medium text-indigo-600 bg-indigo-50 rounded-md hover:bg-indigo-100 transition-colors duration-200"
                               title="Modifier"
                             >
                               <Edit3 className="w-4 h-4" />
@@ -675,7 +675,7 @@ const DashboardSignature = () => {
                       </div>
 
                       {/* Actions rapides - toujours visibles en mode compact */}
-                      <div className={`flex items-center justify-end space-x-2 mt-3 ${expandedCards.has(doc.id) ? 'hidden' : 'flex'}`}>
+                      <div className="hidden">
                         <button
                           onClick={() => handlePreview(doc.id)}
                           disabled={previewLoadingId === doc.id}

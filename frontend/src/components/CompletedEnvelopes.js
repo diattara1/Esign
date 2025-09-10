@@ -8,6 +8,7 @@ import { CheckCircle, FileText, Calendar, User } from 'lucide-react';
 import slugify from 'slugify';
 import { useNavigate } from "react-router-dom";
 import logService from '../services/logService';
+import ConfirmDialog from './ConfirmDialog';
 
 
 
@@ -15,6 +16,7 @@ const CompletedEnvelopes = () => {
   const [envelopes, setEnvelopes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [menuOpenId, setMenuOpenId] = useState(null);
+  const [confirmId, setConfirmId] = useState(null);
   const menuButtonRef = useRef(null);
 
   const closeMenu = () => {
@@ -157,7 +159,6 @@ const CompletedEnvelopes = () => {
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm('Voulez-vous vraiment supprimer cette enveloppe complétée ?')) return;
     try {
       await signatureService.cancelEnvelope(id);
       setEnvelopes(prev => prev.filter(env => env.id !== id));
@@ -166,6 +167,8 @@ const CompletedEnvelopes = () => {
     } catch (err) {
       toast.error('Échec de la suppression');
       logService.error(err);
+    } finally {
+      setConfirmId(null);
     }
   };
 
@@ -225,7 +228,7 @@ const CompletedEnvelopes = () => {
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                handleDelete(id);
+                setConfirmId(id);
                 closeMenu();
               }}
               className="flex items-center w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
@@ -305,6 +308,14 @@ const CompletedEnvelopes = () => {
           rowClassName="hover:bg-gray-50 transition-colors cursor-pointer"
         />
       </div>
+      <ConfirmDialog
+        isOpen={confirmId !== null}
+        title="Supprimer l'enveloppe"
+        message="Voulez-vous vraiment supprimer cette enveloppe complétée ?"
+        secondaryMessage="Cette action est irréversible."
+        onCancel={() => setConfirmId(null)}
+        onConfirm={() => handleDelete(confirmId)}
+      />
     </div>
   );
 };

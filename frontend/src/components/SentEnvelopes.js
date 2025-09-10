@@ -10,10 +10,12 @@ import EmptyState from '../components/EmptyState';
 // Services externes
 import signatureService from '../services/signatureService';
 import logService from '../services/logService';
+import ConfirmDialog from './ConfirmDialog';
 
 const SentEnvelopes = () => {
   const [envelopes, setEnvelopes] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [confirmId, setConfirmId] = useState(null);
   const navigate = useNavigate();
 
   // Chargement initial des enveloppes envoyées
@@ -37,6 +39,19 @@ const SentEnvelopes = () => {
       isMounted = false;
     };
   }, []);
+
+  const handleCancel = async (id) => {
+    try {
+      await signatureService.cancelEnvelope(id);
+      toast.success('Enveloppe annulée');
+      setEnvelopes((prev) => prev.filter((e) => e.id !== id));
+    } catch (err) {
+      toast.error("Échec de l'annulation");
+      logService?.error?.(err);
+    } finally {
+      setConfirmId(null);
+    }
+  };
 
   // Cellules de rendu --------------------------------------
   const DocumentCell = useCallback(({ row }) => {
@@ -92,7 +107,7 @@ const SentEnvelopes = () => {
   }, []);
 
   const ActionsCell = useCallback(
-    ({ value, row }) => (
+    ({ value }) => (
       <div className="flex flex-wrap gap-2">
         <Link
           to={`/signature/detail/${value}`}
@@ -101,28 +116,14 @@ const SentEnvelopes = () => {
           Détails
         </Link>
         <button
-          onClick={async () => {
-            // Confirmation utilisateur (client-side)
-            if (typeof window !== 'undefined') {
-              const ok = window.confirm('Voulez-vous vraiment annuler cette enveloppe ?');
-              if (!ok) return;
-            }
-            try {
-              await signatureService.cancelEnvelope(value);
-              toast.success('Enveloppe annulée');
-              setEnvelopes((prev) => prev.filter((e) => e.id !== value));
-            } catch (err) {
-              toast.error("Échec de l'annulation");
-              logService?.error?.(err);
-            }
-          }}
+          onClick={() => setConfirmId(value)}
           className="text-red-600 hover:text-red-800 text-sm"
         >
           Annuler
         </button>
       </div>
     ),
-    []
+    [setConfirmId]
   );
 
   // Colonnes (mémoisées pour éviter des rerenders inutiles)
@@ -175,6 +176,14 @@ const SentEnvelopes = () => {
         }
         // Laisse Table gérer la responsivité: cartes sur mobile, tableau sur desktop
         itemsPerPage={10}
+      />
+      <ConfirmDialog
+        isOpen={confirmId !== null}
+        title="Annuler l'enveloppe"
+        message="Voulez-vous vraiment annuler cette enveloppe ?"
+        secondaryMessage="Cette action est irréversible."
+        onCancel={() => setConfirmId(null)}
+        onConfirm={() => handleCancel(confirmId)}
       />
     </div>
   );

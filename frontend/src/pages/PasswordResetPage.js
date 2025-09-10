@@ -2,22 +2,20 @@
 import React, { useState,useEffect  } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../services/apiUtils';
-import { Mail, ArrowLeft, CheckCircle, XCircle, Send, Loader2 } from 'lucide-react';
+import { Mail, ArrowLeft, Send, Loader2 } from 'lucide-react';
 import { passwordResetSchema } from '../validation/schemas';
 
 const PasswordResetPage = () => {
   const [email, setEmail] = useState('');
-  const [message, setMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [isSuccess, setIsSuccess] = useState(false);
   const [sentEmail, setSentEmail] = useState('');
   const [timer, setTimer] = useState(0);
   const [errors, setErrors] = useState({});
+  const [showHelp, setShowHelp] = useState(false);
   const isValid = passwordResetSchema.isValidSync({ email });
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setMessage('');
     setErrors({});
     try {
       await passwordResetSchema.validate({ email }, { abortEarly: false });
@@ -29,14 +27,12 @@ const PasswordResetPage = () => {
 
     try {
       await api.post('/api/signature/password-reset/', { email });
-      setMessage('Si un compte existe pour cet email, un lien de réinitialisation a été envoyé.');
-      setIsSuccess(true);
-       setSentEmail(email);
-      setTimer(60)
+      alert('Si un compte existe pour cet email, un lien de réinitialisation a été envoyé.');
+      setSentEmail(email);
+      setTimer(60);
       setEmail('');
     } catch (err) {
-      setMessage('Erreur lors de la demande.');
-      setIsSuccess(false);
+      alert('Erreur lors de la demande.');
     } finally {
       setIsLoading(false);
     }
@@ -51,24 +47,14 @@ useEffect(() => {
 
   const handleResend = async () => {
     if (!sentEmail) return;
-    setMessage('');
     setIsLoading(true);
-    // PasswordResetPage.js (extrait)
-try {
-  const resp = await api.post('/api/signature/password-reset/', { email });
-  // Si ton client ne jette pas pour 204, rien à changer. Sinon :
-  // if (resp.status === 204) { /* traiter comme succès */ }
-  setMessage('Si un compte existe pour cet email, un lien de réinitialisation a été envoyé.');
-  setIsSuccess(true);
-  setSentEmail(email);
-  setTimer(60);
-  setEmail('');
-} catch (err) {
-  // Option 1: garder une erreur générique UI (sans rien révéler)
-  setMessage('Erreur lors de la demande.');
-  setIsSuccess(false);
-}
- finally {
+    try {
+      await api.post('/api/signature/password-reset/', { email: sentEmail });
+      alert('Si un compte existe pour cet email, un lien de réinitialisation a été envoyé.');
+      setTimer(60);
+    } catch (err) {
+      alert('Erreur lors de la demande.');
+    } finally {
       setIsLoading(false);
     }
   };
@@ -90,57 +76,6 @@ try {
 
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
         <div className="bg-white py-8 px-4 shadow-xl sm:rounded-2xl sm:px-10 border border-gray-100">
-          {/* Message de statut */}
-          {message && (
-                   <>
-              <div
-                className={`mb-2 p-4 rounded-xl flex items-start space-x-3 ${
-                  isSuccess
-                    ? 'bg-green-50 border border-green-200'
-                    : 'bg-red-50 border border-red-200'
-                }`}
-              >
-                {isSuccess ? (
-                  <CheckCircle className="h-5 w-5 text-green-500 mt-0.5 flex-shrink-0" />
-                ) : (
-                  <XCircle className="h-5 w-5 text-red-500 mt-0.5 flex-shrink-0" />
-                )}
-                <div aria-live="polite">
-                  <p
-                    className={`text-sm font-medium ${
-                      isSuccess ? 'text-green-800' : 'text-red-800'
-                    }`}
-                  >
-                    {isSuccess ? 'Email envoyé' : 'Erreur'}
-                  </p>
-                  <p
-                    className={`text-sm ${
-                      isSuccess ? 'text-green-700' : 'text-red-700'
-                    }`}
-                  >
-                    {message}
-                  </p>
-                </div>
-              </div>
-              {isSuccess && sentEmail && (
-                timer > 0 ? (
-                  <p className="mb-6 text-sm text-gray-600 text-center">
-                    Vous pourrez renvoyer l'email dans {timer}s
-                  </p>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={handleResend}
-                    disabled={isLoading}
-                    className="mb-6 w-full flex justify-center py-2 px-4 border border-blue-300 text-sm font-medium rounded-xl text-blue-700 bg-blue-50 hover:bg-blue-100 disabled:opacity-50"
-                  >
-                    Renvoyer l'email
-                  </button>
-                )
-              )}
-            </>
-          )}
-
           <form onSubmit={handleSubmit} className="space-y-6">
             {/* Email */}
             <div>
@@ -188,17 +123,43 @@ try {
               </button>
             </div>
           </form>
+          {sentEmail && (
+            <div className="mt-6">
+              <button
+                type="button"
+                onClick={handleResend}
+                disabled={isLoading || timer > 0}
+                className="w-full flex justify-center py-2 px-4 border border-blue-300 text-sm font-medium rounded-xl text-blue-700 bg-blue-50 hover:bg-blue-100 disabled:opacity-50"
+              >
+                Renvoyer l'email
+              </button>
+              {timer > 0 && (
+                <p className="mt-2 text-xs text-gray-500 text-center">
+                  Vous pourrez renvoyer l'email dans {timer}s
+                </p>
+              )}
+            </div>
+          )}
 
-          {/* Instructions supplémentaires */}
-          <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-xl">
-            <h3 className="text-sm font-medium text-blue-800 mb-2">
-              Instructions
-            </h3>
-            <ul className="text-sm text-blue-700 space-y-1">
-              <li>• Vérifiez votre dossier spam si vous ne recevez pas l'email</li>
-              <li>• Le lien est valable pendant 24 heures</li>
-              <li>• Contactez le support si vous rencontrez des difficultés</li>
-            </ul>
+          {/* Aide */}
+          <div className="mt-6">
+            <button
+              type="button"
+              onClick={() => setShowHelp((s) => !s)}
+              className="text-sm font-medium text-blue-600 hover:text-blue-500"
+            >
+              Aide
+            </button>
+            {showHelp && (
+              <div className="mt-2 p-4 bg-blue-50 border border-blue-200 rounded-xl">
+                <h3 className="text-sm font-medium text-blue-800 mb-2">Instructions</h3>
+                <ul className="text-sm text-blue-700 space-y-1">
+                  <li>• Vérifiez votre dossier spam si vous ne recevez pas l'email</li>
+                  <li>• Le lien est valable pendant 24 heures</li>
+                  <li>• Contactez le support si vous rencontrez des difficultés</li>
+                </ul>
+              </div>
+            )}
           </div>
 
           {/* Lien retour */}

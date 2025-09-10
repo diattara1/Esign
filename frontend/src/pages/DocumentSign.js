@@ -473,7 +473,20 @@ export default function DocumentSign() {
 
         {/* Viewer */}
         <main className="flex-1 overflow-auto bg-gray-100" ref={viewerRef} style={{ scrollbarGutter: 'stable both-edges' }}>
-          <div className="p-3 md:p-6">{renderPdfViewer()}</div>
+          <div className="p-3 md:p-6">
+            {renderPdfViewer()}
+            {!isAlreadySigned && ((!isGuest) || otpVerified) && (
+              <div className="mt-6 flex justify-center">
+                <button
+                  onClick={handleSign}
+                  disabled={!canSign() || signing}
+                  className="w-full sm:w-auto px-6 py-3 bg-blue-600 text-white font-semibold rounded shadow disabled:opacity-50"
+                >
+                  {signing ? 'Signature…' : 'Signer'}
+                </button>
+              </div>
+            )}
+          </div>
         </main>
       </div>
 

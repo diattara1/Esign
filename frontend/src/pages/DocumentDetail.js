@@ -394,7 +394,8 @@ const DocumentDetail = () => {
               </div>
 
               {/* Countdown */}
-              {env.deadline_at && (
+              
+                 {env.deadline_at && env.status !== 'completed' && (
                 <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
                   <div className="flex items-center mb-2">
                     <FiClock className="w-4 h-4 text-orange-600 mr-2" />

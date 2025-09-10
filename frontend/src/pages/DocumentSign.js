@@ -14,7 +14,7 @@ import SignatureModal from '../components/SignatureModal';
 import { fileToPngDataURL, blobToPngDataURL, savedSignatureImageUrl, fetchSavedSignatureAsDataURL } from '../utils/signatureUtils';
 import logService from '../services/logService';
 import sanitize from '../utils/sanitize';
-import { FiMenu, FiX, FiShield, FiCheckCircle, FiAlertCircle } from 'react-icons/fi';
+import { FiMenu, FiX } from 'react-icons/fi';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 
@@ -77,6 +77,7 @@ export default function DocumentSign() {
   const [otpAttempts, setOtpAttempts] = useState(MAX_OTP_ATTEMPTS);
   const [cooldownUntil, setCooldownUntil] = useState(null);
   const [otpStatus, setOtpStatus] = useState('');
+  const [otpModalOpen, setOtpModalOpen] = useState(false);
 
   useEffect(() => {
     if (!cooldownUntil) return;
@@ -195,7 +196,12 @@ export default function DocumentSign() {
   const handleSendOtp = async () => {
     if (isAlreadySigned) return toast.info('Déjà signé');
     setSendingOtp(true);
-    try { await signatureService.sendOtp(id, token); setOtpSent(true); toast.success('Code OTP envoyé'); }
+    try {
+      await signatureService.sendOtp(id, token);
+      setOtpSent(true);
+      setOtpModalOpen(true);
+      toast.success('Code OTP envoyé');
+    }
     catch (e) { logService.error(e); toast.error(e?.response?.data?.error || 'Erreur envoi OTP'); }
     finally { setSendingOtp(false); }
   };
@@ -204,7 +210,9 @@ export default function DocumentSign() {
     setVerifyingOtp(true);
     try {
       await signatureService.verifyOtp(id, otp, token);
-      setOtpVerified(true); setOtpError(''); setOtpStatus(''); setOtpAttempts(MAX_OTP_ATTEMPTS); setCooldownUntil(null); toast.success('OTP vérifié');
+      setOtpVerified(true); setOtpError(''); setOtpStatus(''); setOtpAttempts(MAX_OTP_ATTEMPTS); setCooldownUntil(null);
+      setOtpModalOpen(false);
+      toast.success('OTP vérifié');
       await new Promise(r => setTimeout(r, 400));
       try {
         let blobUrl;
@@ -289,12 +297,12 @@ export default function DocumentSign() {
         <div className="text-center text-gray-600 p-8">
           {isGuest && !otpVerified ? (
             <>
-              <p className="text-lg mb-2">📄 PDF protégé</p>
+              <p className="text-lg mb-2">PDF protégé</p>
               <p>Veuillez vérifier votre code OTP pour afficher le document.</p>
             </>
           ) : (
             <>
-              <p className="text-lg mb-2">⏳ Chargement du document…</p>
+              <p className="text-lg mb-2">Chargement du document…</p>
               <p>Veuillez patienter.</p>
             </>
           )}
@@ -381,7 +389,10 @@ export default function DocumentSign() {
                 value={selectedDoc?.id || ''}
                 onChange={(e) => {
                   const d = documents.find(x => String(x.id) === String(e.target.value));
-                  if (d && d.id !== selectedDoc?.id) setSelectedDoc(d);
+                  if (d && d.id !== selectedDoc?.id) {
+                    setSelectedDoc(d);
+                    if (isMobile) setSidebarOpen(false);
+                  }
                 }}
               >
                 {documents.map((d) => (
@@ -394,9 +405,8 @@ export default function DocumentSign() {
 
         {/* État OTP invité */}
         {isGuest && !isAlreadySigned && (
-          <div className="hidden md:flex items-center gap-2 mr-2">
-            <FiShield className={otpVerified ? 'text-green-600' : 'text-gray-400'} />
-            <span className="text-sm text-gray-700">{otpVerified ? 'OTP vérifié' : (otpSent ? 'OTP envoyé' : 'OTP requis')}</span>
+          <div className="hidden md:flex items-center mr-2 text-sm text-gray-700">
+            {otpVerified ? 'OTP vérifié' : (otpSent ? 'OTP envoyé' : 'OTP requis')}
           </div>
         )}
 
@@ -435,19 +445,44 @@ export default function DocumentSign() {
             <button onClick={handleSendOtp} disabled={sendingOtp} className="w-full bg-blue-600 text-white p-2 rounded disabled:opacity-50">{sendingOtp ? 'Envoi…' : 'Envoyer OTP'}</button>
           )}
           {otpSent && !otpVerified && (
-            <>
-              <input type="text" value={otp} onChange={(e) => setOtp(e.target.value)} placeholder="Code OTP" className="w-full border p-2 rounded" disabled={cooldownUntil && cooldownUntil > Date.now()} />
-              <div role="status" aria-live="polite" className="text-sm">
-                {otpError && <p className="text-red-600">{otpError}</p>}
-                {otpStatus && <p className="text-gray-600">{otpStatus}</p>}
-              </div>
-              <button onClick={handleVerifyOtp} disabled={verifyingOtp || (cooldownUntil && cooldownUntil > Date.now())} className="w-full bg-green-600 text-white p-2 rounded disabled:opacity-50">{verifyingOtp ? 'Vérification…' : 'Vérifier OTP'}</button>
-            </>
+            <button onClick={() => setOtpModalOpen(true)} className="w-full bg-green-600 text-white p-2 rounded">Vérifier OTP</button>
           )}
         </div>
       )}
     </div>
   );
+
+  const OtpModal = () => {
+    if (!otpModalOpen || otpVerified) return null;
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center">
+        <div className="absolute inset-0 bg-black/50" onClick={() => setOtpModalOpen(false)} />
+        <div className="relative bg-white p-4 md:p-6 rounded shadow max-w-sm w-full">
+          <h2 className="text-lg font-semibold mb-4">Code OTP</h2>
+          <input
+            type="text"
+            value={otp}
+            onChange={(e) => setOtp(e.target.value)}
+            placeholder="Code OTP"
+            className="w-full border p-2 rounded mb-2"
+            disabled={cooldownUntil && cooldownUntil > Date.now()}
+          />
+          {otpError && <p className="text-red-600 text-sm mb-2">{otpError}</p>}
+          {otpStatus && <p className="text-gray-600 text-sm mb-2">{otpStatus}</p>}
+          <div className="flex justify-end gap-2">
+            <button onClick={() => setOtpModalOpen(false)} className="px-3 py-1 rounded border">Annuler</button>
+            <button
+              onClick={handleVerifyOtp}
+              disabled={verifyingOtp || (cooldownUntil && cooldownUntil > Date.now())}
+              className="bg-blue-600 text-white px-3 py-1 rounded disabled:opacity-50"
+            >
+              {verifyingOtp ? 'Vérification…' : 'Valider'}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   if (loading) return <div className="p-6 text-center">Chargement…</div>;
   if (!envelope) return <div className="p-6 text-center text-red-600">Document introuvable.</div>;
@@ -478,6 +513,7 @@ export default function DocumentSign() {
       </div>
 
       {/* MODAL Signature */}
+      <OtpModal />
       <SignatureModal
         isOpen={modalOpen}
         onClose={closeModal}

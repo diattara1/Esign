@@ -30,7 +30,7 @@ export default function DocumentSign() {
 
   // ---------------------------- Responsive state ----------------------------
   const isMobile = useIsMobile(1024);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(!isMobile);
   const toggleSidebar = () => setSidebarOpen((o) => !o);
 
   useEffect(() => {
@@ -372,8 +372,8 @@ export default function DocumentSign() {
   const Navbar = () => (
     <div className="sticky top-0 z-30 bg-white/90 backdrop-blur border-b border-gray-200">
       <div className="px-3 md:px-6 py-3 flex items-center gap-3">
-        {/* Mobile: burger */}
-        <button onClick={toggleSidebar} className="lg:hidden p-2 rounded border border-gray-200 active:scale-95" aria-label={sidebarOpen ? 'Fermer le menu' : 'Ouvrir le menu'}>
+        {/* Sidebar toggle */}
+        <button onClick={toggleSidebar} className="p-2 rounded border border-gray-200 active:scale-95" aria-label={sidebarOpen ? 'Fermer le menu' : 'Ouvrir le menu'}>
           {sidebarOpen ? <FiX className="w-5 h-5" /> : <FiMenu className="w-5 h-5" />}
         </button>
 
@@ -465,16 +465,21 @@ export default function DocumentSign() {
 
       <div className="flex-1 flex overflow-hidden">
         {/* Drawer / Sidebar */}
-        {isMobile && (
-          <div className={`fixed inset-0 z-40 ${sidebarOpen ? '' : 'pointer-events-none'}`}>
-            <div className={`absolute inset-0 bg-black/50 transition-opacity ${sidebarOpen ? 'opacity-100' : 'opacity-0'}`} onClick={() => setSidebarOpen(false)} />
-            <aside className={`absolute inset-y-0 left-0 w-full max-w-sm bg-white border-r shadow-xl transform transition-transform ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        {isMobile ? (
+          sidebarOpen && (
+            <div className="fixed inset-0 z-40">
+              <div className="absolute inset-0 bg-black/50" onClick={() => setSidebarOpen(false)} />
+              <aside className="absolute inset-y-0 left-0 w-full max-w-sm bg-white border-r shadow-xl">
+                <Sidebar />
+              </aside>
+            </div>
+          )
+        ) : (
+          sidebarOpen && (
+            <aside className="w-80 max-w-xs bg-white border-r overflow-auto">
               <Sidebar />
             </aside>
-          </div>
-        )}
-        {!isMobile && (
-          <aside className="w-80 max-w-xs bg-white border-r overflow-auto"><Sidebar /></aside>
+          )
         )}
 
         {/* Viewer */}

@@ -5,7 +5,7 @@ import logService from '../services/logService';
 const SignaturePadComponent = ({ onEnd, onChange, initialValue, canvasProps }) => {
   const sigRef = useRef(null);
   const containerRef = useRef(null);
-  const [size, setSize] = useState({ width: 0, height: 220 });
+  const [size, setSize] = useState({ width: 350, height: 220 });
 
   // Ajuste la taille du canvas selon le conteneur
   useEffect(() => {

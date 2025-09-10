@@ -4,8 +4,17 @@
 import React, { useState, useEffect } from 'react';
 import useIsMobile from '../hooks/useIsMobile';
 import { Outlet, NavLink, useLocation } from 'react-router-dom';
-import { FiMenu, FiX } from 'react-icons/fi';
+import {
+  FiX,
+  FiSend,
+  FiCheckCircle,
+  FiAlertCircle,
+  FiEdit3,
+  FiTrash,
+} from 'react-icons/fi';
 import SignatureNavbar from '../components/SignatureNavbar';
+import signatureService from '../services/signatureService';
+import logService from '../services/logService';
 
 const SignatureLayout = () => {
   const location = useLocation();
@@ -26,31 +35,82 @@ const SignatureLayout = () => {
   }, []);
 
   const isMobile = useIsMobile(1024);
-  const navigationItems = [
-    { path: '/signature/envelopes/sent', label: 'Envoyé', badge: null },
-    { path: '/signature/envelopes/completed', label: 'Complété(s)', badge: null },
-    { path: '/signature/envelopes/action-required', label: 'Action requise', badge: null },
-    { path: '/signature/envelopes/drafts', label: 'Brouillons', badge: null },
-    { path: '/signature/envelopes/deleted', label: 'Supprimé', badge: null },
-  ];
+  const [navigationItems, setNavigationItems] = useState([
+    {
+      path: '/signature/envelopes/sent',
+      label: 'Envoyé',
+      icon: FiSend,
+      badge: 0,
+    },
+    {
+      path: '/signature/envelopes/completed',
+      label: 'Complété(s)',
+      icon: FiCheckCircle,
+      badge: 0,
+    },
+    {
+      path: '/signature/envelopes/action-required',
+      label: 'Action requise',
+      icon: FiAlertCircle,
+      badge: 0,
+    },
+    {
+      path: '/signature/envelopes/drafts',
+      label: 'Brouillons',
+      icon: FiEdit3,
+      badge: 0,
+    },
+    {
+      path: '/signature/envelopes/deleted',
+      label: 'Supprimé',
+      icon: FiTrash,
+      badge: 0,
+    },
+  ]);
+
+  // Précharger les badges de navigation pour éviter les re-rendus
+  useEffect(() => {
+    const fetchBadges = async () => {
+      try {
+        const [sent, completed, actionReq, drafts, deleted] = await Promise.all([
+          signatureService.getEnvelopes({ status: 'sent' }),
+          signatureService.getCompletedEnvelopes(),
+          signatureService.getReceivedEnvelopes(),
+          signatureService.getEnvelopes({ status: 'draft' }),
+          signatureService.getEnvelopes({ status: 'cancelled' }),
+        ]);
+
+        setNavigationItems(items =>
+          items.map(item => {
+            switch (item.path) {
+              case '/signature/envelopes/sent':
+                return { ...item, badge: sent.length };
+              case '/signature/envelopes/completed':
+                return { ...item, badge: completed.length };
+              case '/signature/envelopes/action-required':
+                return { ...item, badge: actionReq.length };
+              case '/signature/envelopes/drafts':
+                return { ...item, badge: drafts.length };
+              case '/signature/envelopes/deleted':
+                return { ...item, badge: deleted.length };
+              default:
+                return item;
+            }
+          })
+        );
+      } catch (err) {
+        logService.error('Failed to load navigation badges:', err);
+      }
+    };
+
+    fetchBadges();
+  }, []);
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       <SignatureNavbar />
 
-      {/* Header mobile avec bouton menu */}
-      <div className="lg:hidden bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between sticky top-16 z-40">
-        <button
-          onClick={() => setSidebarOpen(true)}
-          className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
-        >
-          <FiMenu className="w-5 h-5" />
-        </button>
-        <h1 className="font-semibold text-gray-900">Signatures</h1>
-        <div className="w-9"> {/* Spacer pour centrer le titre */}</div>
-      </div>
-
-      <div className="flex flex-1 relative">
+      <div className="flex flex-1 relative pb-14 lg:pb-0">
         {/* Sidebar responsive */}
         <div className={`
           fixed inset-y-0 left-0 z-50 w-64 bg-white border-r border-gray-200 transform transition-transform duration-300 ease-in-out
@@ -89,7 +149,7 @@ const SignatureLayout = () => {
                     onClick={() => isMobile && setSidebarOpen(false)}
                   >
                     <span>{item.label}</span>
-                    {item.badge && (
+                    {item.badge > 0 && (
                       <span className="bg-red-100 text-red-600 text-xs px-2 py-0.5 rounded-full font-medium">
                         {item.badge}
                       </span>
@@ -116,6 +176,33 @@ const SignatureLayout = () => {
           </div>
         </div>
       </div>
+
+      {/* Bottom nav icons */}
+      <nav className="lg:hidden fixed bottom-0 inset-x-0 bg-white border-t border-gray-200 z-40">
+        <div className="flex justify-around">
+          {navigationItems.map((item) => {
+            const Icon = item.icon;
+            return (
+              <NavLink
+                key={item.path}
+                to={item.path}
+                className={({ isActive }) =>
+                  `relative flex flex-col items-center flex-1 py-2 text-xs ${
+                    isActive ? 'text-blue-600' : 'text-gray-500'
+                  }`}
+              >
+                <Icon className="w-5 h-5" />
+                {item.badge > 0 && (
+                  <span className="absolute -top-1 right-3 bg-red-500 text-white text-[10px] px-1 rounded-full">
+                    {item.badge}
+                  </span>
+                )}
+                <span className="mt-1">{item.label}</span>
+              </NavLink>
+            );
+          })}
+        </div>
+      </nav>
     </div>
   );
 };

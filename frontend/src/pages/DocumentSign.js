@@ -370,7 +370,7 @@ export default function DocumentSign() {
 
   // ------------------------------- NAVBAR UI -------------------------------
   const Navbar = () => (
-    <div className="sticky top-0 z-30 bg-white/90 backdrop-blur border-b border-gray-200">
+    <div className="sticky top-0 z-40 bg-white/90 backdrop-blur border-b border-gray-200">
       <div className="px-3 md:px-6 py-3 flex items-center gap-3">
         {/* Mobile: burger */}
         <button onClick={toggleSidebar} className="lg:hidden p-2 rounded border border-gray-200 active:scale-95" aria-label={sidebarOpen ? 'Fermer le menu' : 'Ouvrir le menu'}>
@@ -466,7 +466,7 @@ export default function DocumentSign() {
       <div className="flex-1 flex overflow-hidden">
         {/* Drawer / Sidebar */}
         {isMobile && (
-          <div className={`fixed inset-0 z-40 ${sidebarOpen ? '' : 'pointer-events-none'}`}>
+          <div className={`fixed inset-0 z-30 ${sidebarOpen ? '' : 'pointer-events-none'}`}>
             <div className={`absolute inset-0 bg-black/50 transition-opacity ${sidebarOpen ? 'opacity-100' : 'opacity-0'}`} onClick={() => setSidebarOpen(false)} />
             <aside className={`absolute inset-y-0 left-0 w-full max-w-sm bg-white border-r shadow-xl transform transition-transform ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
               <Sidebar />

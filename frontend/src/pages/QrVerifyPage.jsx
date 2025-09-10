@@ -1,8 +1,7 @@
 // QrVerifyPage.jsx
 import React, { useEffect, useState, useLayoutEffect, useRef } from 'react';
 import {
-  CheckCircle, AlertTriangle, FileText, Shield, Calendar,
-  User, Hash, ExternalLink, Info, Mail
+  AlertTriangle, FileText, Shield, Hash, ExternalLink, Info, Mail
 } from 'lucide-react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { Document, Page } from 'react-pdf';
@@ -37,15 +36,18 @@ const Card = ({ children, className = "" }) => (
   </div>
 );
 
-const InfoItem = ({ label, value, icon: Icon, type = "text" }) => (
-  <div className="flex items-start gap-3 py-3 border-b border-gray-100 last:border-0">
-    {Icon && <Icon className="w-4 h-4 text-gray-500 mt-0.5 flex-shrink-0" />}
-    <div className="flex-1 min-w-0">
-      <dt className="text-sm font-medium text-gray-600 mb-1">{label}</dt>
-      <dd className={`text-sm ${type === 'code' ? 'font-mono bg-gray-50 px-2 py-1 rounded border text-xs break-all' : 'text-gray-900'}`}>
-        {value || '—'}
-      </dd>
-    </div>
+const InfoItem = ({ label, value, type = "text" }) => (
+  <div className="py-3 border-b border-gray-100 last:border-0">
+    <dt className="text-sm font-medium text-gray-600 mb-1">{label}</dt>
+    <dd
+      className={`text-sm ${
+        type === 'code'
+          ? 'font-mono bg-gray-50 px-2 py-1 rounded border text-xs break-all'
+          : 'text-gray-900'
+      }`}
+    >
+      {value || '—'}
+    </dd>
   </div>
 );
 
@@ -59,11 +61,17 @@ export default function QrVerifyPage() {
   const [loading, setLoading] = useState(true);
 
   // PDF viewer state (react-pdf)
+  const [showPdf, setShowPdf] = useState(false);
   const [pdfUrl, setPdfUrl] = useState(null);
   const [loadingPdf, setLoadingPdf] = useState(false);
   const [numPages, setNumPages] = useState(0);
   const viewerRef = useRef(null);
   const [contentWidth, setContentWidth] = useState(0);
+  useEffect(() => {
+    if (window.innerWidth >= 1024) {
+      setShowPdf(true);
+    }
+  }, []);
   // Mesure responsive du conteneur PDF
   useLayoutEffect(() => {
   const el = viewerRef.current;
@@ -117,6 +125,10 @@ export default function QrVerifyPage() {
 
   // Télécharger le PDF signé (blob) et créer une object URL pour react-pdf
   useEffect(() => {
+    if (!showPdf) {
+      setPdfUrl(null);
+      return;
+    }
     const loadPdf = async () => {
       if (!data?.document_url) { setPdfUrl(null); return; }
       setLoadingPdf(true);
@@ -137,7 +149,7 @@ export default function QrVerifyPage() {
       }
     };
     loadPdf();
-  }, [data?.document_url]);
+  }, [data?.document_url, showPdf]);
 
   if (loading) {
     return (
@@ -240,17 +252,14 @@ export default function QrVerifyPage() {
                 <InfoItem
                   label="Statut"
                   value={data?.completed ? 'Signé' : 'En cours'}
-                  icon={data?.completed ? CheckCircle : AlertTriangle}
                 />
                 <InfoItem
                   label="Heure déclarée de dépôt"
                   value={data?.completed_at ? new Date(data.completed_at).toLocaleString() : '—'}
-                  icon={Calendar}
                 />
                 <InfoItem
                   label="Document"
                   value={data?.title || '—'}
-                  icon={FileText}
                 />
               </dl>
             </Card>
@@ -261,106 +270,125 @@ export default function QrVerifyPage() {
                 <Hash className="w-5 h-5" /> Empreintes du document
               </h2>
               <dl>
-                <InfoItem label="SHA-256" value={data?.hash_sha256} icon={Hash} type="code" />
-                <InfoItem label="MD5" value={data?.hash_md5} icon={Hash} type="code" />
+                <InfoItem label="SHA-256" value={data?.hash_sha256} type="code" />
+                <InfoItem label="MD5" value={data?.hash_md5} type="code" />
               </dl>
             </Card>
-
-            {/* Certificat du signataire */}
+            {/* Détails techniques */}
             <Card className="p-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                <Shield className="w-5 h-5" /> Certificat du signataire
+                <Info className="w-5 h-5" /> Détails techniques
               </h2>
-              <dl>
-                <InfoItem label="Nom commun (CN)" value={cn} icon={User} />
-                <InfoItem label="Organisation (O)" value={org} icon={Info} />
-                <InfoItem label="Pays (C)" value={country} icon={Info} />
-                <InfoItem label="N° de série" value={cert.serial_number} icon={Hash} type="code" />
-                <InfoItem label="Valide à partir de" value={cert.valid_from && new Date(cert.valid_from).toLocaleString()} icon={Calendar} />
-                <InfoItem label="Valide jusqu’à" value={cert.valid_to && new Date(cert.valid_to).toLocaleString()} icon={Calendar} />
-              </dl>
+              <div className="space-y-3">
+                <details className="border rounded">
+                  <summary className="flex items-center gap-2 cursor-pointer px-4 py-2 font-medium text-gray-900">
+                    <Shield className="w-4 h-4" /> Certificat du signataire
+                  </summary>
+                  <div className="px-4 py-2 border-t">
+                    <dl>
+                      <InfoItem label="Nom commun (CN)" value={cn} />
+                      <InfoItem label="Organisation (O)" value={org} />
+                      <InfoItem label="Pays (C)" value={country} />
+                      <InfoItem label="N° de série" value={cert.serial_number} type="code" />
+                      <InfoItem label="Valide à partir de" value={cert.valid_from && new Date(cert.valid_from).toLocaleString()} />
+                      <InfoItem label="Valide jusqu’à" value={cert.valid_to && new Date(cert.valid_to).toLocaleString()} />
+                    </dl>
 
-              {/* Révocation si dispo */}
-              {(cert.revocation?.ocsp_status || cert.revocation?.crl_status) && (
-                <div className="mt-3 text-xs text-gray-700">
-                  <div className="mb-1">
-                    OCSP : <strong>{cert.revocation.ocsp_status || '—'}</strong>{' '}
-                    {cert.revocation.ocsp_url && (
-                      <a className="underline ml-2" href={cert.revocation.ocsp_url} target="_blank" rel="noreferrer">lien</a>
+                    {/* Révocation si dispo */}
+                    {(cert.revocation?.ocsp_status || cert.revocation?.crl_status) && (
+                      <div className="mt-3 text-xs text-gray-700">
+                        <div className="mb-1">
+                          OCSP : <strong>{cert.revocation.ocsp_status || '—'}</strong>{' '}
+                          {cert.revocation.ocsp_url && (
+                            <a className="underline ml-2" href={cert.revocation.ocsp_url} target="_blank" rel="noreferrer">lien</a>
+                          )}
+                        </div>
+                        <div>
+                          CRL : <strong>{cert.revocation.crl_status || '—'}</strong>{' '}
+                          {cert.revocation.crl_url && (
+                            <a className="underline ml-2" href={cert.revocation.crl_url} target="_blank" rel="noreferrer">lien</a>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Horodatage si dispo */}
+                    {cert.timestamp?.time && (
+                      <div className="mt-3 text-xs text-gray-700">
+                        Horodatage : <strong>{new Date(cert.timestamp.time).toLocaleString()}</strong>{' '}
+                        {cert.timestamp.tsa && <>par <em>{cert.timestamp.tsa}</em></>}
+                      </div>
                     )}
                   </div>
-                  <div>
-                    CRL : <strong>{cert.revocation.crl_status || '—'}</strong>{' '}
-                    {cert.revocation.crl_url && (
-                      <a className="underline ml-2" href={cert.revocation.crl_url} target="_blank" rel="noreferrer">lien</a>
-                    )}
+                </details>
+
+                <details className="border rounded">
+                  <summary className="flex items-center gap-2 cursor-pointer px-4 py-2 font-medium text-gray-900">
+                    <Mail className="w-4 h-4" /> Signataires
+                  </summary>
+                  <div className="px-4 py-2 border-t">
+                    <ul className="divide-y divide-gray-100">
+                      {(data?.signers || []).map((s, idx) => (
+                        <li key={idx} className="py-3">
+                          <div className="text-sm font-medium text-gray-900">{s.full_name}</div>
+                          <div className="text-xs mt-1">
+                            {s.signed ? (
+                              <span className="text-green-700">Signé le {s.signed_at ? new Date(s.signed_at).toLocaleString() : '—'}</span>
+                            ) : (
+                              <span className="text-amber-700">En attente</span>
+                            )}
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
                   </div>
-                </div>
-              )}
-
-              {/* Horodatage si dispo */}
-              {cert.timestamp?.time && (
-                <div className="mt-3 text-xs text-gray-700">
-                  Horodatage : <strong>{new Date(cert.timestamp.time).toLocaleString()}</strong>{' '}
-                  {cert.timestamp.tsa && <>par <em>{cert.timestamp.tsa}</em></>}
-                </div>
-              )}
-            </Card>
-
-            {/* Signataires */}
-            <Card className="p-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                <Mail className="w-5 h-5" /> Signataires
-              </h2>
-              <ul className="divide-y divide-gray-100">
-                {(data?.signers || []).map((s, idx) => (
-                  <li key={idx} className="py-3">
-                    <div className="text-sm font-medium text-gray-900">{s.full_name}</div>
-                    <div className="text-xs mt-1">
-                      {s.signed ? (
-                        <span className="text-green-700">Signé le {s.signed_at ? new Date(s.signed_at).toLocaleString() : '—'}</span>
-                      ) : (
-                        <span className="text-amber-700">En attente</span>
-                      )}
-                    </div>
-                  </li>
-                ))}
-              </ul>
+                </details>
+              </div>
             </Card>
           </div>
 
           {/* Colonne viewer PDF */}
           <div className="lg:col-span-2">
             <Card className="p-3">
-              <div ref={viewerRef} className="min-h-[60vh] p-2 overflow-auto">
-                {loadingPdf ? (
-                  <div className="flex justify-center items-center h-64">
-                    <LoadingSpinner />
-                  </div>
-                ) : !pdfUrl ? (
-                  <div className="p-6 text-sm text-gray-600">Le document signé n’a pas pu être chargé.</div>
-                ) : (
-                  <Document
-                    key={uuid}
-                    file={pdfUrl}
-                    onLoadSuccess={({ numPages }) => setNumPages(numPages)}
-                    onLoadError={(err) => logService.error('PDF error:', err)}
-                    loading={<div className="p-6">Chargement PDF…</div>}
+              {!showPdf ? (
+                <div className="p-6 text-center">
+                  <button
+                    onClick={() => setShowPdf(true)}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
                   >
-                    {Array.from({ length: numPages }, (_, i) => (
-                      <div key={i} className="relative mb-6">
-  <Page
-    pageNumber={i + 1}
-    width={contentWidth || 800}
-    renderTextLayer={false}
-    className="mx-auto rounded border border-gray-200 shadow-sm bg-white"
-  />
-</div>
-
-                    ))}
-                  </Document>
-                )}
-              </div>
+                    Voir le document
+                  </button>
+                </div>
+              ) : (
+                <div ref={viewerRef} className="min-h-[60vh] p-2 overflow-auto">
+                  {loadingPdf ? (
+                    <div className="flex justify-center items-center h-64">
+                      <LoadingSpinner />
+                    </div>
+                  ) : !pdfUrl ? (
+                    <div className="p-6 text-sm text-gray-600">Le document signé n’a pas pu être chargé.</div>
+                  ) : (
+                    <Document
+                      key={uuid}
+                      file={pdfUrl}
+                      onLoadSuccess={({ numPages }) => setNumPages(numPages)}
+                      onLoadError={(err) => logService.error('PDF error:', err)}
+                      loading={<div className="p-6">Chargement PDF…</div>}
+                    >
+                      {Array.from({ length: numPages }, (_, i) => (
+                        <div key={i} className="relative mb-6">
+                          <Page
+                            pageNumber={i + 1}
+                            width={contentWidth || 800}
+                            renderTextLayer={false}
+                            className="mx-auto rounded border border-gray-200 shadow-sm bg-white"
+                          />
+                        </div>
+                      ))}
+                    </Document>
+                  )}
+                </div>
+              )}
               <div className="px-2 pb-2">
                 <a
                   href={pdfHref}

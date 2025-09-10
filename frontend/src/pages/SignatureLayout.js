@@ -35,38 +35,7 @@ const SignatureLayout = () => {
   }, []);
 
   const isMobile = useIsMobile(1024);
-  const [navigationItems, setNavigationItems] = useState([
-    {
-      path: '/signature/envelopes/sent',
-      label: 'Envoyé',
-      icon: FiSend,
-      badge: 0,
-    },
-    {
-      path: '/signature/envelopes/completed',
-      label: 'Complété(s)',
-      icon: FiCheckCircle,
-      badge: 0,
-    },
-    {
-      path: '/signature/envelopes/action-required',
-      label: 'Action requise',
-      icon: FiAlertCircle,
-      badge: 0,
-    },
-    {
-      path: '/signature/envelopes/drafts',
-      label: 'Brouillons',
-      icon: FiEdit3,
-      badge: 0,
-    },
-    {
-      path: '/signature/envelopes/deleted',
-      label: 'Supprimé',
-      icon: FiTrash,
-      badge: 0,
-    },
-  ]);
+  const [navigationItems, setNavigationItems] = useState([]);
 
   // Précharger les badges de navigation pour éviter les re-rendus
   useEffect(() => {
@@ -80,24 +49,38 @@ const SignatureLayout = () => {
           signatureService.getEnvelopes({ status: 'cancelled' }),
         ]);
 
-        setNavigationItems(items =>
-          items.map(item => {
-            switch (item.path) {
-              case '/signature/envelopes/sent':
-                return { ...item, badge: sent.length };
-              case '/signature/envelopes/completed':
-                return { ...item, badge: completed.length };
-              case '/signature/envelopes/action-required':
-                return { ...item, badge: actionReq.length };
-              case '/signature/envelopes/drafts':
-                return { ...item, badge: drafts.length };
-              case '/signature/envelopes/deleted':
-                return { ...item, badge: deleted.length };
-              default:
-                return item;
-            }
-          })
-        );
+        setNavigationItems([
+          {
+            path: '/signature/envelopes/sent',
+            label: 'Envoyé',
+            icon: FiSend,
+            badge: sent.length,
+          },
+          {
+            path: '/signature/envelopes/completed',
+            label: 'Complété(s)',
+            icon: FiCheckCircle,
+            badge: completed.length,
+          },
+          {
+            path: '/signature/envelopes/action-required',
+            label: 'Action requise',
+            icon: FiAlertCircle,
+            badge: actionReq.length,
+          },
+          {
+            path: '/signature/envelopes/drafts',
+            label: 'Brouillons',
+            icon: FiEdit3,
+            badge: drafts.length,
+          },
+          {
+            path: '/signature/envelopes/deleted',
+            label: 'Supprimé',
+            icon: FiTrash,
+            badge: deleted.length,
+          },
+        ]);
       } catch (err) {
         logService.error('Failed to load navigation badges:', err);
       }
@@ -108,13 +91,13 @@ const SignatureLayout = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
-      <SignatureNavbar />
+      {!isMobile && <SignatureNavbar />}
 
-      <div className="flex flex-1 relative pb-14 lg:pb-0">
+      <div className="flex flex-1 relative pb-14 lg:pb-0 lg:pt-14">
         {/* Sidebar responsive */}
         <div className={`
           fixed inset-y-0 left-0 z-50 w-64 bg-white border-r border-gray-200 transform transition-transform duration-300 ease-in-out
-          lg:relative lg:translate-x-0 lg:pt-0 pt-16
+          lg:relative lg:translate-x-0 lg:pt-14 pt-0
           ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
         `}>
           {/* Header sidebar mobile */}

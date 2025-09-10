@@ -2,7 +2,8 @@
 import React, { useState } from 'react';
 import { useAuth } from '../AuthContext';
 import { useLocation, Link } from 'react-router-dom';
-import { Eye, EyeOff, Mail, Lock, CheckCircle, XCircle, Loader2 } from 'lucide-react';
+import { Mail, Lock, Loader2 } from 'lucide-react';
+import Alert from '../components/Alert';
 import { loginSchema } from '../validation/schemas';
 
 const LoginPage = () => {
@@ -10,11 +11,11 @@ const LoginPage = () => {
   const location = useLocation();
   const params = new URLSearchParams(location.search);
   const activated = params.get('activated');
+  const reset = params.get('reset');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [errors, setErrors] = useState({});
-  const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const isFormValid = loginSchema.isValidSync({ username, password });
 
@@ -60,34 +61,24 @@ const LoginPage = () => {
         <div className="bg-white py-8 px-4 shadow-xl sm:rounded-2xl sm:px-10 border border-gray-100">
           {/* Messages d'état */}
           {activated === '1' && (
-            <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-xl flex items-start space-x-3">
-              <CheckCircle className="h-5 w-5 text-green-500 mt-0.5 flex-shrink-0" />
-              <div>
-                <p className="text-sm font-medium text-green-800">Compte activé avec succès</p>
-                <p className="text-sm text-green-700">Vous pouvez maintenant vous connecter.</p>
-              </div>
-            </div>
-          )}
-          
-          {activated === '0' && (
-            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl flex items-start space-x-3">
-              <XCircle className="h-5 w-5 text-red-500 mt-0.5 flex-shrink-0" />
-              <div>
-                <p className="text-sm font-medium text-red-800">Lien d'activation invalide</p>
-                <p className="text-sm text-red-700">Veuillez vérifier votre lien ou en demander un nouveau.</p>
-              </div>
-            </div>
+            <Alert type="success">
+              Compte activé avec succès. Vous pouvez maintenant vous connecter.
+            </Alert>
           )}
 
-          {error && (
-            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl flex items-start space-x-3">
-              <XCircle className="h-5 w-5 text-red-500 mt-0.5 flex-shrink-0" />
-              <div>
-                <p className="text-sm font-medium text-red-800">Erreur de connexion</p>
-                <p className="text-sm text-red-700">{error}</p>
-              </div>
-            </div>
+          {activated === '0' && (
+            <Alert type="error">
+              Lien d'activation invalide. Veuillez vérifier votre lien ou en demander un nouveau.
+            </Alert>
           )}
+
+          {reset === '1' && (
+            <Alert type="success">
+              Mot de passe réinitialisé avec succès. Vous pouvez maintenant vous connecter.
+            </Alert>
+          )}
+
+          {error && <Alert type="error">{error}</Alert>}
 
           <form onSubmit={handleLogin} className="space-y-6">
             {/* Nom d'utilisateur */}
@@ -128,32 +119,19 @@ const LoginPage = () => {
                 </div>
                 <input
                   id="password"
-                  type={showPassword ? 'text' : 'password'}
+                  type="password"
                   autoComplete="current-password"
                   value={password}
                   onChange={(e) => {
                     setPassword(e.target.value);
                     setErrors((prev) => ({ ...prev, password: undefined }));
                   }}
-                  className="block w-full pl-10 pr-10 py-3 border border-gray-300 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition-colors"
+                  className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition-colors"
                   placeholder="Entrez votre mot de passe"
                 />
                 {errors.password && (
                   <p className="mt-1 text-sm text-red-600">{errors.password}</p>
                 )}
-                <button
-                  type="button"
-                  className="absolute inset-y-0 right-0 pr-3 flex items-center"
-                  onClick={() => setShowPassword(!showPassword)}
-                  aria-pressed={showPassword}
-                  aria-label={showPassword ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
-                >
-                  {showPassword ? (
-                    <EyeOff className="h-5 w-5 text-gray-400 hover:text-gray-600" />
-                  ) : (
-                    <Eye className="h-5 w-5 text-gray-400 hover:text-gray-600" />
-                  )}
-                </button>
               </div>
             </div>
 

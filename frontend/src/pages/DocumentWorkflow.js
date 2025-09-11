@@ -776,15 +776,15 @@ export default function DocumentWorkflow() {
       return;
     }
     const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
     const vp = pageDimensions[selectedDocId]?.[pageNumber] || { width: 600, height: 800 };
-    const pdfHeight = (vp.height / vp.width) * pdfWidth;
+    const scale = pdfWidth / vp.width;
+    const xNative = (e.clientX - rect.left) / scale;
+    const yNative = (e.clientY - rect.top) / scale;
     const normalized = {
-      x: x / pdfWidth,
-      y: y / pdfHeight,
-      width: 150 / pdfWidth,
-      height: 50 / pdfHeight,
+      x: xNative / vp.width,
+      y: yNative / vp.height,
+      width: 150 / vp.width,
+      height: 50 / vp.height,
     };
     setFields((prev) =>
       prev.filter(

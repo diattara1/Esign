@@ -111,15 +111,16 @@ export default function SelfSignWizard() {
     if (!placing) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const scale = pageScale(pageNumber);
-    const pageHeightPx = (pageDims[pageNumber]?.height || 0) * scale;
-    const x = (e.clientX - rect.left) / pageWidth;
-    const y = (e.clientY - rect.top) / pageHeightPx;
+    const natWidth = pageDims[pageNumber]?.width || 1;
+    const natHeight = pageDims[pageNumber]?.height || 1;
+    const xNative = (e.clientX - rect.left) / scale;
+    const yNative = (e.clientY - rect.top) / scale;
     setPlacement({
       page: pageNumber,
-      x,
-      y,
-      width: 160 / pageWidth,
-      height: 50 / pageHeightPx,
+      x: xNative / natWidth,
+      y: yNative / natHeight,
+      width: 160 / natWidth,
+      height: 50 / natHeight,
     });
     setPlacing(false);
     toast.success(`Zone posée p.${pageNumber}`);

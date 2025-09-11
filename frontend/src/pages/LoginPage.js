@@ -94,6 +94,9 @@ const LoginPage = () => {
                   id="username"
                   type="text"
                   autoComplete="username"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  inputMode="email"
                   value={username}
                   onChange={(e) => {
                     setUsername(e.target.value);

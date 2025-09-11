@@ -17,7 +17,17 @@ const SignaturePadComponent = ({ onEnd, onChange, initialValue, canvasProps }) =
     window.addEventListener('resize', resize);
     return () => window.removeEventListener('resize', resize);
   }, []);
-
+ // Ajuste la résolution du canvas selon le devicePixelRatio
+  useEffect(() => {
+    const canvas = sigRef.current?.getCanvas();
+    if (!canvas) return;
+    const ratio = window.devicePixelRatio || 1;
+    canvas.width = size.width * ratio;
+    canvas.height = size.height * ratio;
+    canvas.style.width = `${size.width}px`;
+    canvas.style.height = `${size.height}px`;
+    canvas.getContext('2d').scale(ratio, ratio);
+  }, [size]);
   // Charge une valeur initiale (dataURL) si fournie
   useEffect(() => {
     if (!sigRef.current) return;

@@ -204,7 +204,7 @@ const MobilePagination = ({ currentPage, totalPages, onPageChange }) => (
       <button
         onClick={() => onPageChange(currentPage - 1)}
         disabled={currentPage === 1}
-        className="flex items-center px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+        className="flex items-center px-3 py-2 h-11 min-h-[44px] min-w-[44px] text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
       >
         <FiChevronLeft className="w-4 h-4 mr-1" />
         Précédent
@@ -217,7 +217,7 @@ const MobilePagination = ({ currentPage, totalPages, onPageChange }) => (
       <button
         onClick={() => onPageChange(currentPage + 1)}
         disabled={currentPage === totalPages}
-        className="flex items-center px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+        className="flex items-center px-3 py-2 h-11 min-h-[44px] min-w-[44px] text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
       >
         Suivant
         <FiChevronRight className="w-4 h-4 ml-1" />

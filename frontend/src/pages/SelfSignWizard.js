@@ -7,7 +7,7 @@ import { FiUpload } from 'react-icons/fi';
 import DraggableSignature from '../components/DraggableSignature';
 import signatureService from '../services/signatureService';
 import SignatureModal from '../components/SignatureModal';
-import { fileToPngDataURL, blobToPngDataURL, savedSignatureImageUrl, fetchSavedSignatureAsDataURL } from '../utils/signatureUtils';
+import { fileToPngDataURL, blobToPngDataURL, savedSignatureImageUrl, fetchSavedSignatureAsDataURL, toBase64 } from '../utils/signatureUtils';
 import SignatureHeader from '../components/SignatureHeader';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
@@ -162,7 +162,7 @@ export default function SelfSignWizard() {
     const fd = new FormData();
     fd.append('files[]', file);
     fd.append('placements', JSON.stringify([placement]));
-    fd.append('signature_image', sigDataUrl);        // data:image/png;base64,...
+    fd.append('signature_image', toBase64(sigDataUrl));        // data:image/png;base64,...
     fd.append('sync', 'true');
     fd.append('include_qr', includeQr ? 'true' : 'false');
 

@@ -66,9 +66,16 @@ export const fetchSavedSignatureAsDataURL = async (sig) => {
   return blobToPngDataURL(await res.blob());
 };
 
+export const toBase64 = (val) => {
+  if (typeof val !== 'string') return '';
+  const m = val.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
+  return m ? m[2] : val;
+};
+
 export default {
   fileToPngDataURL,
   blobToPngDataURL,
   savedSignatureImageUrl,
   fetchSavedSignatureAsDataURL,
+  toBase64,
 };

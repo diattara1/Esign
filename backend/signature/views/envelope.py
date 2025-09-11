@@ -21,7 +21,13 @@ from django.views.decorators.clickjacking import xframe_options_exempt
 from django.db.models import Q
 import io,qrcode,logging,jwt,base64,uuid
 from django.conf import settings
-from ..tasks import send_signature_email,send_document_completed_notification,send_signed_pdf_to_all_signers
+from distutils.util import strtobool
+from ..tasks import (
+    send_signature_email,
+    send_document_completed_notification,
+    send_signed_pdf_to_all_signers,
+    _add_qr_overlay_all_pages,
+)
 from ..otp import generate_otp, validate_otp, send_otp
 from ..hsm import hsm_sign
 from jwt import InvalidTokenError, ExpiredSignatureError
@@ -298,7 +304,16 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
         if not envelope.recipients.exists():
             return Response({'error': 'Aucun destinataire configuré'}, status=400)
         if 'include_qr_code' in request.data:
-            envelope.include_qr_code = bool(request.data.get('include_qr_code'))
+            raw_val = request.data.get('include_qr_code')
+            try:
+                envelope.include_qr_code = bool(strtobool(str(raw_val)))
+            except ValueError:
+                return Response(
+                    {
+                        'error': "include_qr_code doit être un booléen valide",
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
  
         if not envelope.deadline_at:
             envelope.deadline_at = timezone.now() + timezone.timedelta(days=7)
@@ -799,8 +814,8 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
                         img.save(buf, format="PNG")
                         qr_png = buf.getvalue()
         
-                        # Apposer le QR sur toutes les pages
-                        stamped = self._add_qr_overlay_to_pdf(pdf_bytes_for_overlay, qr_png)
+                        # Apposer le QR sur toutes les pages via l'utilitaire commun
+                        stamped = _add_qr_overlay_all_pages(pdf_bytes_for_overlay, qr_png)
         
                         # Re-signer/sceller le PDF après overlay
                         final_signed = sign_pdf_bytes(stamped, field_name="FinalizeQR")
@@ -886,48 +901,7 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
             reminders_sent += 1
 
         return Response({'reminders': reminders_sent}, status=status.HTTP_200_OK)
-    
-    @staticmethod
-    def _add_qr_overlay_to_pdf(pdf_bytes: bytes, qr_png_bytes: bytes, *, size_pt=50, margin_pt=13, y_offset=-5):
-        """
-        Ajoute un QR code en bas à droite du PDF, plus petit et légèrement plus bas.
-        - size_pt : taille du QR code (par défaut 60pt ≈ 0.8cm)
-        - margin_pt : marge avec le bord droit
-        - y_offset : permet de descendre un peu plus le QR (valeur négative -> plus bas)
-        """
-        base_reader = PdfReader(io.BytesIO(pdf_bytes))
-        writer = PdfWriter()
-    
-        for page in base_reader.pages:
-            w = float(page.mediabox.width)
-            h = float(page.mediabox.height)
-    
-            buf = io.BytesIO()
-            c = canvas.Canvas(buf, pagesize=(w, h))
-    
-            # position : coin bas droit avec offset
-            x = w - margin_pt - size_pt
-            y = margin_pt + y_offset
-    
-            c.drawImage(
-                ImageReader(io.BytesIO(qr_png_bytes)),
-                x, y,
-                width=size_pt, height=size_pt,
-                mask='auto'
-            )
-            c.showPage()
-            c.save()
-            buf.seek(0)
-    
-            overlay_pdf = PdfReader(buf)
-            page.merge_page(overlay_pdf.pages[0])
-            writer.add_page(page)
-    
-        out = io.BytesIO()
-        writer.write(out)
-        return out.getvalue()
-    
-    
+
 
     def _add_signature_overlay_to_pdf(self, pdf_bytes, signature_data, x, y_top, w, h, page_ix):
         """Version améliorée qui préserve TOUJOURS les signatures existantes"""

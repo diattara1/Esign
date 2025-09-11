@@ -644,8 +644,9 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
             .first()
         )
         if latest and latest.signed_file:
-            with latest.signed_file.open('rb') as bf:
+            with latest.signed_file.storage.open(latest.signed_file.name, 'rb') as bf:
                 base_bytes = bf.read()
+
             logger.info(f"_do_sign: base = dernier PDF signé (SignatureDocument {latest.id})")
         else:
             doc = envelope.document_file or (
@@ -790,8 +791,12 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
                     already_qr = bool((sig_doc.certificate_data or {}).get("qr_embedded"))
                     if not already_qr:
                         # Lire les octets du PDF signé actuel (nécessaire pour l'overlay)
-                        with sig_doc.signed_file.open("rb") as f:
-                            pdf_bytes_for_overlay = f.read()
+                        with sig_doc.signed_file.storage.open(sig_doc.signed_file.name, "rb") as fh:
+                            pdf_bytes_for_overlay = fh.read()
+
+                        
+
+
         
                         # Générer le PNG du QR
                         img = qrcode.make(verify_url)

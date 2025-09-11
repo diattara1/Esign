@@ -298,7 +298,12 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
         if not envelope.recipients.exists():
             return Response({'error': 'Aucun destinataire configuré'}, status=400)
         if 'include_qr_code' in request.data:
-            envelope.include_qr_code = bool(request.data.get('include_qr_code'))
+            envelope.include_qr_code = str(request.data.get('include_qr_code')).lower() in (
+                "1",
+                "true",
+                "yes",
+                "on",
+            )
  
         if not envelope.deadline_at:
             envelope.deadline_at = timezone.now() + timezone.timedelta(days=7)

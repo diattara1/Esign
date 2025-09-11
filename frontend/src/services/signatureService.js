@@ -84,17 +84,20 @@ export default {
     ),
 
   // ─── Signing ────────────────────────────────────────────────────────
-  signGuest: (id, body, token) => {
+  signGuest: (id, body, token, include_qr) => {
     const cfg = token ? { headers: { 'X-Signature-Token': token } } : undefined;
+    const payload = include_qr === undefined ? body : { ...body, include_qr };
     // backend renvoie du JSON -> pas de responseType: 'blob'
-    return apiRequest('post', `${BASE}/envelopes/${id}/sign/`, body, cfg, "Impossible de signer l'enveloppe en tant qu'invité");
+    return apiRequest('post', `${BASE}/envelopes/${id}/sign/`, payload, cfg, "Impossible de signer l'enveloppe en tant qu'invité");
   },
 
-  signAuthenticated: (id, body) =>
-    apiRequest('post', `${BASE}/envelopes/${id}/sign_authenticated/`, body, undefined, "Impossible de signer l'enveloppe"),
+  signAuthenticated: (id, body, include_qr) => {
+    const payload = include_qr === undefined ? body : { ...body, include_qr };
+    return apiRequest('post', `${BASE}/envelopes/${id}/sign_authenticated/`, payload, undefined, "Impossible de signer l'enveloppe");
+  },
 
-  sign(id, body, token) {
-    return token ? this.signGuest(id, body, token) : this.signAuthenticated(id, body);
+  sign(id, body, token, include_qr) {
+    return token ? this.signGuest(id, body, token, include_qr) : this.signAuthenticated(id, body, include_qr);
   },
 // Demande d'email de réinitialisation
 requestPasswordReset: (email) =>

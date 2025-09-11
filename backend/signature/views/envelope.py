@@ -558,6 +558,10 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
 
         signature_data = request.data.get('signature_data')
         signed_fields = request.data.get('signed_fields') or {}
+        include_qr = request.data.get('include_qr')
+        if include_qr is not None:
+            envelope.include_qr_code = bool(include_qr)
+            envelope.save(update_fields=["include_qr_code"])
         if not signature_data or not signed_fields:
             return Response({'error': 'signature_data et signed_fields requis'}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -578,6 +582,10 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
         envelope = self.get_object()
         signature_data = request.data.get('signature_data')
         signed_fields = request.data.get('signed_fields') or {}
+        include_qr = request.data.get('include_qr')
+        if include_qr is not None:
+            envelope.include_qr_code = bool(include_qr)
+            envelope.save(update_fields=["include_qr_code"])
 
         try:
             recipient = envelope.recipients.get(user=request.user)

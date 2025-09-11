@@ -93,6 +93,7 @@ export default function DocumentSign() {
   const [signatureData, setSignatureData] = useState({}); // {fieldId: dataURL}
   const [savedSignatures, setSavedSignatures] = useState([]);
   const [savedSelectedIds, setSavedSelectedIds] = useState({});
+  const [includeQr, setIncludeQr] = useState(true);
 
   // Helpers URL absolue + PDF invité
   const toAbsolute = (url) => {
@@ -277,7 +278,12 @@ export default function DocumentSign() {
     try {
       const signedFields = envelope.fields.reduce((acc, f) => { acc[f.id] = { ...f, signed: f.signed }; return acc; }, {});
       const normalizedSigData = normalizeAllSignatures(signatureData);
-      await signatureService.sign(id, { signature_data: normalizedSigData, signed_fields: signedFields }, isGuest ? token : undefined);
+      await signatureService.sign(
+        id,
+        { signature_data: normalizedSigData, signed_fields: signedFields },
+        isGuest ? token : undefined,
+        includeQr
+      );
       toast.success('Document signé');
       if (isGuest) navigate(`/signature/guest/success?id=${id}&token=${token}`, { state: { id, token } });
       else navigate('/signature/success', { state: { id } });
@@ -496,7 +502,16 @@ export default function DocumentSign() {
           <div className="p-3 md:p-6">
             {renderPdfViewer()}
             {!isAlreadySigned && ((!isGuest) || otpVerified) && (
-              <div className="mt-6 flex justify-center">
+              <div className="mt-6 flex flex-col items-center space-y-4">
+                <label className="inline-flex items-center gap-2 text-sm text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={includeQr}
+                    onChange={(e) => setIncludeQr(e.target.checked)}
+                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  Apposer un code QR (recommandé)
+                </label>
                 <button
                   onClick={handleSign}
                   disabled={!canSign() || signing}

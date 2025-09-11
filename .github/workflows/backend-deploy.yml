@@ -1,0 +1,63 @@
+name: Deploy Backend to VPS
+
+on:
+  push:
+    branches: [ main ]    # change si ta branche s’appelle autrement
+    paths:
+      - "backend/**"
+      - "docker-compose.yml"
+      - "Caddyfile"
+      - ".github/workflows/backend-deploy.yml"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Prepare SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "${{ secrets.VPS_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Rsync backend code to VPS (exclude secrets & media)
+        run: |
+          rsync -avz --delete \
+            --exclude '.env' \
+            --exclude 'media/' \
+            --exclude 'certs/' \
+            backend/ ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:${{ secrets.VPS_PATH }}/backend/
+
+      - name: Sync infra files (compose & Caddyfile)
+        run: |
+          rsync -avz docker-compose.yml ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:${{ secrets.VPS_PATH }}/
+          rsync -avz Caddyfile          ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:${{ secrets.VPS_PATH }}/
+
+      - name: Remote build & deploy (compose up)
+        run: |
+          ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} '
+            set -e
+            cd "${{ secrets.VPS_PATH }}"
+            docker compose up -d --build backend celery-worker celery-beat caddy
+          '
+
+      - name: Run migrations
+        run: |
+          ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} '
+            set -e
+            cd "${{ secrets.VPS_PATH }}"
+            docker compose exec -T backend python manage.py migrate
+          '
+
+      # Optionnel: collectstatic si tu utilises Whitenoise pour des assets
+      # - name: Collect static
+      #   run: |
+      #     ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} '
+      #       set -e
+      #       cd "${{ secrets.VPS_PATH }}"
+      #       docker compose exec -T backend python manage.py collectstatic --noinput
+      #     '

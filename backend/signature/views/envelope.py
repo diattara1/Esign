@@ -773,46 +773,47 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
         
             # 3b) Si c'était le DERNIER signataire : apposer le QR + re-scellement
             if envelope.include_qr_code and not envelope.recipients.filter(signed=False).exists():
+                logger.info(f"[QR] dernier signataire atteint pour envelope {envelope.id}, application du QR")
                 try:
                     # Générer / réutiliser un QR permanent
                     qr = envelope.qr_codes.filter(qr_type="permanent").first()
                     if not qr:
                         qr = PrintQRCode.objects.create(envelope=envelope, qr_type="permanent")
-        
+
                     # Construire URL FRONT propre
                     front_base = getattr(settings, "FRONT_BASE_URL", "").rstrip("/")
                     if front_base:
                         verify_url = f"{front_base}/verify/{qr.uuid}?sig={qr.hmac}"
                     else:
                         verify_url = self.request.build_absolute_uri(f"/verify/{qr.uuid}?sig={qr.hmac}")
-        
+
                     # Anti-doublon: si déjà posé/scellé, ne pas recommencer
                     already_qr = bool((sig_doc.certificate_data or {}).get("qr_embedded"))
                     if not already_qr:
                         # Lire les octets du PDF signé actuel (nécessaire pour l'overlay)
                         with sig_doc.signed_file.open("rb") as f:
                             pdf_bytes_for_overlay = f.read()
-        
+
                         # Générer le PNG du QR
                         img = qrcode.make(verify_url)
                         buf = io.BytesIO()
                         img.save(buf, format="PNG")
                         qr_png = buf.getvalue()
-        
+
                         # Apposer le QR sur toutes les pages
                         stamped = self._add_qr_overlay_to_pdf(pdf_bytes_for_overlay, qr_png)
-        
+
                         # Re-signer/sceller le PDF après overlay
                         final_signed = sign_pdf_bytes(stamped, field_name="FinalizeQR")
-        
+
                         # Sauvegarder le PDF final (en gardant le même AAD)
                         sig_doc.signed_file.save(file_name, AADContentFile(final_signed, aad), save=True)
-        
+
                         # Recalculer les empreintes (streaming) + infos certificat
                         try:
                             hashes = stream_hash(sig_doc.signed_file, want_md5=True)
                             cert_info = extract_signer_certificate_info()
-        
+
                             sig_doc.certificate_data = {
                                 **(sig_doc.certificate_data or {}),
                                 "hash_sha256": hashes.get("hash_sha256"),
@@ -821,10 +822,12 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
                                 "qr_embedded": True,
                             }
                             sig_doc.save(update_fields=["certificate_data"])
+                            logger.info(f"[QR] QR appliqué sur l'enveloppe {envelope.id}")
                         except Exception:
                             logger.exception("Impossible de recalculer les empreintes (stream) après overlay")
                 except Exception as e:
                     logger.exception(f"QR overlay/scellage échoué: {e}")
+                    raise
         
             # 4) Mettre à jour le statut de l'enveloppe
             unsigned_exists = envelope.recipients.filter(signed=False).exists()

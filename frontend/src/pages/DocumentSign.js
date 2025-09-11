@@ -66,6 +66,7 @@ export default function DocumentSign() {
   // État signature globale
   const [isAlreadySigned, setIsAlreadySigned] = useState(false);
   const [signing, setSigning] = useState(false);
+  const [reloadingPdf, setReloadingPdf] = useState(false);
 
   // OTP invité
   const [otp, setOtp] = useState('');
@@ -278,11 +279,38 @@ export default function DocumentSign() {
       const signedFields = envelope.fields.reduce((acc, f) => { acc[f.id] = { ...f, signed: f.signed }; return acc; }, {});
       const normalizedSigData = normalizeAllSignatures(signatureData);
       await signatureService.sign(id, { signature_data: normalizedSigData, signed_fields: signedFields }, isGuest ? token : undefined);
+
+      if (envelope?.include_qr_code) {
+        setReloadingPdf(true);
+        try {
+          let blobUrl;
+          if (isGuest) {
+            const fallback = envelope?.document_url || signatureService.getDecryptedDocumentUrl(id, token);
+            blobUrl = await loadGuestPdfForDoc(selectedDoc?.id, fallback);
+          } else if (selectedDoc) {
+            blobUrl = await signatureService.fetchDocumentBlob(id, selectedDoc.id);
+          } else {
+            const { download_url } = await signatureService.downloadEnvelope(id);
+            blobUrl = download_url;
+          }
+          setPdfUrl(blobUrl);
+        } catch (err) {
+          logService.error('Erreur récupération PDF final:', err);
+          toast.error('Impossible de récupérer le PDF signé');
+        } finally {
+          setReloadingPdf(false);
+        }
+      }
+
       toast.success('Document signé');
       if (isGuest) navigate(`/signature/guest/success?id=${id}&token=${token}`, { state: { id, token } });
       else navigate('/signature/success', { state: { id } });
-    } catch (e) { logService.error(e); toast.error(e?.response?.data?.error || 'Erreur lors de la signature'); }
-    finally { setSigning(false); }
+    } catch (e) {
+      logService.error(e);
+      toast.error(e?.response?.data?.error || 'Erreur lors de la signature');
+    } finally {
+      setSigning(false);
+    }
   };
 
   // ----------------------------- PDF RENDERER ------------------------------
@@ -502,7 +530,7 @@ export default function DocumentSign() {
                   disabled={!canSign() || signing}
                   className="w-full sm:w-auto px-6 py-3 bg-blue-600 text-white font-semibold rounded shadow disabled:opacity-50"
                 >
-                  {signing ? 'Signature…' : 'Signer'}
+                  {signing ? (reloadingPdf ? 'Finalisation…' : 'Signature…') : 'Signer'}
                 </button>
               </div>
             )}

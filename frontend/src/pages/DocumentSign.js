@@ -466,7 +466,7 @@ export default function DocumentSign() {
       <div className="flex-1 flex overflow-hidden">
         {/* Drawer / Sidebar */}
         {isMobile && (
-          <div className={`fixed inset-0 z-40 ${sidebarOpen ? '' : 'pointer-events-none'}`}>
+          <div className={`fixed inset-0 top-16 z-40 ${sidebarOpen ? '' : 'pointer-events-none'}`}>
             <div className={`absolute inset-0 bg-black/50 transition-opacity ${sidebarOpen ? 'opacity-100' : 'opacity-0'}`} onClick={() => setSidebarOpen(false)} />
             <aside className={`absolute inset-y-0 left-0 w-full max-w-sm bg-white border-r shadow-xl transform transition-transform ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
               <Sidebar />

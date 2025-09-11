@@ -442,8 +442,17 @@ export default function DocumentSign() {
           )}
           {otpSent && !otpVerified && (
             <>
-              <input type="text" value={otp} onChange={(e) => setOtp(e.target.value)} placeholder="Code OTP" className="w-full border p-2 rounded" disabled={cooldownUntil && cooldownUntil > Date.now()} />
-              <div role="status" aria-live="polite" className="text-sm">
+               <input
+                type="tel"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                autoComplete="one-time-code"
+                value={otp}
+                onChange={(e) => setOtp(e.target.value)}
+                placeholder="Code OTP"
+                className="w-full border p-2 rounded"
+                disabled={cooldownUntil && cooldownUntil > Date.now()}
+              /><div role="status" aria-live="polite" className="text-sm">
                 {otpError && <p className="text-red-600">{otpError}</p>}
                 {otpStatus && <p className="text-gray-600">{otpStatus}</p>}
               </div>

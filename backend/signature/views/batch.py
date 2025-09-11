@@ -91,11 +91,18 @@ def _paste_signature_on_pdf(pdf_bytes: bytes, sig_img_bytes: bytes, placements: 
     return buf.getvalue()
 
 
-def _crypto_sign_pdf(pdf_bytes: bytes, field_name: str | None = None) -> bytes:
-    """
-    Implémentation réelle de la signature numérique PAdES (util commun).
-    """
-    return sign_pdf_bytes(pdf_bytes, field_name=field_name)
+def _crypto_sign_pdf(
+    pdf_bytes: bytes,
+    field_name: str | None = None,
+    *,
+    appearance_image_b64: str | None = None,
+) -> bytes:
+    """Implémentation réelle de la signature numérique PAdES (util commun)."""
+    return sign_pdf_bytes(
+        pdf_bytes,
+        field_name=field_name,
+        appearance_image_b64=appearance_image_b64,
+    )
 
 
 def _add_qr_overlay_all_pages(pdf_bytes: bytes, qr_png_bytes: bytes, size_pt=50, margin_pt=13, y_offset=-5) -> bytes:
@@ -182,6 +189,7 @@ class SelfSignView(APIView):
             out = io.BytesIO()
             im.save(out, format="PNG")
             sig_img_bytes = out.getvalue()
+            sig_b64 = base64.b64encode(sig_img_bytes).decode()
         except UnidentifiedImageError:
             return Response({"error": "format de signature non supporté"}, status=400)
 
@@ -201,7 +209,11 @@ class SelfSignView(APIView):
 
         # 4) apposer l'image puis signer (PAdES) — 1er scellement
         stamped = _paste_signature_on_pdf(pdf_src, sig_img_bytes, placements)
-        signed = _crypto_sign_pdf(stamped, field_name="SelfSign")
+        signed = _crypto_sign_pdf(
+            stamped,
+            field_name="SelfSign",
+            appearance_image_b64=sig_b64,
+        )
 
                 # -- Apposer un QR standard (uuid + hmac) et renvoyer le même flux que les enveloppes --
         include_qr = str(request.data.get("include_qr", "true")).lower() in ("1","true","yes","on")

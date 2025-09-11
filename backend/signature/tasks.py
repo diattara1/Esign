@@ -234,7 +234,12 @@ def _normalize_signature_to_png_bytes(buf: bytes) -> bytes:
     return out.getvalue()
 
 
-def _crypto_sign_pdf(pdf_bytes: bytes, field_name: str | None = None) -> bytes:
+def _crypto_sign_pdf(
+    pdf_bytes: bytes,
+    field_name: str | None = None,
+    *,
+    appearance_image_b64: str | None = None,
+) -> bytes:
     """Proxy vers sign_pdf_bytes en rechargeant le module (worker long-lived)."""
     from importlib import reload
     from . import crypto_utils as cu
@@ -243,7 +248,11 @@ def _crypto_sign_pdf(pdf_bytes: bytes, field_name: str | None = None) -> bytes:
         reload(cu)
     except ImportError as exc:
         logging.exception("Failed to reload crypto_utils: %s", exc)
-    return cu.sign_pdf_bytes(pdf_bytes, field_name=field_name)
+    return cu.sign_pdf_bytes(
+        pdf_bytes,
+        field_name=field_name,
+        appearance_image_b64=appearance_image_b64,
+    )
 
 
 def _load_signature(job, use_saved_signature_id=None, signature_upload_path=None) -> bytes:
@@ -279,9 +288,18 @@ def _apply_visual_signature(pdf_src: bytes, sig_bytes: bytes, placements: list) 
     return _paste_signature_on_pdf(pdf_src, sig_bytes, placements)
 
 
-def _apply_digital_signature(pdf_bytes: bytes, field_name: str) -> bytes:
+def _apply_digital_signature(
+    pdf_bytes: bytes,
+    field_name: str,
+    *,
+    appearance_image_b64: str | None = None,
+) -> bytes:
     """Signe numériquement le PDF."""
-    return _crypto_sign_pdf(pdf_bytes, field_name=field_name)
+    return _crypto_sign_pdf(
+        pdf_bytes,
+        field_name=field_name,
+        appearance_image_b64=appearance_image_b64,
+    )
 
 
 def _generate_qr(job, name: str, placements: list, signed_bytes: bytes) -> bytes:
@@ -404,6 +422,7 @@ def process_batch_sign_job(
             use_saved_signature_id=use_saved_signature_id,
             signature_upload_path=signature_upload_path,
         )
+        sig_b64 = base64.b64encode(sig_bytes).decode()
     except Exception:
         job.status = "failed"
         job.finished_at = timezone.now()
@@ -445,7 +464,11 @@ def process_batch_sign_job(
             stamped = _apply_visual_signature(pdf_src, sig_bytes, placements)
 
             # Signature numérique PAdES (scellé 1)
-            signed_bytes = _apply_digital_signature(stamped, field_name=f"Batch_{item.id}")
+            signed_bytes = _apply_digital_signature(
+                stamped,
+                field_name=f"Batch_{item.id}",
+                appearance_image_b64=sig_b64,
+            )
 
             final_bytes = signed_bytes
             base_name = (name.rsplit(".", 1)[0] or "document")

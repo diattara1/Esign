@@ -722,6 +722,7 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
                 location="Plateforme IntelliVibe",
                 rect=rect_crypto,
                 page_ix=page_ix,
+                appearance_image_b64=img_for_this_field,
             )
     
             logger.info(f"_do_sign: champ {i+1}/{len(my_fields_meta)} traité avec succès")

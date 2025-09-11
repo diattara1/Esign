@@ -198,7 +198,12 @@ export default function SelfSignWizard() {
         toggleSidebar={() => {}}
       />
 
-      <div className="flex-1 overflow-auto bg-gray-100" ref={viewerRef} style={isProcessing ? { pointerEvents: 'none', filter: 'grayscale(0.2)', opacity: 0.7 } : {}}>
+      <div className="flex flex-col md:flex-row flex-1">
+        <div
+          className="order-1 md:order-2 flex-1 overflow-auto bg-gray-100"
+          ref={viewerRef}
+          style={isProcessing ? { pointerEvents: 'none', filter: 'grayscale(0.2)', opacity: 0.7 } : {}}
+        >
         {!pdfUrl ? (
           <div className="flex items-center justify-center h-full p-6 text-center">
             <div>
@@ -249,7 +254,7 @@ export default function SelfSignWizard() {
         )}
       </div>
 
-      <div className="border-t bg-white p-4 space-y-4">
+      <div className="order-2 md:order-1 border-t bg-white p-4 space-y-4 md:w-64 md:border-r md:border-t-0">
         {step === 0 && (
           <div className="text-center">
             <label className="block text-sm font-medium text-gray-700 mb-2">PDF</label>
@@ -287,8 +292,9 @@ export default function SelfSignWizard() {
           </div>
         )}
       </div>
+    </div>
 
-      {isProcessing && (
+    {isProcessing && (
         <div className="fixed inset-0 z-[1000] bg-black/50 backdrop-blur-sm flex items-center justify-center">
           <div className="bg-white rounded-xl shadow-xl p-6 w-80 text-center">
             <div className="mx-auto mb-4 w-10 h-10 border-4 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>

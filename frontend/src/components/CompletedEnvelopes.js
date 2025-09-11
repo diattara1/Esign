@@ -69,12 +69,10 @@ const CompletedEnvelopes = () => {
     return (
       <div className="flex items-start space-x-3">
         <div className="flex-shrink-0">
-          <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
-            <FileText className="w-5 h-5 text-green-600" />
-          </div>
+          <div className="text-sm font-semibold text-gray-900 truncate">{row.title}</div>
         </div>
         <div className="flex-1 min-w-0">
-          <div className="text-sm font-semibold text-gray-900 truncate">{row.title}</div>
+          
           <div className="flex items-center text-xs text-gray-500 mt-1">
             <User className="w-3 h-3 mr-1" />
             <span>Initiateur: {row.created_by_name || 'Non spécifié'}</span>

@@ -101,7 +101,7 @@ const Table = ({
 
               {/* Actions en bas de carte */}
               {columns.find((c) => c.Header === 'Actions') && (
-                <div className="pt-3 border-t border-gray-100">
+                <div className="pt-3 border-t border-gray-100 flex justify-end">
                   {(() => {
                     const actionCol = columns.find((c) => c.Header === 'Actions');
                     return actionCol?.Cell?.({

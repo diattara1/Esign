@@ -66,7 +66,7 @@ const DeletedEnvelopes = () => {
         <EmptyState
           message="Aucune enveloppe supprimée"
           actionLabel="Créer une enveloppe"
-          onAction={() => navigate('/signature/new')}
+          onAction={() => navigate("/signature/upload")}
         />
       }
     />

@@ -300,7 +300,7 @@ const CompletedEnvelopes = () => {
             <EmptyState
               message="Aucune enveloppe complétée trouvée"
               actionLabel="Créer une enveloppe"
-              onAction={() => navigate('/signature/new')}
+              onAction={() => navigate("/signature/upload")}
             />
           }
           containerClassName="rounded-lg "

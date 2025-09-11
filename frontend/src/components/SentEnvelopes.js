@@ -171,7 +171,7 @@ const SentEnvelopes = () => {
           <EmptyState
             message="Aucune enveloppe envoyée"
             actionLabel="Créer une enveloppe"
-            onAction={() => navigate('/signature/new')}
+            onAction={() => navigate("/signature/upload")}
           />
         }
         // Laisse Table gérer la responsivité: cartes sur mobile, tableau sur desktop

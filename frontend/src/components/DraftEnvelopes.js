@@ -109,7 +109,7 @@ const DraftEnvelopes = () => {
           <EmptyState
             message="Aucun brouillon disponible"
             actionLabel="Créer une enveloppe"
-            onAction={() => navigate('/signature/new')}
+            onAction={() => navigate("/signature/upload")}
           />
         }
       />

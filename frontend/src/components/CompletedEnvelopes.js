@@ -9,6 +9,7 @@ import slugify from 'slugify';
 import { useNavigate } from "react-router-dom";
 import logService from '../services/logService';
 import ConfirmDialog from './ConfirmDialog';
+import useIsMobile from '../hooks/useIsMobile';
 
 
 
@@ -18,6 +19,7 @@ const CompletedEnvelopes = () => {
   const [menuOpenId, setMenuOpenId] = useState(null);
   const [confirmId, setConfirmId] = useState(null);
   const menuButtonRef = useRef(null);
+  const isMobile = useIsMobile();
 
   const closeMenu = () => {
     setMenuOpenId(null);
@@ -65,20 +67,24 @@ const CompletedEnvelopes = () => {
   }, [menuOpenId]);
 
   const DocumentCell = ({ row }) => {
-    
+
     return (
       <div className="flex items-start space-x-3">
-        <div className="flex-shrink-0">
-          <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
-            <FileText className="w-5 h-5 text-green-600" />
+        {!isMobile && (
+          <div className="flex-shrink-0">
+            <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
+              <FileText className="w-5 h-5 text-green-600" />
+            </div>
           </div>
-        </div>
+        )}
         <div className="flex-1 min-w-0">
           <div className="text-sm font-semibold text-gray-900 truncate">{row.title}</div>
-          <div className="flex items-center text-xs text-gray-500 mt-1">
-            <User className="w-3 h-3 mr-1" />
-            <span>Initiateur: {row.created_by_name || 'Non spécifié'}</span>
-          </div>
+          {!isMobile && (
+            <div className="flex items-center text-xs text-gray-500 mt-1">
+              <User className="w-3 h-3 mr-1" />
+              <span>Initiateur: {row.created_by_name || 'Non spécifié'}</span>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -90,22 +96,28 @@ const CompletedEnvelopes = () => {
         <CheckCircle className="w-3 h-3 mr-1" />
         Complété
       </span>
-      <div className="text-xs text-gray-500">
-        {row.recipients ? `${row.recipients.filter(r => r.signed).length}/${row.recipients.length} signatures` : ''}
-      </div>
+      {!isMobile && (
+        <div className="text-xs text-gray-500">
+          {row.recipients ? `${row.recipients.filter(r => r.signed).length}/${row.recipients.length} signatures` : ''}
+        </div>
+      )}
     </div>
   );
 
   const DateCell = ({ value }) => {
     if (!value) return <span className="text-gray-400">-</span>;
-    
+
     const date = new Date(value);
     return (
       <div className="flex items-center text-sm text-gray-700">
         <Calendar className="w-4 h-4 mr-2 text-gray-400" />
         <div>
           <div>{date.toLocaleDateString('fr-FR')}</div>
-          <div className="text-xs text-gray-500">{date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</div>
+          {!isMobile && (
+            <div className="text-xs text-gray-500">
+              {date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+            </div>
+          )}
         </div>
       </div>
     );

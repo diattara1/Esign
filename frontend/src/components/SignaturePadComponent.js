@@ -31,6 +31,7 @@ const SignaturePadComponent = ({ onEnd, onChange, initialValue, canvasProps }) =
   // Charge une valeur initiale (dataURL) si fournie
   useEffect(() => {
     if (!sigRef.current) return;
+    sigRef.current.off();
     sigRef.current.clear();
     if (initialValue) {
       try {
@@ -39,11 +40,13 @@ const SignaturePadComponent = ({ onEnd, onChange, initialValue, canvasProps }) =
         logService.error('Erreur lors du chargement de la signature :', error);
       }
     }
+    sigRef.current.on();
   }, [initialValue, size]);
 
   // Nettoyage à l’unmount uniquement
   useEffect(() => {
     return () => {
+      sigRef.current?.off();
       sigRef.current?.clear();
     };
   }, []);
@@ -66,7 +69,7 @@ const SignaturePadComponent = ({ onEnd, onChange, initialValue, canvasProps }) =
         maxWidth={2.5}
         velocityFilterWeight={0.7}
         minDistance={0}           // 0 = plus fluide (au prix de plus d’échantillons)
-        throttle={16}             // ~1 frame à 60fps
+        throttle={0}             
         // Important: ne rien faire en onBegin (pas de setState ici)
         onBegin={() => {}}
         onEnd={handleEnd}

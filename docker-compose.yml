@@ -1,4 +1,3 @@
-version: "3.9"
 services:
   postgres:
     image: postgres:15
@@ -42,7 +41,6 @@ services:
     ports:
       - "8080:80"
     networks: [esign]
-
 volumes:
   pgdata:
 

@@ -170,3 +170,15 @@ class ClearAuthCookiesMiddleware:
             response.delete_cookie("access_token", samesite="None", secure=True)
             response.delete_cookie("refresh_token", samesite="None", secure=True)
         return response
+
+class CORPMiddleware:
+    """
+    Middleware pour ajouter Cross-Origin-Resource-Policy header
+    """
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        response = self.get_response(request)
+        response['Cross-Origin-Resource-Policy'] = 'same-origin'
+        return response

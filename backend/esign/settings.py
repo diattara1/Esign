@@ -172,7 +172,8 @@ else:
         CSRF_TRUSTED_ORIGINS.append(_front_origin)
 # Security headers
 SECURE_CONTENT_TYPE_NOSNIFF = True
-SECURE_REFERRER_POLICY = "same-origin"
+SECURE_REFERRER_POLICY = "strict-origin-when-cross-origin"
+
 SECURE_CROSS_ORIGIN_OPENER_POLICY = "same-origin"
 
 if not DEBUG:

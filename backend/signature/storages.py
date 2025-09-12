@@ -99,6 +99,22 @@ class EncryptedFileSystemStorage(FileSystemStorage):
         valid_name = self.get_valid_name(name)
         final_name = self.get_available_name(valid_name)
 
+        # Validation extension/MIME/taille pour les PDFs
+        ext = os.path.splitext(final_name)[1].lower()
+        content_type = (getattr(content, "content_type", "") or "").split(";")[0].lower()
+        is_pdf = ext == ".pdf" or content_type in {"application/pdf", "application/x-pdf"}
+        max_pdf_size = getattr(settings, "MAX_PDF_SIZE", 10 * 1024 * 1024)
+        size_attr = getattr(content, "size", None)
+        if is_pdf:
+            if ext != ".pdf":
+                raise ValidationError("Extension .pdf requise pour les documents PDF.")
+            if content_type and content_type not in {"application/pdf", "application/x-pdf"}:
+                raise ValidationError("Type MIME non autorisé (application/pdf attendu).")
+            if size_attr is not None and size_attr > max_pdf_size:
+                raise ValidationError(
+                    f"Fichier trop volumineux (max {max_pdf_size // (1024 * 1024)}MB)"
+                )
+
         # --- Assurer qu'on peut lire depuis le début, même si le fichier a été fermé en amont
         def _rewind_or_reopen(f):
             try:
@@ -135,6 +151,7 @@ class EncryptedFileSystemStorage(FileSystemStorage):
         chunk_size = 1024 * 1024  # 1 Mo
         first_chunk = True
         ciphertext = bytearray()
+        total_size = 0
 
         # Générer DEK & IV
         dek = os.urandom(32)
@@ -150,6 +167,11 @@ class EncryptedFileSystemStorage(FileSystemStorage):
             chunk = content.read(chunk_size)
             if not chunk:
                 break
+            total_size += len(chunk)
+            if is_pdf and size_attr is None and total_size > max_pdf_size:
+                raise ValidationError(
+                    f"Fichier trop volumineux (max {max_pdf_size // (1024 * 1024)}MB)"
+                )
             if first_chunk:
                 # Validation basique PDF si extension .pdf
                 if final_name.lower().endswith('.pdf') and not chunk.startswith(b'%PDF-'):

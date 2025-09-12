@@ -440,7 +440,8 @@ useEffect(() => {
                       <Phone className="h-5 w-5 text-gray-400" />
                     </div>
                     <input
-                      type="text"
+                      type="tel"
+                      inputMode="tel"
                       name="phone_number"
                       value={profile.phone_number || ''}
                       onChange={handleChange}

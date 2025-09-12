@@ -21,6 +21,7 @@ export const api = axios.create({
     Accept: 'application/json',
   },
   withCredentials: true,
+  timeout: 10000,
 });
 
 // Tentative de récupération du jeton CSRF depuis différents cookies

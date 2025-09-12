@@ -26,15 +26,22 @@ export const api = axios.create({
 
 // Récupération du jeton CSRF via un endpoint dédié
 const CSRF_COOKIE_NAMES = ['csrftoken', 'CSRF-TOKEN', 'XSRF-TOKEN'];
+let csrfToken = null;
 export const getCSRFToken = () => {
+  if (csrfToken) return csrfToken;
   const cookies = document.cookie ? document.cookie.split(';') : [];
   for (const cookie of cookies) {
     const [name, value] = cookie.trim().split('=');
     if (CSRF_COOKIE_NAMES.includes(name)) {
-      return decodeURIComponent(value);
+      csrfToken = decodeURIComponent(value);
+      return csrfToken;
     }
   }
   return null;
+};
+
+export const clearCSRFToken = () => {
+  csrfToken = null;
 };
 
 

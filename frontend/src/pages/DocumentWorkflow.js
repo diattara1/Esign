@@ -103,7 +103,6 @@ const PDFViewer = React.memo(function PDFViewer({
                               pageWidth={pageWidthPx}
                               pageHeight={pageHeightPx}
                               isMobileView={isMobileView}
-                              tapToPlace={isMobileView}
                               onUpdate={onUpdateField}
                               onDelete={onDeleteField}
                             />

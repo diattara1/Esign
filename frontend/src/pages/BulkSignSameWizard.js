@@ -268,15 +268,14 @@ export default function BulkSignSameWizard() {
                           {fieldObj && (
                             <DraggableSignature
                               field={fieldObj}
-                              pageWidth={pageWidth}
-                              pageHeight={(pageDims[n]?.height || 0) * s}
-                              isMobileView={isMobile}
-                              tapToPlace={isMobile}
-                              onUpdate={(field, { position }) => setPlacement(p => ({ ...p, ...position }))}
-                              onDelete={() => { setPlacement(null); setSigDataUrl(''); setSigSavedId(null); setStep(1); }}
-                              onOpenModal={openSignatureModal}
-                              image={sigDataUrl}
-                            />
+                            pageWidth={pageWidth}
+                            pageHeight={(pageDims[n]?.height || 0) * s}
+                            isMobileView={isMobile}
+                            onUpdate={(field, { position }) => setPlacement(p => ({ ...p, ...position }))}
+                            onDelete={() => { setPlacement(null); setSigDataUrl(''); setSigSavedId(null); setStep(1); }}
+                            onOpenModal={openSignatureModal}
+                            image={sigDataUrl}
+                          />
                           )}
                           <div className="absolute bottom-2 right-2 bg-gray-900/75 text-white text-xs px-2 py-1 rounded">Page {n}/{numPages}</div>
                         </div>

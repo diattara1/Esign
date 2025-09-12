@@ -15,6 +15,17 @@ const DocumentUpload = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const navigate = useNavigate();
 
+  const formatFileSize = (size) => {
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    let index = 0;
+    let fileSize = size;
+    while (fileSize >= 1024 && index < units.length - 1) {
+      fileSize /= 1024;
+      index++;
+    }
+    return `${fileSize.toFixed(2)} ${units[index]}`;
+  };
+
   const handleFilesChange = async (selectedFiles) => {
     setFiles(selectedFiles);
     try {
@@ -27,6 +38,11 @@ const DocumentUpload = () => {
       const fileErr = err.inner.find((er) => er.path === 'files');
       setErrors((prev) => ({ ...prev, files: fileErr?.message }));
     }
+  };
+
+  const removeFile = (idx) => {
+    const updatedFiles = files.filter((_, i) => i !== idx);
+    handleFilesChange(updatedFiles);
   };
 
   const handleSubmit = async (e) => {
@@ -147,8 +163,17 @@ const DocumentUpload = () => {
     >
       <h2 className="text-lg font-bold mb-4">Fichiers sélectionnés</h2>
       <ul className="list-disc list-inside mb-4">
-        {files.map((f) => (
-          <li key={f.name}>{f.name}</li>
+        {files.map((f, idx) => (
+          <li key={f.name} className="flex justify-between items-center">
+            <span>{`${f.name} (${formatFileSize(f.size)})`}</span>
+            <button
+              type="button"
+              onClick={() => removeFile(idx)}
+              className="text-red-600 hover:underline ml-2"
+            >
+              Supprimer
+            </button>
+          </li>
         ))}
       </ul>
       <button

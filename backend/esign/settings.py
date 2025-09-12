@@ -171,17 +171,38 @@ else:
     if _front_origin:
         CSRF_TRUSTED_ORIGINS.append(_front_origin)
 # Security headers
+# Security headers (ajout/correction)
 SECURE_CONTENT_TYPE_NOSNIFF = True
 SECURE_REFERRER_POLICY = "strict-origin-when-cross-origin"
-
 SECURE_CROSS_ORIGIN_OPENER_POLICY = "same-origin"
 
+# X-Frame-Options (important pour les tests de sécurité)
+X_FRAME_OPTIONS = 'SAMEORIGIN'
+
 if not DEBUG:
+    # Production: HTTPS obligatoire
     SECURE_SSL_REDIRECT = True
     SECURE_HSTS_SECONDS = 31536000
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True  # Ajout pour HSTS preload
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    
+    # CSP via Django (alternative si Caddy ne fonctionne pas)
+    CSP_DEFAULT_SRC = ["'self'"]
+    CSP_IMG_SRC = ["'self'", "data:", "blob:"]
+    CSP_FONT_SRC = ["'self'", "https://fonts.gstatic.com"]
+    CSP_STYLE_SRC = ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"]
+    CSP_SCRIPT_SRC = ["'self'"]
+    CSP_CONNECT_SRC = ["'self'", "https://api.intellivibe.tech", "wss://api.intellivibe.tech"]
+    CSP_WORKER_SRC = ["'self'", "blob:"]
+    CSP_OBJECT_SRC = ["'none'"]
+    CSP_FRAME_ANCESTORS = ["'self'"]
+    CSP_FORM_ACTION = ["'self'"]
+    CSP_BASE_URI = ["'none'"]
+    CSP_UPGRADE_INSECURE_REQUESTS = True
+    
 else:
+    # Development
     SECURE_SSL_REDIRECT = False
     SECURE_HSTS_SECONDS = 0
     SECURE_HSTS_INCLUDE_SUBDOMAINS = False

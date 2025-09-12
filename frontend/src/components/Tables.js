@@ -16,9 +16,12 @@ const Table = ({
   headerClassName = '',
   rowClassName = '',
   itemsPerPage = 10,
+  maxWidth = 768,
 }) => {
   const [currentPage, setCurrentPage] = useState(1);
+
   const isMobile = useIsMobile(MOBILE_BREAKPOINT);
+
 
   // Pagination
   const totalItems = data?.length || 0;

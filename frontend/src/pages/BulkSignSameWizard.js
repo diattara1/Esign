@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useLayoutEffect } from 'react';
 import useResponsivePdf from '../hooks/useResponsivePdf';
-import useIsMobile from '../hooks/useIsMobile';
+import useIsMobile, { MOBILE_BREAKPOINT } from '../hooks/useIsMobile';
 import { Document, Page } from 'react-pdf';
 import { toast } from 'react-toastify';
 import { FiLayers, FiDownload, FiMove, FiFile } from 'react-icons/fi';
@@ -68,7 +68,7 @@ export default function BulkSignSameWizard() {
   const [isProcessing, setIsProcessing] = useState(false);
 
   // responsive UI
-  const isMobile = useIsMobile();
+  const isMobile = useIsMobile(MOBILE_BREAKPOINT);
   const [step, setStep] = useState(0); // 0: upload, 1: zone, 2: signature
 
   const { pageWidth, pageScale } = useResponsivePdf(viewerWidth, pageDims, isMobile);
@@ -215,9 +215,9 @@ export default function BulkSignSameWizard() {
         toggleSidebar={() => {}}
       />
 
-      <div className="flex flex-col md:flex-row flex-1">
+      <div className="flex flex-col lg:flex-row flex-1">
         <div
-          className="order-1 md:order-2 flex-1 overflow-auto bg-gray-100"
+          className="order-1 lg:order-2 flex-1 overflow-auto bg-gray-100"
           ref={viewerRef}
           style={isProcessing ? { pointerEvents: 'none', filter: 'grayscale(0.2)', opacity: 0.7 } : {}}
         >
@@ -230,13 +230,13 @@ export default function BulkSignSameWizard() {
               </div>
             </div>
           ) : (
-            <div className="p-3 md:p-6">
+            <div className="p-3 lg:p-6">
               <div className="bg-white rounded-lg shadow-sm">
                 <div className="p-4 border-b border-gray-200 bg-gray-50 rounded-t-lg">
                   <h3 className="font-medium text-gray-800">Aperçu du premier document</h3>
                   <p className="text-sm text-gray-600">Définis la zone de signature qui sera appliquée sur {files.length} document(s)</p>
                 </div>
-                <div className="py-3 md:py-6">
+                <div className="py-3 lg:py-6">
                   <Document
                     key={docKey}
                     file={pdfUrl}
@@ -289,7 +289,7 @@ export default function BulkSignSameWizard() {
           )}
         </div>
 
-        <div className="order-2 md:order-1 md:w-64 md:border-r md:border-t-0 border-t bg-white p-4 space-y-4">
+        <div className="order-2 lg:order-1 lg:w-64 lg:border-r lg:border-t-0 border-t bg-white p-4 space-y-4">
           {step === 0 && (
             <div className="text-center">
               <label className="block font-medium mb-2 text-gray-700">PDF(s)</label>

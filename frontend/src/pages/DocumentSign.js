@@ -4,7 +4,7 @@
 // - Sidebar devient un drawer sur mobile
 
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from 'react';
-import useIsMobile from '../hooks/useIsMobile';
+import useIsMobile, { MOBILE_BREAKPOINT } from '../hooks/useIsMobile';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import { Document, Page } from 'react-pdf';
@@ -29,7 +29,7 @@ export default function DocumentSign() {
   const navigate = useNavigate();
 
   // ---------------------------- Responsive state ----------------------------
-  const isMobile = useIsMobile(1024);
+  const isMobile = useIsMobile(MOBILE_BREAKPOINT);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const toggleSidebar = () => setSidebarOpen((o) => !o);
 
@@ -371,7 +371,7 @@ export default function DocumentSign() {
   // ------------------------------- NAVBAR UI -------------------------------
   const Navbar = () => (
     <div className="sticky top-16 lg:top-0 z-30 bg-white/90 backdrop-blur border-b border-gray-200">
-      <div className="px-3 md:px-6 py-3 flex items-center gap-3">
+        <div className="px-3 lg:px-6 py-3 flex items-center gap-3">
         {/* Mobile: burger */}
         <button onClick={toggleSidebar} className="lg:hidden p-2 rounded border border-gray-200 active:scale-95" aria-label={sidebarOpen ? 'Fermer le menu' : 'Ouvrir le menu'}>
           {sidebarOpen ? <FiX className="w-5 h-5" /> : <FiMenu className="w-5 h-5" />}
@@ -379,7 +379,7 @@ export default function DocumentSign() {
 
         {/* Titre & sélecteur de document */}
         <div className="flex-1 min-w-0">
-          <div className="text-base md:text-lg font-semibold text-gray-900 truncate">{isAlreadySigned ? 'Document déjà signé :' : 'Signer le document :'} {sanitize(envelope?.title)}</div>
+            <div className="text-base lg:text-lg font-semibold text-gray-900 truncate">{isAlreadySigned ? 'Document déjà signé :' : 'Signer le document :'} {sanitize(envelope?.title)}</div>
           {documents.length > 1 && (
             <div className="mt-1">
               <select
@@ -400,7 +400,7 @@ export default function DocumentSign() {
 
         {/* État OTP invité */}
         {isGuest && !isAlreadySigned && (
-          <div className="hidden md:flex items-center gap-2 mr-2">
+          <div className="hidden lg:flex items-center gap-2 mr-2">
             <FiShield className={otpVerified ? 'text-green-600' : 'text-gray-400'} />
             <span className="text-sm text-gray-700">{otpVerified ? 'OTP vérifié' : (otpSent ? 'OTP envoyé' : 'OTP requis')}</span>
           </div>
@@ -414,7 +414,7 @@ export default function DocumentSign() {
   // ------------------------------- SIDEBAR UI ------------------------------
   const Sidebar = () => (
     <div className="h-full flex flex-col">
-      <div className="p-4 md:p-6 border-b border-gray-200">
+        <div className="p-4 lg:p-6 border-b border-gray-200">
         <div className="font-semibold text-gray-800 mb-2">Documents</div>
         {documents.length === 0 ? (
           <div className="text-sm text-gray-500">Aucun</div>
@@ -436,7 +436,7 @@ export default function DocumentSign() {
 
       {/* OTP panneau (secondaire, la navbar gère l'action principale) */}
       {isGuest && !isAlreadySigned && (
-        <div className="p-4 md:p-6 space-y-2">
+          <div className="p-4 lg:p-6 space-y-2">
           {!otpSent && !otpVerified && (
             <button onClick={handleSendOtp} disabled={sendingOtp} className="w-full bg-blue-600 text-white p-2 rounded disabled:opacity-50">{sendingOtp ? 'Envoi…' : 'Envoyer OTP'}</button>
           )}
@@ -493,7 +493,7 @@ export default function DocumentSign() {
 
         {/* Viewer */}
         <main className="flex-1 overflow-auto bg-gray-100" ref={viewerRef} style={{ scrollbarGutter: 'stable both-edges' }}>
-          <div className="p-3 md:p-6">
+            <div className="p-3 lg:p-6">
             {renderPdfViewer()}
             {!isAlreadySigned && ((!isGuest) || otpVerified) && (
               <div className="mt-6 flex justify-center">

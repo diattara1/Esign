@@ -1,7 +1,7 @@
 // Table.jsx
 import React, { useState } from 'react';
 import { FiChevronLeft, FiChevronRight } from 'react-icons/fi';
-import useIsMobile from '../hooks/useIsMobile';
+import useIsMobile, { MOBILE_BREAKPOINT } from '../hooks/useIsMobile';
 
 const Table = ({
   columns,
@@ -18,7 +18,7 @@ const Table = ({
   itemsPerPage = 10,
 }) => {
   const [currentPage, setCurrentPage] = useState(1);
-  const isMobile = useIsMobile();
+  const isMobile = useIsMobile(MOBILE_BREAKPOINT);
 
   // Pagination
   const totalItems = data?.length || 0;

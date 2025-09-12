@@ -8,7 +8,7 @@ import 'react-pdf/dist/Page/TextLayer.css';
 import logService from '../services/logService';
 import sanitize from '../utils/sanitize';
 import Countdown from '../components/Countdown';
-import useIsMobile from '../hooks/useIsMobile';
+import useIsMobile, { MOBILE_BREAKPOINT } from '../hooks/useIsMobile';
 import DraggableSignature from '../components/DraggableSignature';
 
 pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js';
@@ -545,7 +545,7 @@ export default function DocumentWorkflow() {
   const [documents, setDocuments] = useState([]);
   const [selectedDocId, setSelectedDocId] = useState(null);
   const [pdfUrl, setPdfUrl] = useState(null);
-  const isMobileView = useIsMobile(1024);
+  const isMobileView = useIsMobile(MOBILE_BREAKPOINT);
   const [showLeftSidebar, setShowLeftSidebar] = useState(true);
   const [showRightSidebar, setShowRightSidebar] = useState(true);
   const [currentMobileTab, setCurrentMobileTab] = useState('recipients');

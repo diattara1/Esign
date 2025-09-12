@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useLayoutEffect } from 'react';
 import useResponsivePdf from '../hooks/useResponsivePdf';
-import useIsMobile from '../hooks/useIsMobile';
+import useIsMobile, { MOBILE_BREAKPOINT } from '../hooks/useIsMobile';
 import { Document, Page } from 'react-pdf';
 import { toast } from 'react-toastify';
 import { FiUpload } from 'react-icons/fi';
@@ -28,7 +28,7 @@ export default function SelfSignWizard() {
   const [viewerWidth, setViewerWidth] = useState(0);
 
   // UI
-  const isMobile = useIsMobile();
+  const isMobile = useIsMobile(MOBILE_BREAKPOINT);
   const [placing, setPlacing] = useState(false);
   const [placement, setPlacement] = useState(null); // {page,x,y,width,height}
   const [step, setStep] = useState(0); // 0: upload, 1: zone, 2: signature
@@ -198,9 +198,9 @@ export default function SelfSignWizard() {
         toggleSidebar={() => {}}
       />
 
-      <div className="flex flex-col md:flex-row flex-1">
+      <div className="flex flex-col lg:flex-row flex-1">
         <div
-          className="order-1 md:order-2 flex-1 overflow-auto bg-gray-100"
+          className="order-1 lg:order-2 flex-1 overflow-auto bg-gray-100"
           ref={viewerRef}
           style={isProcessing ? { pointerEvents: 'none', filter: 'grayscale(0.2)', opacity: 0.7 } : {}}
         >
@@ -213,7 +213,7 @@ export default function SelfSignWizard() {
             </div>
           </div>
         ) : (
-          <div className="p-3 md:p-6">
+          <div className="p-3 lg:p-6">
             <Document key={docKey} file={pdfUrl} onLoadSuccess={onDocLoad}
                       loading={<div className="flex items-center justify-center p-8"><div className="w-8 h-8 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" /></div>}
                       error={<div className="text-red-500 text-center p-8">Erreur lors du chargement du PDF</div>}> 
@@ -254,7 +254,7 @@ export default function SelfSignWizard() {
         )}
       </div>
 
-      <div className="order-2 md:order-1 border-t bg-white p-4 space-y-4 md:w-64 md:border-r md:border-t-0">
+      <div className="order-2 lg:order-1 border-t bg-white p-4 space-y-4 lg:w-64 lg:border-r lg:border-t-0">
         {step === 0 && (
           <div className="text-center">
             <label className="block text-sm font-medium text-gray-700 mb-2">PDF</label>

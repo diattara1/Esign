@@ -12,7 +12,7 @@ import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 import logService from '../services/logService';
 import useFocusTrap from '../hooks/useFocusTrap';
-import useIsMobile from '../hooks/useIsMobile';
+import useIsMobile, { MOBILE_BREAKPOINT } from '../hooks/useIsMobile';
 
 function ReminderModal({ open, count, onClose }) {
   const dialogRef = useRef(null);
@@ -92,7 +92,7 @@ const DocumentDetail = () => {
   const viewerRef = useRef(null);
   const [viewerWidth, setViewerWidth] = useState(0);
 
-  const isMobile = useIsMobile();
+  const isMobile = useIsMobile(MOBILE_BREAKPOINT);
   const signedCount = env?.recipients?.filter(r => r.signed).length || 0;
   const totalRecipients = env?.recipients?.length || 0;
   // Gestion responsive du viewer width

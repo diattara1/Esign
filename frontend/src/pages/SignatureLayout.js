@@ -2,7 +2,7 @@
 // Version responsive avec sidebar mobile
 
 import React, { useState, useEffect } from 'react';
-import useIsMobile from '../hooks/useIsMobile';
+import useIsMobile, { MOBILE_BREAKPOINT } from '../hooks/useIsMobile';
 import { Outlet, NavLink, useLocation } from 'react-router-dom';
 import {
   FiX,
@@ -34,7 +34,7 @@ const SignatureLayout = () => {
     return () => document.removeEventListener('keydown', handleEscape);
   }, []);
 
-  const isMobile = useIsMobile(1024);
+  const isMobile = useIsMobile(MOBILE_BREAKPOINT);
   const [navigationItems, setNavigationItems] = useState([
     {
       path: '/signature/envelopes/sent',

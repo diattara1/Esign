@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../AuthContext';
 import { useLocation, Link } from 'react-router-dom';
-import { Mail, Lock, Loader2 } from 'lucide-react';
+import { Mail, Lock, Loader2, Eye, EyeOff } from 'lucide-react';
 import Alert from '../components/Alert';
 import { loginSchema } from '../validation/schemas';
 
@@ -17,6 +17,7 @@ const LoginPage = () => {
   const [error, setError] = useState('');
   const [errors, setErrors] = useState({});
   const [rememberMe, setRememberMe] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const isFormValid = loginSchema.isValidSync({ username, password });
 
   const handleLogin = async (e) => {
@@ -123,17 +124,30 @@ const LoginPage = () => {
                 </div>
                 <input
                   id="password"
-                  type="password"
+                  type={showPassword ? 'text' : 'password'}
                   autoComplete="current-password"
                   value={password}
                   onChange={(e) => {
                     setPassword(e.target.value);
                     setErrors((prev) => ({ ...prev, password: undefined }));
                   }}
-                  className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition-colors"
+                  className="block w-full pl-10 pr-10 py-3 border border-gray-300 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition-colors"
                   placeholder="Entrez votre mot de passe"
                   aria-describedby={errors.password ? 'password-error' : undefined}
                 />
+                <button
+                  type="button"
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                  onClick={() => setShowPassword(!showPassword)}
+                  aria-pressed={showPassword}
+                  aria-label="Afficher/masquer le mot de passe"
+                >
+                  {showPassword ? (
+                    <EyeOff className="h-5 w-5 text-gray-400 hover:text-gray-600" />
+                  ) : (
+                    <Eye className="h-5 w-5 text-gray-400 hover:text-gray-600" />
+                  )}
+                </button>
                 {errors.password && (
                   <p id="password-error" className="mt-1 text-sm text-red-600">{errors.password}</p>
                 )}

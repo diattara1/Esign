@@ -7,33 +7,35 @@
     <meta name="theme-color" content="#000000" />
     <meta name="description" content="InteliSign" />
 
-    <!-- CSP stricte sans 'unsafe-inline' pour style-src -->
+    <!-- CSP ultra-stricte avec default-src 'none' -->
     <meta
       http-equiv="Content-Security-Policy"
       content="
-        default-src 'self' https://api.intellivibe.tech;
+        default-src 'none';
+        script-src 'self' https://api.intellivibe.tech;
+        style-src 'self' https://fonts.googleapis.com;
         img-src 'self' data: blob: https://api.intellivibe.tech;
         font-src 'self' https://fonts.gstatic.com;
-        style-src 'self' https://fonts.googleapis.com;
-        script-src 'self' https://api.intellivibe.tech;
         connect-src 'self' https://api.intellivibe.tech wss://api.intellivibe.tech;
         worker-src 'self' blob:;
+        manifest-src 'self';
         object-src 'none';
         frame-ancestors 'self';
         form-action 'self';
+        base-uri 'self';
         upgrade-insecure-requests;
       "
     />
 
-    <!-- Politique de référence stricte -->
     <meta name="referrer" content="strict-origin-when-cross-origin" />
 
-    <!-- Préconnexions pour Google Fonts -->
+    <!-- Préconnexions sécurisées -->
     <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 
-    <!-- Preload pour PDF worker avec SRI pour bonus points -->
-    <link rel="preload" href="/pdf.worker.min.js" as="script" />
+    <!-- Preload avec SRI (exemple pour PDF worker) -->
+    <link rel="preload" href="/pdf.worker.min.js" as="script" 
+          integrity="sha384-VOTRE_HASH_SRI_ICI" crossorigin="anonymous" />
 
     <title>InteliSign</title>
   </head>

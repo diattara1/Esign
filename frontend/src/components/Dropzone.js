@@ -35,6 +35,13 @@ const Dropzone = ({ onFiles, accept }) => {
     inputRef.current?.click();
   };
 
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      handleClick();
+    }
+  };
+
   const handleChange = (e) => {
     handleFiles(e.target.files);
   };
@@ -45,6 +52,10 @@ const Dropzone = ({ onFiles, accept }) => {
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onClick={handleClick}
+      onKeyDown={handleKeyDown}
+      role="button"
+      tabIndex={0}
+      aria-label="Choisir des fichiers"
       className={`flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-md cursor-pointer transition-colors ${
         isDragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300 bg-gray-50 hover:border-gray-400'
       }`}

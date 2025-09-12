@@ -238,7 +238,6 @@ export default function SelfSignWizard() {
                         pageWidth={pageWidth}
                         pageHeight={(pageDims[n]?.height || 0) * scale}
                         isMobileView={isMobile}
-                        tapToPlace={isMobile}
                         onUpdate={(field, { position }) => setPlacement(p => ({ ...p, ...position }))}
                         onDelete={() => { setPlacement(null); setSigDataUrl(''); setStep(1); }}
                         onOpenModal={openSignatureModal}

@@ -52,7 +52,6 @@ AUTH_USER_MODEL = "signature.CustomUser"
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
     "signature.middleware.AllowIframeForPDFOnlyMiddleware",
-    "signature.middleware.SecurityHeadersMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
@@ -177,24 +176,16 @@ SECURE_CONTENT_TYPE_NOSNIFF = True
 SECURE_REFERRER_POLICY = "strict-origin-when-cross-origin"
 SECURE_CROSS_ORIGIN_OPENER_POLICY = "same-origin"
 
-# Configuration HSTS dans Django (double sécurité)
 if not DEBUG:
-    # PROD : HSTS obligatoire
     SECURE_SSL_REDIRECT = True
-    SECURE_HSTS_SECONDS = 31536000  # 1 an
-    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
-    SECURE_HSTS_PRELOAD = True
-    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
-    
-    # Force l'envoi du header HSTS même si déjà défini par Caddy
     SECURE_HSTS_SECONDS = 31536000
-    
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 else:
-    # DEV : pas de HSTS
     SECURE_SSL_REDIRECT = False
     SECURE_HSTS_SECONDS = 0
     SECURE_HSTS_INCLUDE_SUBDOMAINS = False
-    SECURE_HSTS_PRELOAD = False
+    SECURE_PROXY_SSL_HEADER = None
 # Static & media
 STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"

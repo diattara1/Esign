@@ -170,15 +170,67 @@ class ClearAuthCookiesMiddleware:
             response.delete_cookie("access_token", samesite="None", secure=True)
             response.delete_cookie("refresh_token", samesite="None", secure=True)
         return response
-
-class CORPMiddleware:
+class SecurityMiddleware:
     """
-    Middleware pour ajouter Cross-Origin-Resource-Policy header
+    Middleware de sécurité complet qui adapte les headers selon l'environnement DEBUG
+    Remplace tous les autres middlewares de sécurité
     """
     def __init__(self, get_response):
         self.get_response = get_response
 
     def __call__(self, request):
         response = self.get_response(request)
+        
+        # === CSP adaptatif selon DEBUG ===
+        if settings.DEBUG:
+            # DEV : CSP permissif pour webpack/vite/hot-reload
+            csp_policy = (
+                "default-src 'self' https://api.intellivibe.tech; "
+                "script-src 'self' 'unsafe-eval' https://api.intellivibe.tech; "
+                "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+                "img-src 'self' data: blob: https://api.intellivibe.tech; "
+                "font-src 'self' https://fonts.gstatic.com; "
+                "connect-src 'self' https://api.intellivibe.tech wss://api.intellivibe.tech ws://localhost:* http://localhost:*; "
+                "worker-src 'self' blob:; "
+                "object-src 'none'; "
+                "frame-ancestors 'self'; "
+                "form-action 'self'; "
+                "upgrade-insecure-requests;"
+            )
+        else:
+            # PROD : CSP strict avec hashes spécifiques
+            csp_policy = (
+                "default-src 'none'; "
+                "script-src 'self' https://api.intellivibe.tech; "
+                "style-src 'self' https://fonts.googleapis.com "
+                "'sha256-47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=' "
+                "'sha256-Xo8/tnRnpUxMw05nUf764oT49W2GEbQN9LaX8Wqxuwg=' "
+                "'sha256-JVox5/K3fvT/NN3nmEk3s4rz7GGLBewqsIakVNDmvzo=' "
+                "'sha256-PBR7wyQUCxgKCaYTKhUx4OqIiItg2VqUStDUHRsPpjU=' "
+                "'sha256-lPCTHBLtDNcuOFfFgIREU/1CoUh9DFTDf5QgCRpsYHQ=' "
+                "'sha256-0ACUmbWnAEFJHtMJqCUnKLnyKO0oHUz+g27GGn6+HH8='; "
+                "img-src 'self' data: blob: https://api.intellivibe.tech; "
+                "font-src 'self' https://fonts.gstatic.com; "
+                "connect-src 'self' https://api.intellivibe.tech wss://api.intellivibe.tech; "
+                "worker-src 'self' blob:; "
+                "manifest-src 'self'; "
+                "object-src 'none'; "
+                "frame-ancestors 'self'; "
+                "form-action 'self'; "
+                "base-uri 'self'; "
+                "upgrade-insecure-requests;"
+            )
+        
+        response['Content-Security-Policy'] = csp_policy
+        
+        # === Headers de sécurité universels ===
+        response['X-Content-Type-Options'] = 'nosniff'
+        response['Referrer-Policy'] = 'strict-origin-when-cross-origin'
         response['Cross-Origin-Resource-Policy'] = 'same-origin'
+        response['Cross-Origin-Opener-Policy'] = 'same-origin'
+        
+        # === HSTS seulement en HTTPS ===
+        if request.is_secure():
+            response['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains; preload'
+        
         return response

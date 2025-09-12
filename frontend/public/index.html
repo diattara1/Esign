@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <link rel="icon" href="%PUBLIC_URL%/intelisign.ico" />
@@ -7,41 +7,46 @@
     <meta name="theme-color" content="#000000" />
     <meta name="description" content="InteliSign" />
 
-    <!-- CSP ultra-stricte avec default-src 'none' -->
-    <meta
-      http-equiv="Content-Security-Policy"
-      content="
-        default-src 'none';
-        script-src 'self' https://api.intellivibe.tech;
-        style-src 'self' https://fonts.googleapis.com;
-        img-src 'self' data: blob: https://api.intellivibe.tech;
-        font-src 'self' https://fonts.gstatic.com;
-        connect-src 'self' https://api.intellivibe.tech wss://api.intellivibe.tech;
-        worker-src 'self' blob:;
-        manifest-src 'self';
-        object-src 'none';
-        frame-ancestors 'self';
-        form-action 'self';
-        base-uri 'self';
-        upgrade-insecure-requests;
-      "
+  <meta
+  http-equiv="Content-Security-Policy"
+  content="
+    default-src 'self' https://api.intellivibe.tech/;
+     img-src 'self' data: blob: http://localhost:8000 https://api.intellivibe.tech/;
+    font-src 'self' https://fonts.gstatic.com;
+    style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+    script-src 'self' https://api.intellivibes.tech;
+    connect-src
+      'self'
+      https://api.intellivibe.tech/
+      http://51.83.45.130:8090    
+      
+      http://localhost:8000              
+      ws://localhost:3000 wss://localhost:3000  
+      blob:;
+    worker-src 'self' blob:;
+    object-src 'none';
+  "
+/>
+
+
+
+    <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo192.png" />
+    <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
+
+    <!-- Google Font (Inter) -->
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
     />
 
-    <meta name="referrer" content="strict-origin-when-cross-origin" />
-
-    <!-- Préconnexions sécurisées -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-
-    <!-- Preload avec SRI (exemple pour PDF worker) -->
-    <link rel="preload" href="/pdf.worker.min.js" as="script" 
-          integrity="sha384-VOTRE_HASH_SRI_ICI" crossorigin="anonymous" />
-
+    <!-- IMPORTANT: pas de Tailwind CDN, pas de Bootstrap Icons CDN en prod.
+         Le CSS (Tailwind + bootstrap-icons) est importé via src/index.css -->
+    <link rel="preload" href="/pdf.worker.min.js" as="script" />
     <title>InteliSign</title>
   </head>
 
   <body>
-    <noscript>Vous devez activer JavaScript pour exécuter cette application.</noscript>
+    <noscript>You need to enable JavaScript to run this app.</noscript>
     <div id="root"></div>
   </body>
 </html>

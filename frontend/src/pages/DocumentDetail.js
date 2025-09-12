@@ -1,5 +1,5 @@
 // src/pages/DocumentDetail.js
-// Version responsive avec sidebar mobile et meilleure adaptation
+// Version plus épurée, responsive sur tablette/mobile, intuitive et allégée
 
 import React, { useEffect, useState, useCallback, useLayoutEffect, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
@@ -17,7 +17,7 @@ import useIsMobile from '../hooks/useIsMobile';
 function ReminderModal({ open, count, onClose }) {
   const dialogRef = useRef(null);
   useFocusTrap(dialogRef, open);
- useEffect(() => {
+  useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') onClose();
     };
@@ -95,14 +95,21 @@ const DocumentDetail = () => {
   const isMobile = useIsMobile();
   const signedCount = env?.recipients?.filter(r => r.signed).length || 0;
   const totalRecipients = env?.recipients?.length || 0;
-  // Gestion responsive du viewer width
+
+  // Gestion responsive du viewer width avec breakpoints tablette
   useLayoutEffect(() => {
     const el = viewerRef.current;
     if (!el) return;
 
     const measure = () => {
       const width = el.clientWidth || 0;
-      setViewerWidth(isMobile ? Math.min(width - 32, 400) : width - 32);
+      let adjustedWidth = width - 32;
+      if (width < 640) { // Mobile
+        adjustedWidth = Math.min(adjustedWidth, 400);
+      } else if (width < 1024) { // Tablette
+        adjustedWidth = Math.min(adjustedWidth, 600);
+      }
+      setViewerWidth(adjustedWidth);
     };
 
     measure();
@@ -116,7 +123,7 @@ const DocumentDetail = () => {
       window.removeEventListener('resize', measure);
       if (ro) ro.disconnect();
     };
-  }, [isMobile]);
+  }, []);
 
   // Libération URL blob
   useEffect(() => {
@@ -169,9 +176,7 @@ const DocumentDetail = () => {
   const handleClickDoc = async (doc) => {
     if (selectedDoc?.id === doc.id) return;
     setSelectedDoc(doc);
-    if (!isMobile || pdfUrl) {
-      await loadConsolidatedPreview();
-    }
+    await loadConsolidatedPreview();
     setSidebarOpen(false); // Fermer sidebar mobile après sélection
   };
 
@@ -225,8 +230,6 @@ const DocumentDetail = () => {
     remindBtnRef.current?.focus();
   };
 
-
-
   // Callbacks react-pdf
   const onDocumentLoad = ({ numPages }) => setNumPages(numPages);
   const onDocumentError = (err) => {
@@ -236,10 +239,10 @@ const DocumentDetail = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Chargement...</p>
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
+          <p className="text-gray-600 text-sm">Chargement...</p>
         </div>
       </div>
     );
@@ -247,15 +250,15 @@ const DocumentDetail = () => {
 
   if (!env) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
-          <p className="text-gray-600 text-lg">Enveloppe non trouvée</p>
+          <p className="text-gray-600 text-base">Enveloppe non trouvée</p>
           <Link 
             to="/signature/list" 
-            className="mt-4 inline-flex items-center text-blue-600 hover:text-blue-700"
+            className="mt-4 inline-flex items-center text-blue-600 hover:text-blue-700 text-sm"
           >
-            <FiArrowLeft className="w-4 h-4 mr-2" />
-            Retour à la liste
+            <FiArrowLeft className="w-4 h-4 mr-1" />
+            Retour
           </Link>
         </div>
       </div>
@@ -264,26 +267,26 @@ const DocumentDetail = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header mobile avec bouton menu */}
-      <div className="lg:hidden bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between sticky top-0 z-40">
+      {/* Header mobile/tablette avec menu simplifié */}
+      <div className="md:hidden bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between sticky top-0 z-40">
         <button
           onClick={() => setSidebarOpen(true)}
-          className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
+          className="p-2 rounded-md hover:bg-gray-100"
         >
-          <FiMenu className="w-5 h-5" />
+          <FiMenu className="w-5 h-5 text-gray-700" />
         </button>
-        <h1 className="font-semibold text-gray-900 truncate mx-4 flex-1">{env.title}</h1>
+        <h1 className="font-medium text-gray-900 truncate flex-1 text-center text-base">{env.title}</h1>
         <div className="flex space-x-2">
           <button
             onClick={handlePreview}
-            className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
-            title="Ouvrir dans un nouvel onglet"
+            className="p-2 rounded-md hover:bg-gray-100"
+            title="Ouvrir"
           >
             <FiExternalLink className="w-5 h-5 text-gray-600" />
           </button>
           <button
             onClick={handleDownload}
-            className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
+            className="p-2 rounded-md hover:bg-gray-100"
             title="Télécharger"
           >
             <FiDownload className="w-5 h-5 text-gray-600" />
@@ -291,44 +294,44 @@ const DocumentDetail = () => {
         </div>
       </div>
 
-      <div className="flex h-screen lg:h-auto">
-        {/* Sidebar - responsive */}
+      <div className="flex h-[calc(100vh-60px)] md:h-screen lg:h-auto">
+        {/* Sidebar - épurée et responsive (w-72 sur tablette, w-80 sur desktop) */}
         <div className={`
-          fixed inset-y-0 left-0 z-50 w-80 bg-white border-r border-gray-200 transform transition-transform duration-300 ease-in-out
-          lg:relative lg:translate-x-0 lg:w-1/3 lg:min-w-0 lg:max-w-md
-          ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
+          fixed inset-y-0 left-0 z-50 w-72 md:w-80 bg-white border-r border-gray-200 transform transition-transform duration-300 ease-in-out
+          md:relative md:translate-x-0 md:w-1/3 md:min-w-0 md:max-w-sm lg:max-w-md
+          ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
         `}>
-          {/* Header sidebar mobile */}
-          <div className="lg:hidden flex items-center justify-between p-4 border-b border-gray-200">
-            <h2 className="text-lg font-semibold">Détails</h2>
+          {/* Header sidebar mobile simplifié */}
+          <div className="md:hidden flex items-center justify-between p-4 border-b border-gray-200">
+            <h2 className="text-base font-medium text-gray-900">Détails</h2>
             <button
               onClick={() => setSidebarOpen(false)}
-              className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
+              className="p-2 rounded-md hover:bg-gray-100"
             >
-              <FiX className="w-5 h-5" />
+              <FiX className="w-5 h-5 text-gray-700" />
             </button>
           </div>
 
-          {/* Contenu sidebar */}
-          <div className="overflow-y-auto h-full lg:h-auto p-4 lg:p-6 space-y-6">
-            {/* Titre desktop */}
-            <div className="hidden lg:block">
-              <h1 className="text-xl lg:text-2xl font-bold mb-2 break-words">{env.title}</h1>
+          {/* Contenu sidebar épuré : plus d'espace, moins de bordures */}
+          <div className="overflow-y-auto h-full p-4 md:p-6 space-y-6">
+            {/* Titre desktop simplifié */}
+            <div className="hidden md:block">
+              <h1 className="text-xl font-semibold text-gray-900 break-words">{env.title}</h1>
             </div>
 
-            {/* Documents */}
+            {/* Documents : liste simplifiée */}
             {documents.length > 0 && (
               <div>
-                <h2 className="text-lg font-semibold mb-3">Documents</h2>
+                <h2 className="text-base font-medium text-gray-700 mb-2">Documents</h2>
                 <div className="space-y-1">
                   {documents.map(doc => (
                     <button
                       key={doc.id}
                       onClick={() => handleClickDoc(doc)}
-                      className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
+                      className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
                         selectedDoc?.id === doc.id 
-                          ? 'bg-blue-100 text-blue-700 border border-blue-200' 
-                          : 'hover:bg-gray-100'
+                          ? 'bg-blue-50 text-blue-700' 
+                          : 'hover:bg-gray-50 text-gray-800'
                       }`}
                     >
                       {doc.name || `Document ${doc.id}`}
@@ -338,124 +341,107 @@ const DocumentDetail = () => {
               </div>
             )}
 
-            {/* Métadonnées */}
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 gap-3">
-                <div className="flex flex-col sm:flex-row sm:justify-between">
-                  <strong className="text-sm text-gray-600">Statut :</strong>
-                  <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium mt-1 sm:mt-0 self-start ${
-                    env.status === 'completed' ? 'bg-green-100 text-green-800' :
-                    env.status === 'sent' ? 'bg-blue-100 text-blue-800' :
-                    env.status === 'cancelled' ? 'bg-red-100 text-red-800' :
-                    'bg-gray-100 text-gray-800'
-                  }`}>
-                    {env.status === 'completed' ? 'Signé' :
-                     env.status === 'sent' ? 'Envoyé' :
-                     env.status === 'cancelled' ? 'Annulé' : 'Brouillon'}
-                  </span>
-                </div>
+            {/* Métadonnées : grille simplifiée, moins de texte */}
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                <span className="text-gray-600">Statut</span>
+                <span className={`text-right font-medium ${
+                  env.status === 'completed' ? 'text-green-600' :
+                  env.status === 'sent' ? 'text-blue-600' :
+                  env.status === 'cancelled' ? 'text-red-600' :
+                  'text-gray-600'
+                }`}>
+                  {env.status === 'completed' ? 'Signé' :
+                   env.status === 'sent' ? 'Envoyé' :
+                   env.status === 'cancelled' ? 'Annulé' : 'Brouillon'}
+                </span>
                 
-                <div className="flex flex-col sm:flex-row sm:justify-between">
-                  <strong className="text-sm text-gray-600">Version :</strong>
-                  <span className="text-sm text-gray-800 mt-1 sm:mt-0">{env.version}</span>
-                </div>
+                <span className="text-gray-600">Version</span>
+                <span className="text-right text-gray-800">{env.version}</span>
                 
-                <div className="flex flex-col sm:flex-row sm:justify-between">
-                  <strong className="text-sm text-gray-600">Créé le :</strong>
-                  <span className="text-sm text-gray-800 mt-1 sm:mt-0">
-                    {new Date(env.created_at).toLocaleDateString()}
-                  </span>
-                </div>
+                <span className="text-gray-600">Créé le</span>
+                <span className="text-right text-gray-800">
+                  {new Date(env.created_at).toLocaleDateString()}
+                </span>
 
                 {env.deadline_at && (
-                  <div className="flex flex-col sm:flex-row sm:justify-between">
-                    <strong className="text-sm text-gray-600">Échéance :</strong>
-                    <span className="text-sm text-gray-800 mt-1 sm:mt-0">
+                  <>
+                    <span className="text-gray-600">Échéance</span>
+                    <span className="text-right text-gray-800">
                       {new Date(env.deadline_at).toLocaleDateString()}
                     </span>
-                  </div>
+                  </>
                 )}
                 
-                <div className="flex flex-col sm:flex-row sm:justify-between">
-                  <strong className="text-sm text-gray-600">Flux :</strong>
-                  <span className="text-sm text-gray-800 mt-1 sm:mt-0">
-                    {env.flow_type === 'sequential' ? 'Séquentiel' : 'Parallèle'}
-                  </span>
-                </div>
-
-                {env.hash_original && (
-                  <div className="flex flex-col">
-                    <strong className="text-sm text-gray-600 mb-1">Hachage original :</strong>
-                    <span className="text-xs font-mono bg-gray-100 px-2 py-1 rounded break-all">
-                      {env.hash_original.substring(0, 32)}...
-                    </span>
-                  </div>
-                )}
+                <span className="text-gray-600">Flux</span>
+                <span className="text-right text-gray-800">
+                  {env.flow_type === 'sequential' ? 'Séquentiel' : 'Parallèle'}
+                </span>
               </div>
 
-              {/* Countdown */}
-              
-                 {env.deadline_at && env.status !== 'completed' && (
-                <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
-                  <div className="flex items-center mb-2">
-                    <FiClock className="w-4 h-4 text-orange-600 mr-2" />
-                    <span className="text-sm font-medium text-orange-800">Temps restant</span>
-                  </div>
-                  <Countdown targetIso={env.deadline_at} className="text-orange-700" />
+              {env.hash_original && (
+                <div>
+                  <span className="text-sm text-gray-600 block mb-1">Hachage original</span>
+                  <span className="text-xs font-mono bg-gray-50 px-2 py-1 rounded break-all text-gray-700">
+                    {env.hash_original.substring(0, 32)}...
+                  </span>
                 </div>
-              )}
-
-              {/* Bouton relance */}
-              {(env.status === 'sent' || env.status === 'pending') && (
-                <button
-                  ref={remindBtnRef}
-                  onClick={handleRemind}
-                  disabled={reminding}
-                  className={`w-full px-4 py-2 rounded-lg transition-colors text-white text-sm font-medium ${
-                    reminding 
-                      ? 'bg-amber-300 cursor-wait' 
-                      : 'bg-amber-500 hover:bg-amber-600 active:bg-amber-700'
-                  }`}
-                >
-                  {reminding ? 'Envoi...' : 'Relancer maintenant'}
-                </button>
               )}
             </div>
 
-            {/* Progression */}
-            <div className="bg-gray-50 rounded-lg p-4 space-y-3">
-              <div className="flex justify-between items-center">
-                <span className="text-sm font-medium text-gray-700">Progression</span>
-                <span className="text-sm font-bold text-gray-800">
-                  {env.completion_rate?.toFixed(0) || 0}%
-                </span>
+            {/* Countdown : allégé */}
+            {env.deadline_at && env.status !== 'completed' && (
+              <div className="bg-orange-50 rounded-md p-3">
+                <div className="flex items-center mb-1">
+                  <FiClock className="w-4 h-4 text-orange-600 mr-2" />
+                  <span className="text-sm text-orange-700">Temps restant</span>
+                </div>
+                <Countdown targetIso={env.deadline_at} className="text-orange-700 text-sm" />
               </div>
-              <div className="w-full bg-gray-200 rounded-full h-2">
+            )}
+
+            {/* Bouton relance : simplifié */}
+            {(env.status === 'sent' || env.status === 'pending') && (
+              <button
+                ref={remindBtnRef}
+                onClick={handleRemind}
+                disabled={reminding}
+                className={`w-full px-4 py-2 rounded-md text-white text-sm font-medium transition-colors ${
+                  reminding 
+                    ? 'bg-amber-300 cursor-wait' 
+                    : 'bg-amber-500 hover:bg-amber-600'
+                }`}
+              >
+                {reminding ? 'Envoi...' : 'Relancer'}
+              </button>
+            )}
+
+            {/* Progression : bar plus fine */}
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm text-gray-700">
+                <span>Progression</span>
+                <span className="font-medium">{env.completion_rate?.toFixed(0) || 0}%</span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-1.5">
                 <div
-                  className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                  className="bg-blue-600 h-1.5 rounded-full transition-all duration-300"
                   style={{ width: `${env.completion_rate || 0}%` }}
                 />
               </div>
             </div>
 
-            {/* Destinataires */}
+            {/* Destinataires : accordion simplifié */}
             {totalRecipients > 0 && (
-              <details className="bg-gray-50 rounded-lg p-4">
-                <summary className="cursor-pointer">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-gray-700">
-                      Statut global : {signedCount}/{totalRecipients} signés
-                    </span>
-                    <span className="text-sm font-medium text-blue-600">Voir les destinataires</span>
-                  </div>
+              <details className="text-sm">
+                <summary className="cursor-pointer flex justify-between text-gray-700">
+                  <span>Statut : {signedCount}/{totalRecipients} signés</span>
+                  <span className="text-blue-600">Détails</span>
                 </summary>
-                <ul className="mt-4 space-y-2">
+                <ul className="mt-2 space-y-1 pl-2">
                   {env.recipients.map((r, idx) => (
-                    <li key={r.id || idx} className="flex items-center justify-between text-sm">
-                      <span className="text-gray-800">{r.full_name || r.email}</span>
-                      <span
-                        className={`font-medium ${r.signed ? 'text-green-600' : 'text-yellow-600'}`}
-                      >
+                    <li key={r.id || idx} className="flex justify-between text-gray-800">
+                      <span>{r.full_name || r.email}</span>
+                      <span className={`${r.signed ? 'text-green-600' : 'text-yellow-600'}`}>
                         {r.signed ? 'Signé' : 'En attente'}
                       </span>
                     </li>
@@ -464,72 +450,70 @@ const DocumentDetail = () => {
               </details>
             )}
 
-            {/* Actions - Desktop uniquement (mobile dans header) */}
-            <div className="hidden lg:flex flex-col space-y-3">
+            {/* Actions desktop : boutons simplifiés */}
+            <div className="hidden md:flex flex-col space-y-2 mt-4">
               <button
                 onClick={handlePreview}
-                className="w-full bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 transition-colors text-sm font-medium"
+                className="w-full bg-green-500 text-white px-4 py-2 rounded-md hover:bg-green-600 text-sm font-medium flex items-center justify-center"
               >
-                <FiExternalLink className="w-4 h-4 inline mr-2" />
-                Ouvrir dans un nouvel onglet
+                <FiExternalLink className="w-4 h-4 mr-2" />
+                Ouvrir
               </button>
               <button
                 onClick={handleDownload}
-                className="w-full bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition-colors text-sm font-medium"
+                className="w-full bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 text-sm font-medium flex items-center justify-center"
               >
-                <FiDownload className="w-4 h-4 inline mr-2" />
+                <FiDownload className="w-4 h-4 mr-2" />
                 Télécharger
               </button>
               <Link
                 to="/signature/list"
-                className="w-full bg-gray-500 text-white px-4 py-2 rounded-lg hover:bg-gray-600 transition-colors text-center text-sm font-medium flex items-center justify-center"
+                className="w-full bg-gray-200 text-gray-800 px-4 py-2 rounded-md hover:bg-gray-300 text-sm font-medium flex items-center justify-center"
               >
                 <FiArrowLeft className="w-4 h-4 mr-2" />
-                Retour à la liste
+                Retour
               </Link>
             </div>
           </div>
         </div>
 
-        {/* Overlay mobile pour fermer sidebar */}
+        {/* Overlay mobile/tablette */}
         {sidebarOpen && (
           <div
-            className="lg:hidden fixed inset-0 bg-black bg-opacity-25 z-40"
+            className="md:hidden fixed inset-0 bg-black bg-opacity-25 z-40"
             onClick={() => setSidebarOpen(false)}
           />
         )}
 
-        {/* Viewer PDF - Responsive */}
-        <div className="flex-1 min-w-0">
+        {/* Viewer PDF : plus centré, chargement intuitif */}
+        <div className="flex-1 min-w-0 bg-gray-100">
           <div
-            className="h-screen lg:h-auto overflow-y-auto bg-gray-100 p-2 lg:p-4"
+            className="h-full overflow-y-auto p-2 md:p-4"
             ref={viewerRef}
             style={{ scrollbarGutter: 'stable' }}
           >
             {loadingPdf ? (
-              <div className="flex justify-center items-center h-full min-h-96">
+              <div className="flex justify-center items-center h-full min-h-[50vh]">
                 <div className="text-center">
-                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-                  <p className="text-gray-600">Chargement du PDF...</p>
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
+                  <p className="text-gray-600 text-sm">Chargement PDF...</p>
                 </div>
               </div>
             ) : !pdfUrl ? (
-              isMobile ? (
-                <div className="flex justify-center items-center h-full min-h-96">
+              <div className="flex justify-center items-center h-full min-h-[50vh]">
+                {isMobile ? (
                   <button
                     onClick={loadConsolidatedPreview}
-                    className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700"
+                    className="px-4 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 text-sm"
                   >
                     Voir le document
                   </button>
-                </div>
-              ) : (
-                <div className="flex justify-center items-center h-full min-h-96">
-                  <p className="text-gray-600 text-center">Prévisualisation indisponible.</p>
-                </div>
-              )
+                ) : (
+                  <p className="text-gray-600 text-sm text-center">Prévisualisation indisponible.</p>
+                )}
+              </div>
             ) : (
-              <div className="flex flex-col items-center space-y-4">
+              <div className="flex flex-col items-center space-y-4 max-w-3xl mx-auto">
                 <Document
                   key={env?.status === 'completed' ? `signed-${env.id}` : `orig-${env.id}-${selectedDoc?.id || 'single'}`}
                   file={pdfUrl}
@@ -537,12 +521,12 @@ const DocumentDetail = () => {
                   onLoadError={onDocumentError}
                   loading={
                     <div className="text-center py-8">
-                      <div className="animate-pulse text-gray-500">Chargement PDF...</div>
+                      <div className="animate-pulse text-gray-500 text-sm">Chargement PDF...</div>
                     </div>
                   }
                 >
                   {Array.from({ length: numPages }, (_, i) => (
-                    <div key={i} className="relative mb-4 lg:mb-6 shadow-lg rounded-lg overflow-hidden">
+                    <div key={i} className="mb-4 shadow-md rounded-md overflow-hidden bg-white">
                       <Page
                         pageNumber={i + 1}
                         width={Math.max(viewerWidth, 300)}
@@ -558,9 +542,7 @@ const DocumentDetail = () => {
         </div>
       </div>
 
-      
-
-      {/* Modal rappel */}
+      {/* Modal rappel : inchangé, déjà épuré */}
       <ReminderModal
         open={reminderModalOpen}
         count={reminderCount}

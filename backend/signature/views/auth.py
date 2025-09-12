@@ -8,7 +8,7 @@ from rest_framework.response import Response
 from django.shortcuts import redirect
 from django.conf import settings
 from django.urls import reverse
-from django.views.decorators.csrf import csrf_exempt
+
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.utils.encoding import force_bytes, force_str
 from django.contrib.auth.tokens import default_token_generator
@@ -82,7 +82,7 @@ class CookieTokenRefreshView(TokenRefreshView):
         response.data = {'detail': 'Token refreshed'}
         return response
 
-@csrf_exempt
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def logout(request):

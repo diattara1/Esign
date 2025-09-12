@@ -1,36 +1,39 @@
 
 import React, { Suspense } from 'react';
 import { useAuth } from './AuthContext';
-import { Routes, Route, Navigate, Outlet,useLocation } from 'react-router-dom';
+import { Routes, Route, Navigate, Outlet, useLocation } from 'react-router-dom';
 import LoadingSkeleton from './components/LoadingSkeleton';
 import GuestRoute from './GuestRoute';
 
-const DashboardSignature = React.lazy(() => import('./pages/DashboardSignature'));
+// Pages chargées directement (légères)
+import DashboardSignature from './pages/DashboardSignature';
+import SignatureConfirmation from './pages/SignatureConfirmation';
+import GuestSignatureConfirmation from './pages/GuestSignatureConfirmation';
+import SignatureLayout from './pages/SignatureLayout';
+import LoginPage from './pages/LoginPage';
+import RegisterPage from './pages/RegisterPage';
+import PasswordResetPage from './pages/PasswordResetPage';
+import ResetPasswordConfirmPage from './pages/ResetPasswordConfirmPage';
+import SentEnvelopes from './components/SentEnvelopes';
+import CompletedEnvelopes from './components/CompletedEnvelopes';
+import ActionRequiredEnvelopes from './components/ActionRequiredEnvelopes';
+import DraftEnvelopes from './components/DraftEnvelopes';
+import DeletedEnvelopes from './components/DeletedEnvelopes';
+import MainLayout from './layouts/MainLayout';
+import QrVerifyPage from './pages/QrVerifyPage';
+import NotFound from './pages/NotFound';
+
+// Pages lourdes chargées à la demande
 const DocumentDetail = React.lazy(() => import('./pages/DocumentDetail'));
 const DocumentSign = React.lazy(() => import('./pages/DocumentSign'));
 const DocumentUpload = React.lazy(() => import('./pages/DocumentUpload'));
 const DocumentWorkflow = React.lazy(() => import('./pages/DocumentWorkflow'));
 const EnvelopeSent = React.lazy(() => import('./pages/EnvelopeSent'));
-const SignatureConfirmation = React.lazy(() => import('./pages/SignatureConfirmation'));
-const GuestSignatureConfirmation = React.lazy(() => import('./pages/GuestSignatureConfirmation'));
-const SignatureLayout = React.lazy(() => import('./pages/SignatureLayout'));
-const LoginPage = React.lazy(() => import('./pages/LoginPage'));
-const RegisterPage = React.lazy(() => import('./pages/RegisterPage'));
-const PasswordResetPage = React.lazy(() => import('./pages/PasswordResetPage'));
 const NotificationSettings = React.lazy(() => import('./pages/NotificationSettings'));
 const ProfilePage = React.lazy(() => import('./pages/ProfilePage'));
 const SelfSignWizard = React.lazy(() => import('./pages/SelfSignWizard'));
 const BulkSignSameWizard = React.lazy(() => import('./pages/BulkSignSameWizard'));
 const SavedSignaturesPage = React.lazy(() => import('./pages/SavedSignaturesPage'));
-const ResetPasswordConfirmPage = React.lazy(() => import('./pages/ResetPasswordConfirmPage'));
-const SentEnvelopes = React.lazy(() => import('./components/SentEnvelopes'));
-const CompletedEnvelopes = React.lazy(() => import('./components/CompletedEnvelopes'));
-const ActionRequiredEnvelopes = React.lazy(() => import('./components/ActionRequiredEnvelopes'));
-const DraftEnvelopes = React.lazy(() => import('./components/DraftEnvelopes'));
-const DeletedEnvelopes = React.lazy(() => import('./components/DeletedEnvelopes'));
-const MainLayout = React.lazy(() => import('./layouts/MainLayout'));
-const QrVerifyPage = React.lazy(() => import('./pages/QrVerifyPage'));
-const NotFound = React.lazy(() => import('./pages/NotFound'));
 
 
 const ProtectedRoute = () => {

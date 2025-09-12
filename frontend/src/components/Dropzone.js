@@ -1,6 +1,6 @@
 import React, { useRef, useState } from 'react';
 
-const Dropzone = ({ onFiles, accept }) => {
+const Dropzone = ({ onFiles, accept, inputProps = {} }) => {
   const inputRef = useRef(null);
   const [isDragActive, setIsDragActive] = useState(false);
 
@@ -56,6 +56,7 @@ const Dropzone = ({ onFiles, accept }) => {
         accept={accept}
         className="hidden"
         onChange={handleChange}
+        {...inputProps}
       />
       <p className="text-sm text-gray-600 text-center px-2">
         Glissez-déposez vos fichiers ici ou cliquez pour sélectionner

@@ -304,6 +304,7 @@ const CompletedEnvelopes = () => {
           containerClassName="rounded-lg "
           tableClassName="min-w-full"
           rowClassName="hover:bg-gray-50 transition-colors cursor-pointer"
+          maxWidth={768}
         />
       </div>
       <ConfirmDialog

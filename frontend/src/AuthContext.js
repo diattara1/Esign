@@ -2,7 +2,7 @@
 // src/AuthContext.js
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { api, setLogoutCallback, verifyToken } from './services/apiUtils';
+import { api, setLogoutCallback, verifyToken, clearCSRFToken } from './services/apiUtils';
 import { toast } from 'react-toastify';
 
 const AuthContext = createContext();
@@ -43,6 +43,7 @@ export const AuthProvider = ({ children }) => {
         return;
       }
 
+      clearCSRFToken();
       setUser(null);
       navigate('/login', { replace: true });
     } catch (err) {

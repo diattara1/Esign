@@ -147,6 +147,9 @@ CORS_ALLOW_HEADERS = [
 
 # ---- Cookies / CSRF par environnement ----
 
+CSRF_COOKIE_HTTPONLY = True
+SESSION_COOKIE_HTTPONLY = True
+
 if DEBUG:
     # DEV : généralement en HTTP → pas de Secure, SameSite=Lax
     SESSION_COOKIE_SECURE = False

@@ -8,6 +8,7 @@ from signature.views.auth import (
     CookieTokenObtainPairView,
     CookieTokenRefreshView,
     logout,
+    csrf,
 )
 
 
@@ -18,6 +19,7 @@ urlpatterns = [
     path('api/token/refresh/', CookieTokenRefreshView.as_view(), name='token_refresh'),
     path('api/logout/', logout, name='logout'),
     path('api/verify-token/', verify_token, name='verify_token'),
+    path('api/csrf/', csrf, name='csrf'),
 ]
 
 if settings.DEBUG:

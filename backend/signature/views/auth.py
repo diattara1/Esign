@@ -34,6 +34,14 @@ User = get_user_model()
 logger = logging.getLogger(__name__)
 
 
+@api_view(["GET"])
+@permission_classes([AllowAny])
+@ensure_csrf_cookie
+def csrf(request):
+    """Return a CSRF token and ensure the cookie is set."""
+    return Response({"csrfToken": get_token(request)})
+
+
 class CookieTokenObtainPairView(TokenObtainPairView):
     """Issue JWTs and store them in HttpOnly cookies."""
     throttle_classes = [ScopedRateThrottle]
@@ -60,7 +68,7 @@ class CookieTokenObtainPairView(TokenObtainPairView):
         response = Response({'detail': 'Login successful'}, status=status.HTTP_200_OK)
         response.set_cookie('access_token', str(access_token), httponly=True, secure=settings.SESSION_COOKIE_SECURE, samesite='None', max_age=access_max_age)
         response.set_cookie('refresh_token', str(refresh), httponly=True, secure=settings.SESSION_COOKIE_SECURE, samesite='None', max_age=refresh_max_age)
-        response.set_cookie('csrftoken', get_token(request), secure=settings.SESSION_COOKIE_SECURE, samesite='None')
+        response.set_cookie('csrftoken', get_token(request), httponly=True, secure=settings.SESSION_COOKIE_SECURE, samesite='None')
         return response
 
 

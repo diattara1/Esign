@@ -93,6 +93,7 @@ const ResetPasswordConfirmPage = () => {
               autoComplete="new-password"
               required
               minLength={5}
+              aria-describedby={errors.password ? 'password-error' : undefined}
             />
             <button
               type="button"
@@ -108,7 +109,7 @@ const ResetPasswordConfirmPage = () => {
             </button>
           </div>
           {errors.password && (
-            <p className="mt-1 text-sm text-red-600">{errors.password}</p>
+            <p id="password-error" className="mt-1 text-sm text-red-600">{errors.password}</p>
           )}
         </div>
         <div>
@@ -122,6 +123,7 @@ const ResetPasswordConfirmPage = () => {
               autoComplete="new-password"
               required
               minLength={5}
+              aria-describedby={errors.confirm ? 'confirm-error' : undefined}
             />
             <button
               type="button"
@@ -137,7 +139,7 @@ const ResetPasswordConfirmPage = () => {
             </button>
           </div>
           {errors.confirm && (
-            <p className="mt-1 text-sm text-red-600">{errors.confirm}</p>
+            <p id="confirm-error" className="mt-1 text-sm text-red-600">{errors.confirm}</p>
           )}
         </div>
 

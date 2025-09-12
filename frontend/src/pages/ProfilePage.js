@@ -305,7 +305,7 @@ useEffect(() => {
                   )}
                 </div>
                 <div className="flex-1">
-                  <label className="cursor-pointer inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-xl text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">
+                    <label className="cursor-pointer inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-xl text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">
                     <Upload className="h-4 w-4 mr-2" />
                     Changer la photo
                     <input
@@ -314,13 +314,14 @@ useEffect(() => {
                       accept="image/*"
                       onChange={handleFileChange}
                       className="sr-only"
+                      aria-describedby={errors.avatar ? 'avatar-error' : undefined}
                     />
                   </label>
                   <p className="mt-2 text-sm text-gray-500">
                     JPG, PNG jusqu'à 5MB. Recommandé: 400x400px
                   </p>
                    {errors.avatar && (
-                    <p className="mt-1 text-sm text-red-600">{errors.avatar}</p>
+                    <p id="avatar-error" className="mt-1 text-sm text-red-600">{errors.avatar}</p>
                   )}
                   {uploadProgress > 0 && (
                     <div className="mt-2">
@@ -388,9 +389,10 @@ useEffect(() => {
                     onChange={handleChange}
                     className="block w-full px-3 py-3 border border-gray-300 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition-colors"
                     placeholder="Votre prénom"
+                    aria-describedby={errors.first_name ? 'first_name-error' : undefined}
                   />
                   {errors.first_name && (
-                    <p className="mt-1 text-sm text-red-600">{errors.first_name}</p>
+                    <p id="first_name-error" className="mt-1 text-sm text-red-600">{errors.first_name}</p>
                   )}
                 </div>
 
@@ -405,9 +407,10 @@ useEffect(() => {
                     onChange={handleChange}
                     className="block w-full px-3 py-3 border border-gray-300 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition-colors"
                     placeholder="Votre nom"
+                    aria-describedby={errors.last_name ? 'last_name-error' : undefined}
                   />
                   {errors.last_name && (
-                    <p className="mt-1 text-sm text-red-600">{errors.last_name}</p>
+                    <p id="last_name-error" className="mt-1 text-sm text-red-600">{errors.last_name}</p>
                   )}
                 </div>
               </div>
@@ -547,17 +550,18 @@ useEffect(() => {
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                     <Lock className="h-5 w-5 text-gray-400" />
                   </div>
-                  <input
-                    type={showOldPassword ? 'text' : 'password'}
-                    name="old_password"
-                    value={passwordData.old_password}
-                    onChange={handlePasswordChange}
-                    className="block w-full pl-10 pr-10 py-3 border border-gray-300 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition-colors"
-                    placeholder="Entrez votre mot de passe actuel"
-                  />
-                  {pwdErrors.old_password && (
-                    <p className="mt-1 text-sm text-red-600">{pwdErrors.old_password}</p>
-                  )}
+                    <input
+                      type={showOldPassword ? 'text' : 'password'}
+                      name="old_password"
+                      value={passwordData.old_password}
+                      onChange={handlePasswordChange}
+                      className="block w-full pl-10 pr-10 py-3 border border-gray-300 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition-colors"
+                      placeholder="Entrez votre mot de passe actuel"
+                      aria-describedby={pwdErrors.old_password ? 'old_password-error' : undefined}
+                    />
+                    {pwdErrors.old_password && (
+                      <p id="old_password-error" className="mt-1 text-sm text-red-600">{pwdErrors.old_password}</p>
+                    )}
                   <button
                     type="button"
                     className="absolute inset-y-0 right-0 pr-3 flex items-center"
@@ -582,17 +586,18 @@ useEffect(() => {
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                     <Lock className="h-5 w-5 text-gray-400" />
                   </div>
-                  <input
-                    type={showNewPassword ? 'text' : 'password'}
-                    name="new_password"
-                    value={passwordData.new_password}
-                    onChange={handlePasswordChange}
-                    className="block w-full pl-10 pr-10 py-3 border border-gray-300 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition-colors"
-                    placeholder="Entrez votre nouveau mot de passe"
-                  />
-                  {pwdErrors.new_password && (
-                    <p className="mt-1 text-sm text-red-600">{pwdErrors.new_password}</p>
-                  )}
+                    <input
+                      type={showNewPassword ? 'text' : 'password'}
+                      name="new_password"
+                      value={passwordData.new_password}
+                      onChange={handlePasswordChange}
+                      className="block w-full pl-10 pr-10 py-3 border border-gray-300 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition-colors"
+                      placeholder="Entrez votre nouveau mot de passe"
+                      aria-describedby={pwdErrors.new_password ? 'new_password-error' : undefined}
+                    />
+                    {pwdErrors.new_password && (
+                      <p id="new_password-error" className="mt-1 text-sm text-red-600">{pwdErrors.new_password}</p>
+                    )}
                   <button
                     type="button"
                     className="absolute inset-y-0 right-0 pr-3 flex items-center"

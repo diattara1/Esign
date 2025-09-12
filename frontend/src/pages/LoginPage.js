@@ -104,9 +104,10 @@ const LoginPage = () => {
                   }}
                   className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition-colors"
                   placeholder="Entrez votre nom d'utilisateur"
+                  aria-describedby={errors.username ? 'username-error' : undefined}
                 />
                 {errors.username && (
-                  <p className="mt-1 text-sm text-red-600">{errors.username}</p>
+                  <p id="username-error" className="mt-1 text-sm text-red-600">{errors.username}</p>
                 )}
               </div>
             </div>
@@ -131,9 +132,10 @@ const LoginPage = () => {
                   }}
                   className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition-colors"
                   placeholder="Entrez votre mot de passe"
+                  aria-describedby={errors.password ? 'password-error' : undefined}
                 />
                 {errors.password && (
-                  <p className="mt-1 text-sm text-red-600">{errors.password}</p>
+                  <p id="password-error" className="mt-1 text-sm text-red-600">{errors.password}</p>
                 )}
               </div>
             </div>

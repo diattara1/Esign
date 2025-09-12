@@ -460,9 +460,11 @@ export default function DocumentSign() {
                 placeholder="Code OTP"
                 className="w-full border p-2 rounded"
                 disabled={cooldownUntil && cooldownUntil > Date.now()}
-              /><div role="status" aria-live="polite" className="text-sm">
-                {otpError && <p className="text-red-600">{otpError}</p>}
-                {otpStatus && <p className="text-gray-600">{otpStatus}</p>}
+                aria-describedby={otpError ? 'otp-error' : otpStatus ? 'otp-status' : undefined}
+              />
+              <div role="status" aria-live="polite" className="text-sm">
+                {otpError && <p id="otp-error" className="text-red-600">{otpError}</p>}
+                {otpStatus && <p id="otp-status" className="text-gray-600">{otpStatus}</p>}
               </div>
               <button onClick={handleVerifyOtp} disabled={verifyingOtp || (cooldownUntil && cooldownUntil > Date.now())} className="w-full bg-green-600 text-white p-2 rounded disabled:opacity-50">{verifyingOtp ? 'Vérification…' : 'Vérifier OTP'}</button>
             </>

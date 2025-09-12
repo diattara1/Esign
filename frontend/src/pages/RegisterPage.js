@@ -259,9 +259,10 @@ const handleResendEmail = async () => {
                         onChange={handleChange}
                         className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition-colors"
                         placeholder="Nom d'utilisateur"
+                        aria-describedby={errors.username ? 'username-error' : undefined}
                       />
                       {errors.username && (
-                        <p className="mt-1 text-sm text-red-600">{errors.username}</p>
+                        <p id="username-error" className="mt-1 text-sm text-red-600">{errors.username}</p>
                       )}
                     </div>
                   </div>
@@ -282,9 +283,10 @@ const handleResendEmail = async () => {
                         onChange={handleChange}
                         className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition-colors"
                         placeholder="exemple@email.com"
+                        aria-describedby={errors.email ? 'email-error' : undefined}
                       />
                       {errors.email && (
-                        <p className="mt-1 text-sm text-red-600">{errors.email}</p>
+                        <p id="email-error" className="mt-1 text-sm text-red-600">{errors.email}</p>
                       )}
                     </div>
                   </div>
@@ -299,19 +301,20 @@ const handleResendEmail = async () => {
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                       <Lock className="h-5 w-5 text-gray-400" />
                     </div>
-                    <input
-                      id="password"
-                      type={showPassword ? 'text' : 'password'}
-                      name="password"
-                      value={form.password}
-                      onChange={handleChange}
-                      onBlur={handleStep2Blur}
-                      className="block w-full pl-10 pr-10 py-3 border border-gray-300 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition-colors"
-                      placeholder="Minimum 5 caractères"
-                    />
-                    {errors.password && (
-                      <p className="mt-1 text-sm text-red-600">{errors.password}</p>
-                    )}
+                      <input
+                        id="password"
+                        type={showPassword ? 'text' : 'password'}
+                        name="password"
+                        value={form.password}
+                        onChange={handleChange}
+                        onBlur={handleStep2Blur}
+                        className="block w-full pl-10 pr-10 py-3 border border-gray-300 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition-colors"
+                        placeholder="Minimum 5 caractères"
+                        aria-describedby={errors.password ? 'password-error' : undefined}
+                      />
+                      {errors.password && (
+                        <p id="password-error" className="mt-1 text-sm text-red-600">{errors.password}</p>
+                      )}
                     <button
                       type="button"
                       className="absolute inset-y-0 right-0 pr-3 flex items-center"
@@ -372,9 +375,10 @@ const handleResendEmail = async () => {
                       onBlur={handleStep2Blur}
                       className="block w-full px-3 py-3 border border-gray-300 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition-colors"
                       placeholder="Votre prénom"
+                      aria-describedby={errors.first_name ? 'first_name-error' : undefined}
                     />
                     {errors.first_name && (
-                      <p className="mt-1 text-sm text-red-600">{errors.first_name}</p>
+                      <p id="first_name-error" className="mt-1 text-sm text-red-600">{errors.first_name}</p>
                     )}
                   </div>
 
@@ -391,9 +395,10 @@ const handleResendEmail = async () => {
                       onBlur={handleStep2Blur}
                       className="block w-full px-3 py-3 border border-gray-300 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition-colors"
                       placeholder="Votre nom"
+                      aria-describedby={errors.last_name ? 'last_name-error' : undefined}
                     />
                     {errors.last_name && (
-                      <p className="mt-1 text-sm text-red-600">{errors.last_name}</p>
+                      <p id="last_name-error" className="mt-1 text-sm text-red-600">{errors.last_name}</p>
                     )}
                   </div>
                 </div>
@@ -416,9 +421,10 @@ const handleResendEmail = async () => {
                         onChange={handleChange}
                         onBlur={handleStep2Blur}
                         className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition-colors"
+                        aria-describedby={errors.birth_date ? 'birth_date-error' : undefined}
                       />
                       {errors.birth_date && (
-                        <p className="mt-1 text-sm text-red-600">{errors.birth_date}</p>
+                        <p id="birth_date-error" className="mt-1 text-sm text-red-600">{errors.birth_date}</p>
                       )}
                     </div>
                   </div>

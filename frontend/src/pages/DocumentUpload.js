@@ -97,17 +97,22 @@ const DocumentUpload = () => {
               }}
               placeholder="Ex: Contrat de partenariat"
               className="w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+              aria-describedby={errors.title ? 'title-error' : undefined}
             />
             {errors.title && (
-              <p className="mt-1 text-sm text-red-600">{errors.title}</p>
+              <p id="title-error" className="mt-1 text-sm text-red-600">{errors.title}</p>
             )}
           </div>
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Fichier (PDF uniquement)</label>
-              <Dropzone onFiles={handleFilesChange} accept=".pdf" />
+              <Dropzone
+                onFiles={handleFilesChange}
+                accept=".pdf"
+                inputProps={{ 'aria-describedby': errors.files ? 'files-error' : undefined }}
+              />
               {errors.files && (
-                <p className="mt-1 text-sm text-red-600">{errors.files}</p>
+                <p id="files-error" className="mt-1 text-sm text-red-600">{errors.files}</p>
               )}
               {files.length > 0 && (
                 <div className="mt-2 text-sm text-green-600">

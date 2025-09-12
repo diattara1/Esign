@@ -44,7 +44,7 @@ export const AuthProvider = ({ children }) => {
       }
 
       setUser(null);
-      window.location.replace('/login');
+      navigate('/login', { replace: true });
     } catch (err) {
       const msg = err.response?.data?.detail
                || err.response?.data?.error

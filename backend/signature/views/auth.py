@@ -34,14 +34,6 @@ User = get_user_model()
 logger = logging.getLogger(__name__)
 
 
-@api_view(["GET"])
-@permission_classes([AllowAny])
-@ensure_csrf_cookie
-def csrf(request):
-    """Return a CSRF token and ensure the cookie is set."""
-    return Response({"csrfToken": get_token(request)})
-
-
 class CookieTokenObtainPairView(TokenObtainPairView):
     """Issue JWTs and store them in HttpOnly cookies."""
     throttle_classes = [ScopedRateThrottle]
@@ -66,9 +58,9 @@ class CookieTokenObtainPairView(TokenObtainPairView):
             refresh_max_age = int(timedelta(days=30).total_seconds())
 
         response = Response({'detail': 'Login successful'}, status=status.HTTP_200_OK)
-        response.set_cookie('access_token', str(access_token), httponly=True, secure=settings.SESSION_COOKIE_SECURE, samesite='None', max_age=access_max_age)
-        response.set_cookie('refresh_token', str(refresh), httponly=True, secure=settings.SESSION_COOKIE_SECURE, samesite='None', max_age=refresh_max_age)
-        response.set_cookie('csrftoken', get_token(request), httponly=True, secure=settings.SESSION_COOKIE_SECURE, samesite='None')
+        response.set_cookie('access_token', str(access_token), httponly=True, secure=True, samesite='None', max_age=access_max_age)
+        response.set_cookie('refresh_token', str(refresh), httponly=True, secure=True, samesite='None', max_age=refresh_max_age)
+        response.set_cookie('csrftoken', get_token(request), secure=True, samesite='None')
         return response
 
 
@@ -84,9 +76,9 @@ class CookieTokenRefreshView(TokenRefreshView):
         access = response.data.get('access')
         refresh = response.data.get('refresh')
         if access:
-            response.set_cookie('access_token', access, httponly=True, secure=settings.SESSION_COOKIE_SECURE, samesite='None', max_age=int(timedelta(hours=1).total_seconds()))
+            response.set_cookie('access_token', access, httponly=True, secure=True, samesite='None', max_age=int(timedelta(hours=1).total_seconds()))
         if refresh:
-            response.set_cookie('refresh_token', refresh, httponly=True, secure=settings.SESSION_COOKIE_SECURE, samesite='None')
+            response.set_cookie('refresh_token', refresh, httponly=True, secure=True, samesite='None')
         response.data = {'detail': 'Token refreshed'}
         return response
 
@@ -104,11 +96,11 @@ def logout(request):
             logger.warning("Failed to blacklist refresh token: %s", exc)
     response = Response({'detail': 'Logout successful'}, status=status.HTTP_200_OK)
     response.set_cookie(
-        'access_token', '', httponly=True, secure=settings.SESSION_COOKIE_SECURE, samesite='None',
+        'access_token', '', httponly=True, secure=True, samesite='None',
         expires=0, max_age=0, path='/', domain=settings.SESSION_COOKIE_DOMAIN
     )
     response.set_cookie(
-        'refresh_token', '', httponly=True, secure=settings.SESSION_COOKIE_SECURE, samesite='None',
+        'refresh_token', '', httponly=True, secure=True, samesite='None',
         expires=0, max_age=0, path='/', domain=settings.SESSION_COOKIE_DOMAIN
     )
     return response

@@ -25,11 +25,16 @@ export const api = axios.create({
 });
 
 // Récupération du jeton CSRF via un endpoint dédié
-let csrfToken = null;
-const fetchCSRFToken = async () => {
-  const response = await api.get('/api/csrf/');
-  csrfToken = response.data?.csrfToken;
-  return csrfToken;
+const CSRF_COOKIE_NAMES = ['csrftoken', 'CSRF-TOKEN', 'XSRF-TOKEN'];
+export const getCSRFToken = () => {
+  const cookies = document.cookie ? document.cookie.split(';') : [];
+  for (const cookie of cookies) {
+    const [name, value] = cookie.trim().split('=');
+    if (CSRF_COOKIE_NAMES.includes(name)) {
+      return decodeURIComponent(value);
+    }
+  }
+  return null;
 };
 
 
@@ -71,7 +76,7 @@ createAuthRefreshInterceptor(api, refreshAuthLogic);
 
 // Intercepteur de requête : ajuste le Content-Type pour FormData
 api.interceptors.request.use(
-  async config => {
+   async config => {
     if (config.data instanceof FormData) {
       // Laisse le navigateur gérer le Content-Type
       delete config.headers['Content-Type'];
@@ -79,15 +84,9 @@ api.interceptors.request.use(
 
     const method = config.method ? config.method.toLowerCase() : '';
     if (['post', 'put', 'patch', 'delete'].includes(method)) {
-      if (!csrfToken) {
-        try {
-          await fetchCSRFToken();
-        } catch (err) {
-          console.error('Unable to fetch CSRF token', err);
-        }
-      }
-      if (csrfToken) {
-        config.headers['X-CSRFToken'] = csrfToken;
+      const token = getCSRFToken();
+      if (token) {
+        config.headers['X-CSRFToken'] = token;
       }
     }
 

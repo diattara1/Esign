@@ -145,10 +145,7 @@ CORS_ALLOW_HEADERS = [
     "x-signature-token",
 ]
 
-# ---- Cookies / CSRF par environnement ----
 
-CSRF_COOKIE_HTTPONLY = True
-SESSION_COOKIE_HTTPONLY = True
 
 if DEBUG:
     # DEV : généralement en HTTP → pas de Secure, SameSite=Lax

@@ -4,7 +4,18 @@
 import React, { useEffect, useState, useCallback, useLayoutEffect, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Document, Page } from 'react-pdf';
-import { FiMenu, FiX, FiDownload, FiExternalLink, FiArrowLeft, FiClock } from 'react-icons/fi';
+import {
+  FiMenu,
+  FiX,
+  FiDownload,
+  FiExternalLink,
+  FiArrowLeft,
+  FiClock,
+  FiZoomIn,
+  FiZoomOut,
+  FiChevronLeft,
+  FiChevronRight,
+} from 'react-icons/fi';
 import signatureService from '../services/signatureService';
 import { toast } from 'react-toastify';
 import Countdown from '../components/Countdown';
@@ -13,6 +24,8 @@ import 'react-pdf/dist/Page/TextLayer.css';
 import logService from '../services/logService';
 import useFocusTrap from '../hooks/useFocusTrap';
 import useIsMobile from '../hooks/useIsMobile';
+
+const LARGE_FILE_THRESHOLD = 5 * 1024 * 1024; // 5 Mo
 
 function ReminderModal({ open, count, onClose }) {
   const dialogRef = useRef(null);
@@ -81,6 +94,9 @@ const DocumentDetail = () => {
   const [pdfUrl, setPdfUrl] = useState(null);
   const [numPages, setNumPages] = useState(0);
   const [loadingPdf, setLoadingPdf] = useState(false);
+  const [pageNumber, setPageNumber] = useState(1);
+  const [scale, setScale] = useState(1);
+  const pdfContainerRef = useRef(null);
 
   // Rappels
   const [reminding, setReminding] = useState(false);
@@ -132,6 +148,37 @@ const DocumentDetail = () => {
     };
   }, [pdfUrl]);
 
+  // Pinch-to-zoom sur mobile
+  useEffect(() => {
+    const el = pdfContainerRef.current;
+    if (!el) return;
+    let prevDist = null;
+    const handleTouchMove = e => {
+      if (e.touches.length === 2) {
+        e.preventDefault();
+        const [t1, t2] = e.touches;
+        const dist = Math.hypot(
+          t1.clientX - t2.clientX,
+          t1.clientY - t2.clientY
+        );
+        if (prevDist) {
+          const ratio = dist / prevDist;
+          setScale(s => Math.min(Math.max(s * ratio, 0.5), 3));
+        }
+        prevDist = dist;
+      }
+    };
+    const reset = () => {
+      prevDist = null;
+    };
+    el.addEventListener('touchmove', handleTouchMove, { passive: false });
+    el.addEventListener('touchend', reset);
+    return () => {
+      el.removeEventListener('touchmove', handleTouchMove);
+      el.removeEventListener('touchend', reset);
+    };
+  }, []);
+
   // Chargement preview consolidée
   const loadConsolidatedPreview = useCallback(async () => {
     setLoadingPdf(true);
@@ -142,6 +189,8 @@ const DocumentDetail = () => {
         return download_url;
       });
       setNumPages(0);
+      setPageNumber(1);
+      setScale(1);
     } catch (e) {
       logService.error(e);
       setPdfUrl(null);
@@ -210,6 +259,11 @@ const DocumentDetail = () => {
     }
   };
 
+  const goPrevPage = () => setPageNumber(p => Math.max(p - 1, 1));
+  const goNextPage = () => setPageNumber(p => Math.min(p + 1, numPages));
+  const zoomOut = () => setScale(s => Math.max(s - 0.25, 0.5));
+  const zoomIn = () => setScale(s => Math.min(s + 0.25, 3));
+
   const handleRemind = async () => {
     setReminding(true);
     try {
@@ -231,7 +285,10 @@ const DocumentDetail = () => {
   };
 
   // Callbacks react-pdf
-  const onDocumentLoad = ({ numPages }) => setNumPages(numPages);
+  const onDocumentLoad = ({ numPages }) => {
+    setNumPages(numPages);
+    setPageNumber(1);
+  };
   const onDocumentError = (err) => {
     logService.error('PDF error:', err);
     toast.error('Erreur lors du chargement du PDF');
@@ -502,18 +559,32 @@ const DocumentDetail = () => {
             ) : !pdfUrl ? (
               <div className="flex justify-center items-center h-full min-h-[50vh]">
                 {isMobile ? (
-                  <button
-                    onClick={loadConsolidatedPreview}
-                    className="px-4 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 text-sm"
-                  >
-                    Voir le document
-                  </button>
+                  <div className="flex flex-col items-center gap-2">
+                    <button
+                      onClick={loadConsolidatedPreview}
+                      className="px-4 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 text-sm"
+                    >
+                      Voir le document
+                    </button>
+                    {selectedDoc?.file_size > LARGE_FILE_THRESHOLD && (
+                      <button
+                        onClick={handleDownload}
+                        className="px-4 py-2 rounded-md bg-gray-200 text-gray-800 hover:bg-gray-300 text-sm"
+                      >
+                        Télécharger pour lecture externe
+                      </button>
+                    )}
+                  </div>
                 ) : (
                   <p className="text-gray-600 text-sm text-center">Prévisualisation indisponible.</p>
                 )}
               </div>
             ) : (
-              <div className="flex flex-col items-center space-y-4 max-w-3xl mx-auto">
+              <div
+                className="flex flex-col items-center space-y-4 max-w-3xl mx-auto"
+                ref={pdfContainerRef}
+                style={{ touchAction: 'none' }}
+              >
                 <Document
                   key={env?.status === 'completed' ? `signed-${env.id}` : `orig-${env.id}-${selectedDoc?.id || 'single'}`}
                   file={pdfUrl}
@@ -525,17 +596,51 @@ const DocumentDetail = () => {
                     </div>
                   }
                 >
-                  {Array.from({ length: numPages }, (_, i) => (
-                    <div key={i} className="mb-4 shadow-md rounded-md overflow-hidden bg-white">
-                      <Page
-                        pageNumber={i + 1}
-                        width={Math.max(viewerWidth, 300)}
-                        renderTextLayer={false}
-                        className="mx-auto"
-                      />
-                    </div>
-                  ))}
+                  <div className="mb-4 shadow-md rounded-md overflow-hidden bg-white">
+                    <Page
+                      pageNumber={pageNumber}
+                      width={Math.max(viewerWidth, 300) * scale}
+                      renderTextLayer={false}
+                      className="mx-auto"
+                    />
+                  </div>
                 </Document>
+                <div className="flex items-center justify-center gap-3">
+                  <button
+                    onClick={goPrevPage}
+                    disabled={pageNumber <= 1}
+                    className="p-2 rounded-md hover:bg-gray-200 disabled:opacity-50"
+                    aria-label="Page précédente"
+                  >
+                    <FiChevronLeft className="w-4 h-4" />
+                  </button>
+                  <span className="text-sm">{pageNumber}/{numPages}</span>
+                  <button
+                    onClick={goNextPage}
+                    disabled={pageNumber >= numPages}
+                    className="p-2 rounded-md hover:bg-gray-200 disabled:opacity-50"
+                    aria-label="Page suivante"
+                  >
+                    <FiChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+                <div className="flex items-center justify-center gap-3">
+                  <button
+                    onClick={zoomOut}
+                    className="p-2 rounded-md hover:bg-gray-200"
+                    aria-label="Zoom arrière"
+                  >
+                    <FiZoomOut className="w-4 h-4" />
+                  </button>
+                  <span className="text-sm">{Math.round(scale * 100)}%</span>
+                  <button
+                    onClick={zoomIn}
+                    className="p-2 rounded-md hover:bg-gray-200"
+                    aria-label="Zoom avant"
+                  >
+                    <FiZoomIn className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
             )}
           </div>

@@ -1,5 +1,5 @@
 import { api } from './apiUtils';
-
+import logService from './logService';
 const BASE = 'api/signature';
 
 const apiRequest = async (method, url, data, config, errorMessage = 'Une erreur est survenue') => {
@@ -9,7 +9,9 @@ const apiRequest = async (method, url, data, config, errorMessage = 'Une erreur 
     const res = await api[m](...args);
     return res.data;
   } catch (err) {
-    throw new Error(errorMessage);
+    logService.error('API request error response:', err.response);
+    const detail = err.response?.data?.detail || err.message;
+    throw new Error(detail || errorMessage);
   }
 };
 

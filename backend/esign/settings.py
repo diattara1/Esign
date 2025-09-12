@@ -18,15 +18,14 @@ if FRONT_BASE_URL:
 
 # Sécurité / mode
 SECRET_KEY = env("DJANGO_SECRET_KEY")
-DEBUG = env.bool("DJANGO_DEBUG", default=True)
+DEBUG = env.bool("DJANGO_DEBUG", default=False)
 
 # Hosts
 
-ALLOWED_HOSTS = [
-    "localhost",
-    "127.0.0.1",
-    "esign-5mbk.onrender.com", 
-]
+
+ALLOWED_HOSTS = env.list("DJANGO_ALLOWED_HOSTS", default=["localhost", "127.0.0.1"])
+
+
 
 
 
@@ -171,6 +170,11 @@ else:
     ]
     if _front_origin:
         CSRF_TRUSTED_ORIGINS.append(_front_origin)
+
+SECURE_SSL_REDIRECT = True
+SECURE_HSTS_SECONDS = 31536000
+SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
 # Static & media
 STATIC_URL = "/static/"

@@ -4,5 +4,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
+# Explicitly disable debug in production
+ENV DJANGO_DEBUG=False
 
 CMD ["gunicorn", "esign.wsgi:application", "--bind", "0.0.0.0:8000"]

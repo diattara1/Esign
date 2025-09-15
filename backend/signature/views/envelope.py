@@ -210,7 +210,35 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
         if not doc:
             raise ValueError('Pas de document disponible')
         return doc, 'original'
- 
+
+    def _ensure_creator(self, request, envelope: Envelope):
+        if envelope.created_by_id != request.user.id:
+            return Response(
+                {"error": "Action réservée au créateur de l'enveloppe"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        return None
+
+    def _delete_envelope_files(self, envelope: Envelope) -> None:
+        files_to_delete = []
+
+        if envelope.document_file and envelope.document_file.name:
+            files_to_delete.append(envelope.document_file)
+
+        for doc in envelope.documents.all():
+            if doc.file and doc.file.name:
+                files_to_delete.append(doc.file)
+
+        for signature in envelope.signatures.all():
+            if signature.signed_file and signature.signed_file.name:
+                files_to_delete.append(signature.signed_file)
+
+        for field_file in files_to_delete:
+            try:
+                field_file.delete(save=False)
+            except FileNotFoundError:
+                continue
+
     @staticmethod
     def _serve_pdf(file_field, filename: str, inline: bool = True):
         fh = file_field.storage.open(file_field.name, "rb")
@@ -323,14 +351,39 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
 
         return Response({'status': 'sent', 'message': 'Document envoyé avec succès'})
 
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
     def cancel(self, request, pk=None):
         envelope = self.get_object()
+        permission_error = self._ensure_creator(request, envelope)
+        if permission_error:
+            return permission_error
         if envelope.status in ['completed', 'cancelled']:
             return Response({'error': 'Document déjà finalisé'}, status=status.HTTP_400_BAD_REQUEST)
         envelope.status = 'cancelled'
         envelope.save()
         return Response({'status': 'cancelled', 'message': 'Document annulé'})
+
+    @action(detail=True, methods=["post"], permission_classes=[IsAuthenticated])
+    def restore(self, request, pk=None):
+        envelope = self.get_object()
+        permission_error = self._ensure_creator(request, envelope)
+        if permission_error:
+            return permission_error
+        if envelope.status != "cancelled":
+            return Response({"error": "Non annulé"}, status=status.HTTP_400_BAD_REQUEST)
+        envelope.status = "draft"
+        envelope.save()
+        return Response({"status": "draft"})
+
+    @action(detail=True, methods=["delete"], url_path="purge", permission_classes=[IsAuthenticated])
+    def purge(self, request, pk=None):
+        envelope = self.get_object()
+        permission_error = self._ensure_creator(request, envelope)
+        if permission_error:
+            return permission_error
+        self._delete_envelope_files(envelope)
+        envelope.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     # ---------- OTP (invités) ----------
     @action(detail=True, methods=['post'], url_path='send_otp', permission_classes=[permissions.AllowAny])

@@ -180,7 +180,8 @@ const RecipientsPanel = React.memo(({
   canPlaceSignature,
   hasSignatureOnDoc,
   handleSubmit,
-  handlePlaceSignature 
+  handlePlaceSignature,
+  allSigned 
 }) => {
    const [open, setOpen] = React.useState(true);
   return (
@@ -970,6 +971,7 @@ export default function DocumentWorkflow() {
               hasSignatureOnDoc={hasSignatureOnDoc}
               handleSubmit={handleSubmit}
               handlePlaceSignature={handlePlaceSignature}
+              allSigned={allSigned} 
             />
           )}
           {currentMobileTab === 'pdf' && (
@@ -1040,6 +1042,7 @@ export default function DocumentWorkflow() {
           hasSignatureOnDoc={hasSignatureOnDoc}
           handleSubmit={handleSubmit}
           handlePlaceSignature={handlePlaceSignature}
+          allSigned={allSigned} 
         />
       )}
       <PDFViewer

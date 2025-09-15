@@ -427,7 +427,7 @@ const RecipientsPanel = React.memo(({
 
       <button
         onClick={handleSubmit}
-        disabled={recipients.some((r) => !r.email || !r.full_name) || fields.length === 0}
+        disabled={recipients.some((r) => !r.email || !r.full_name) || !allSigned}
         className="w-full mt-4 lg:mt-6 bg-green-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors text-sm lg:text-base"
       >
         Envoyer l'enveloppe
@@ -553,6 +553,21 @@ export default function DocumentWorkflow() {
   const [pageDimensions, setPageDimensions] = useState({});
   const [recipients, setRecipients] = useState([{ id: undefined, email: '', full_name: '', order: 1 }]);
   const [fields, setFields] = useState([]);
+  const allSigned = useMemo(
+    () =>
+      documents.length > 0 &&
+      recipients.every((rec) =>
+        documents.every((doc) =>
+          fields.some(
+            (f) =>
+              f.recipient_id === rec.order &&
+              f.document_id === doc.id &&
+              f.field_type === 'signature'
+          )
+        )
+      ),
+    [documents, recipients, fields]
+  );
   const [placing, setPlacing] = useState({ idx: null, type: 'signature' });
   const [isUploading, setIsUploading] = useState(false);
   const [includeQr, setIncludeQr] = useState(false);

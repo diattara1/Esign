@@ -59,6 +59,12 @@ export default {
   cancelEnvelope: id =>
     apiRequest('post', `${BASE}/envelopes/${id}/cancel/`, undefined, undefined, "Impossible d'annuler l'enveloppe"),
 
+  restoreEnvelope: id =>
+    apiRequest('post', `${BASE}/envelopes/${id}/restore/`, undefined, undefined, "Impossible de restaurer l'enveloppe"),
+
+  purgeEnvelope: id =>
+    apiRequest('delete', `${BASE}/envelopes/${id}/purge/`, undefined, undefined, "Impossible de purger l'enveloppe"),
+
   sendEnvelope: (id, payload = {}) =>
     apiRequest('post', `${BASE}/envelopes/${id}/send/`, payload, undefined, "Impossible d'envoyer l'enveloppe"),
 

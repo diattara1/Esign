@@ -663,6 +663,59 @@ def send_document_completed_notification(envelope_id):
         logger.error(f"Erreur notification document complété: {e}")
 
 
+def _delete_envelope_files(envelope: Envelope) -> None:
+    files_to_delete = []
+
+    if envelope.document_file and envelope.document_file.name:
+        files_to_delete.append(envelope.document_file)
+
+    for document in envelope.documents.all():
+        if document.file and document.file.name:
+            files_to_delete.append(document.file)
+
+    for signature in envelope.signatures.all():
+        if signature.signed_file and signature.signed_file.name:
+            files_to_delete.append(signature.signed_file)
+
+    for file_field in files_to_delete:
+        try:
+            file_field.delete(save=False)
+        except FileNotFoundError:
+            continue
+        except Exception as exc:  # pragma: no cover - best-effort cleanup
+            logger.warning(
+                "Unable to delete file %s for envelope %s: %s",
+                getattr(file_field, "name", "<unknown>"),
+                envelope.pk,
+                exc,
+            )
+
+
+@shared_task
+def purge_expired_envelopes():
+    """Supprime les enveloppes annulées depuis plus de 10 jours."""
+    cutoff = timezone.now() - timedelta(days=10)
+    envelopes = (
+        Envelope.objects.filter(
+            status="cancelled", cancelled_at__lte=cutoff
+        )
+        .prefetch_related("documents", "signatures")
+    )
+
+    purged = 0
+    for envelope in envelopes:
+        logger.info(
+            "Purging cancelled envelope %s older than 10 days", envelope.pk
+        )
+        _delete_envelope_files(envelope)
+        envelope.delete()
+        purged += 1
+
+    if purged:
+        logger.info("purge_expired_envelopes removed %s envelopes", purged)
+    return purged
+
+
 @shared_task
 def send_otp_email(recipient_id, otp_code, expiry_minutes=5):
     """Envoie un code OTP avec template."""

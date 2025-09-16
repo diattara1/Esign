@@ -196,6 +196,7 @@ class Envelope(models.Model):
     deadline_at = models.DateTimeField(null=True, blank=True)
     jwt_token = models.CharField(max_length=512, blank=True)
     expires_at = models.DateTimeField(null=True, blank=True)
+    cancelled_at = models.DateTimeField(null=True, blank=True)
 
     def __str__(self):
         return f"{self.title} ({self.get_status_display()})"

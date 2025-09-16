@@ -360,7 +360,8 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
         if envelope.status in ['completed', 'cancelled']:
             return Response({'error': 'Document déjà finalisé'}, status=status.HTTP_400_BAD_REQUEST)
         envelope.status = 'cancelled'
-        envelope.save()
+        envelope.cancelled_at = timezone.now()
+        envelope.save(update_fields=['status', 'cancelled_at'])
         return Response({'status': 'cancelled', 'message': 'Document annulé'})
 
     @action(detail=True, methods=["post"], permission_classes=[IsAuthenticated])
@@ -372,7 +373,8 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
         if envelope.status != "cancelled":
             return Response({"error": "Non annulé"}, status=status.HTTP_400_BAD_REQUEST)
         envelope.status = "draft"
-        envelope.save()
+        envelope.cancelled_at = None
+        envelope.save(update_fields=['status', 'cancelled_at'])
         return Response({"status": "draft"})
 
     @action(detail=True, methods=["delete"], url_path="purge", permission_classes=[IsAuthenticated])

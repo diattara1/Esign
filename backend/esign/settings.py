@@ -3,6 +3,7 @@ import os, json
 import environ
 from urllib.parse import urlparse
 from datetime import timedelta
+from celery.schedules import crontab
 
 # Base
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -260,6 +261,10 @@ CELERY_BEAT_SCHEDULE = {
     "signature-deadlines-every-5min": {
         "task": "signature.tasks.process_deadlines",
         "schedule": 300.0,
+    },
+    "signature-purge-cancelled-nightly": {
+        "task": "signature.tasks.purge_expired_envelopes",
+        "schedule": crontab(hour=2, minute=0),
     },
 }
 

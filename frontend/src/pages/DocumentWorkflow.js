@@ -10,7 +10,7 @@ import sanitize from '../utils/sanitize';
 import Countdown from '../components/Countdown';
 import useIsMobile from '../hooks/useIsMobile';
 import DraggableSignature from '../components/DraggableSignature';
-
+import CustomDatePicker from '../components/CustomDatePicker';
 pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js';
 
 function debounce(func, wait) {
@@ -396,35 +396,79 @@ const RecipientsPanel = React.memo(({
         </label>
       </div>
 
-      <div className="mb-4 lg:mb-5 p-3 bg-gray-50 rounded-md">
-        <div className="flex items-center justify-between">
-          <label className="flex items-center text-sm font-medium text-gray-800">
-            <input
-              id="deadlineEnabled"
-              type="checkbox"
-              className="h-4 w-4 mr-2"
-              checked={deadlineEnabled}
-              onChange={(e) => setDeadlineEnabled(e.target.checked)}
-            />
-            Définir une échéance
-          </label>
-          {deadlineAt && (
-            <span className="text-xs text-gray-600">
-              <Countdown targetIso={deadlineAt} />
-            </span>
-          )}
-        </div>
-        {deadlineEnabled && (
-          <div className="mt-2">
-            <input
-              type="datetime-local"
-              value={deadlineExact}
-              onChange={(e) => setDeadlineExact(e.target.value)}
-              className="w-full px-2.5 py-2 border border-gray-300 rounded text-sm"
-            />
+      <div className="mb-4 lg:mb-5">
+  <div className={`relative overflow-hidden rounded-2xl border transition-all duration-300 ${
+    deadlineEnabled 
+      ? 'bg-gradient-to-r from-violet-50 to-indigo-50 border-violet-200 shadow-lg' 
+      : 'bg-white border-gray-200 hover:border-gray-300'
+  }`}>
+    
+    {/* Toggle principal */}
+    <div className="flex items-center justify-between p-4">
+      <label className="flex items-center cursor-pointer group">
+        <div className="relative">
+          <input
+            type="checkbox"
+            checked={deadlineEnabled}
+            onChange={(e) => setDeadlineEnabled(e.target.checked)}
+            className="sr-only"
+          />
+          <div className={`w-11 h-6 rounded-full transition-all duration-300 ${
+            deadlineEnabled ? 'bg-violet-500' : 'bg-gray-300'
+          }`}>
+            <div className={`w-4 h-4 bg-white rounded-full shadow-md transform transition-transform duration-300 mt-1 ${
+              deadlineEnabled ? 'translate-x-6' : 'translate-x-1'
+            }`} />
           </div>
-        )}
+        </div>
+        <span className="ml-4 font-medium text-gray-900">Échéance</span>
+      </label>
+      
+      {deadlineAt && (
+        <div className="flex items-center space-x-2 px-3 py-1.5 bg-white/70 backdrop-blur-sm rounded-full">
+          <div className="w-2 h-2 bg-orange-400 rounded-full animate-pulse" />
+          <span className="text-sm font-medium text-gray-700">
+            {formatShortDate(deadlineAt)}
+          </span>
+        </div>
+      )}
+    </div>
+    
+    {/* Sélecteur de date custom */}
+    {deadlineEnabled && (
+      <div className="px-4 pb-4">
+        <div className="relative">
+          <input
+            type="datetime-local"
+            value={deadlineExact}
+            min={getCurrentDateTime()}
+            onChange={(e) => {
+              const selectedDate = new Date(e.target.value);
+              const now = new Date();
+              
+              if (selectedDate <= now) {
+                toast.error('Date invalide');
+                return;
+              }
+              
+              setDeadlineExact(e.target.value);
+            }}
+            className="w-full h-14 px-4 bg-white border-0 rounded-xl text-base font-medium text-gray-900 shadow-inner focus:ring-2 focus:ring-violet-400 focus:outline-none appearance-none"
+            style={{
+              background: 'linear-gradient(135deg, #ffffff 0%, #f8fafc 100%)',
+              boxShadow: 'inset 0 2px 4px rgba(0, 0, 0, 0.06)'
+            }}
+          />
+          <div className="absolute right-4 top-1/2 transform -translate-y-1/2 pointer-events-none">
+            <svg className="w-5 h-5 text-violet-400" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clipRule="evenodd" />
+            </svg>
+          </div>
+        </div>
       </div>
+    )}
+  </div>
+</div>
 
       <button
         onClick={handleSubmit}
@@ -530,7 +574,22 @@ const DocumentsPanel = React.memo(({
     </div>
   );
 });
-
+const getCurrentDateTime = () => {
+  const now = new Date();
+  now.setHours(now.getHours() + 1);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`;
+};
+const formatShortDate = (isoString) => {
+  if (!isoString) return '';
+  const date = new Date(isoString);
+  return new Intl.DateTimeFormat('fr-FR', {
+    day: '2-digit',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit'
+  }).format(date);
+};
 /* =========================
    COMPOSANT PRINCIPAL
    ========================= */

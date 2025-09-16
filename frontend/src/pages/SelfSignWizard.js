@@ -229,9 +229,8 @@ export default function SelfSignWizard() {
                     <Page pageNumber={n} width={pageWidth} renderTextLayer={false} onLoadSuccess={(p) => onPageLoad(n, p)} className="mx-auto" />
                     {pageDims[n] && (
                       <div onClick={(e) => handleOverlayClick(e, n)}
-                           className="absolute top-0 left-1/2 -translate-x-1/2"
-                           style={{ width: pageWidth, height: pageDims[n].height * scale, cursor: placing ? 'crosshair' : 'default', zIndex: 10, backgroundColor: placing ? 'rgba(16,185,129,.08)' : 'transparent' }} />
-                    )}
+                           className="absolute inset-0"
+                           style={{ width: '100%', height: '100%', cursor: placing ? 'crosshair' : 'default', zIndex: 10, backgroundColor: placing ? 'rgba(59,130,246,.06)' : 'transparent' }} />)}
                     {fieldObj && (
                       <DraggableSignature
                         field={fieldObj}

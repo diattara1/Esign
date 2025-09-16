@@ -2,7 +2,7 @@
 // Version plus épurée, responsive sur tablette/mobile, intuitive et allégée
 
 import React, { useEffect, useState, useCallback, useLayoutEffect, useRef } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { Document, Page } from 'react-pdf';
 import {
   FiMenu,
@@ -15,6 +15,8 @@ import {
   FiZoomOut,
   FiChevronLeft,
   FiChevronRight,
+  FiRotateCcw,
+  FiTrash2,
 } from 'react-icons/fi';
 import signatureService from '../services/signatureService';
 import { toast } from 'react-toastify';
@@ -24,6 +26,7 @@ import 'react-pdf/dist/Page/TextLayer.css';
 import logService from '../services/logService';
 import useFocusTrap from '../hooks/useFocusTrap';
 import useIsMobile from '../hooks/useIsMobile';
+import ConfirmDialog from '../components/ConfirmDialog';
 
 const LARGE_FILE_THRESHOLD = 5 * 1024 * 1024; // 5 Mo
 
@@ -80,6 +83,7 @@ function ReminderModal({ open, count, onClose }) {
 
 const DocumentDetail = () => {
   const { id } = useParams();
+  const navigate = useNavigate();
 
   // État principal
   const [env, setEnv] = useState(null);
@@ -103,6 +107,11 @@ const DocumentDetail = () => {
   const [reminderModalOpen, setReminderModalOpen] = useState(false);
   const [reminderCount, setReminderCount] = useState(0);
   const remindBtnRef = useRef(null);
+
+  // Actions sur enveloppe annulée
+  const [restoring, setRestoring] = useState(false);
+  const [purging, setPurging] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   // Viewer width
   const viewerRef = useRef(null);
@@ -200,18 +209,30 @@ const DocumentDetail = () => {
     }
   }, [id]);
 
+  const fetchEnvelope = useCallback(async () => {
+    const data = await signatureService.getEnvelope(id);
+    setEnv(data);
+    const docs = data.documents || [];
+    setDocuments(docs);
+    setSelectedDoc(prev => {
+      if (!docs.length) return null;
+      if (prev) {
+        const match = docs.find(doc => doc.id === prev.id);
+        return match || docs[0];
+      }
+      return docs[0];
+    });
+    if (!isMobile) {
+      await loadConsolidatedPreview();
+    }
+    return data;
+  }, [id, isMobile, loadConsolidatedPreview]);
+
   // Chargement initial
   useEffect(() => {
     (async () => {
       try {
-        const data = await signatureService.getEnvelope(id);
-        setEnv(data);
-        const docs = data.documents || [];
-        setDocuments(docs);
-        if (docs.length > 0) setSelectedDoc(docs[0]);
-        if (!isMobile) {
-          await loadConsolidatedPreview();
-        }
+        await fetchEnvelope();
       } catch (err) {
         logService.error(err);
         toast.error("Échec du chargement de l'enveloppe");
@@ -219,7 +240,7 @@ const DocumentDetail = () => {
         setLoading(false);
       }
     })();
-  }, [id, loadConsolidatedPreview, isMobile]);
+  }, [fetchEnvelope]);
 
   // Gestion des actions
   const handleClickDoc = async (doc) => {
@@ -276,6 +297,46 @@ const DocumentDetail = () => {
       toast.error(msg);
     } finally {
       setReminding(false);
+    }
+  };
+
+  const handleRestore = async () => {
+    if (!env?.id || restoring) return;
+    setRestoring(true);
+    try {
+      await signatureService.restoreEnvelope(env.id);
+      toast.success('Enveloppe restaurée avec succès');
+      try {
+        await fetchEnvelope();
+      } catch (err) {
+        logService.error('Failed to refresh envelope:', err);
+        toast.error("Échec du rechargement de l'enveloppe");
+      }
+    } catch (err) {
+      toast.error("Échec de la restauration de l'enveloppe");
+      logService.error('Failed to restore envelope:', err);
+    } finally {
+      setRestoring(false);
+    }
+  };
+
+  const handlePurge = async () => {
+    if (purging) return;
+    if (!env?.id) {
+      setConfirmOpen(false);
+      return;
+    }
+    setPurging(true);
+    try {
+      await signatureService.purgeEnvelope(env.id);
+      toast.success('Enveloppe purgée définitivement');
+      navigate('/signature/envelopes/deleted');
+    } catch (err) {
+      toast.error("Échec de la purge de l'enveloppe");
+      logService.error('Failed to purge envelope:', err);
+    } finally {
+      setPurging(false);
+      setConfirmOpen(false);
     }
   };
 
@@ -509,6 +570,32 @@ const DocumentDetail = () => {
 
             {/* Actions desktop : boutons simplifiés */}
             <div className="hidden md:flex flex-col space-y-2 mt-4">
+              {env.status === 'cancelled' && (
+                <>
+                  <button
+                    type="button"
+                    onClick={handleRestore}
+                    disabled={restoring}
+                    className={`w-full px-4 py-2 rounded-md text-sm font-medium flex items-center justify-center text-white transition-colors disabled:opacity-60 disabled:cursor-not-allowed ${
+                      restoring ? 'bg-emerald-400' : 'bg-emerald-500 hover:bg-emerald-600'
+                    }`}
+                  >
+                    <FiRotateCcw className="w-4 h-4 mr-2" />
+                    {restoring ? 'Restauration...' : 'Restaurer'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmOpen(true)}
+                    disabled={purging}
+                    className={`w-full px-4 py-2 rounded-md text-sm font-medium flex items-center justify-center text-white transition-colors disabled:opacity-60 disabled:cursor-not-allowed ${
+                      purging ? 'bg-red-400' : 'bg-red-600 hover:bg-red-700'
+                    }`}
+                  >
+                    <FiTrash2 className="w-4 h-4 mr-2" />
+                    {purging ? 'Suppression...' : 'Supprimer définitivement'}
+                  </button>
+                </>
+              )}
               <button
                 onClick={handlePreview}
                 className="w-full bg-green-500 text-white px-4 py-2 rounded-md hover:bg-green-600 text-sm font-medium flex items-center justify-center"
@@ -648,6 +735,15 @@ const DocumentDetail = () => {
       </div>
 
       {/* Modal rappel : inchangé, déjà épuré */}
+      <ConfirmDialog
+        isOpen={confirmOpen}
+        title="Purger l'enveloppe"
+        message="Voulez-vous vraiment purger définitivement cette enveloppe ?"
+        secondaryMessage="Cette action est irréversible."
+        onCancel={() => setConfirmOpen(false)}
+        onConfirm={handlePurge}
+        confirmText="Purger"
+      />
       <ReminderModal
         open={reminderModalOpen}
         count={reminderCount}

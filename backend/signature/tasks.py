@@ -38,6 +38,7 @@ import qrcode
 
 logger = logging.getLogger(__name__)
 MAX_REMINDERS = getattr(settings, "MAX_REMINDERS_SIGN", 3)
+SIGNATURE_SCALE = float(getattr(settings, "SIGNATURE_SCALE", 1.5))
 
 
 @shared_task
@@ -180,13 +181,19 @@ def _paste_signature_on_pdf(pdf_bytes: bytes, sig_img_bytes: bytes, placements: 
             y_ui = pl["y"] * crop_h
             w = pl["width"] * crop_w
             h = pl["height"] * crop_h
+            original_w, original_h = w, h
 
             # inverser Y dans la CropBox
-            y_from_bottom_in_crop = crop_h - y_ui - h
+            y_from_bottom_in_crop = crop_h - y_ui - original_h
+
+            # mise à l'échelle tout en conservant le centrage
+            scale = SIGNATURE_SCALE
+            w *= scale
+            h *= scale
 
             # ajouter l'offset de la CropBox pour revenir au repère MediaBox
-            x_pdf = crop_llx + x_ui
-            y_pdf = crop_lly + y_from_bottom_in_crop
+            x_pdf = crop_llx + x_ui - (scale - 1) * original_w / 2
+            y_pdf = crop_lly + y_from_bottom_in_crop - (scale - 1) * original_h / 2
 
             c.drawImage(sig_reader, x_pdf, y_pdf, width=w, height=h, mask="auto")
 

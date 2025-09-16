@@ -267,6 +267,7 @@ class EnvelopeSerializer(serializers.ModelSerializer):
             'completion_rate',
             'jwt_token',
             'expires_at',
+            'cancelled_at',
         ]
         read_only_fields = [
             'hash_original',
@@ -277,6 +278,7 @@ class EnvelopeSerializer(serializers.ModelSerializer):
             'file_size',
             'file_type',
             'completion_rate',
+            'cancelled_at',
         ]
 
     def get_created_by_name(self, obj):

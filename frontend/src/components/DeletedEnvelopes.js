@@ -8,6 +8,26 @@ import logService from '../services/logService';
 import { useNavigate } from 'react-router-dom';
 import ConfirmDialog from './ConfirmDialog';
 
+const MS_PER_DAY = 1000 * 60 * 60 * 24;
+
+const diffEnJours = (dateA, dateB) => {
+  if (dateA == null || dateB == null) return null;
+
+  const timeA = typeof dateA === 'number' ? dateA : new Date(dateA).getTime();
+  const timeB = typeof dateB === 'number' ? dateB : new Date(dateB).getTime();
+
+  if (Number.isNaN(timeA) || Number.isNaN(timeB)) return null;
+
+  const diffMs = Math.max(0, timeA - timeB);
+  return Math.floor(diffMs / MS_PER_DAY);
+};
+
+const computeJoursRestants = cancelledAt => {
+  const diff = diffEnJours(Date.now(), cancelledAt);
+  if (diff === null) return null;
+  return 10 - diff;
+};
+
 const DeletedEnvelopes = () => {
   const [envelopes, setEnvelopes] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -18,7 +38,7 @@ const DeletedEnvelopes = () => {
     const loadEnvelopes = async () => {
       try {
         const data = await signatureService.getEnvelopes({ status: 'cancelled' });
-        setEnvelopes(data);
+        setEnvelopes(Array.isArray(data) ? data : []);
       } catch (err) {
         toast.error('Échec du chargement des enveloppes supprimées');
         logService.error('Failed to fetch deleted envelopes:', err);
@@ -111,6 +131,38 @@ const DeletedEnvelopes = () => {
       Cell: ({ value }) => value ? new Date(value).toLocaleDateString('fr-FR') : '-'
     },
     {
+      Header: 'Jours restants',
+      accessor: 'cancelled_at',
+      headerClassName: 'text-center w-40',
+      cellClassName: 'text-center',
+      Cell: ({ value }) => {
+        const remaining = computeJoursRestants(value);
+
+        if (remaining === null) {
+          return <span className="text-gray-400">-</span>;
+        }
+
+        const isUrgent = remaining <= 1;
+        const safeRemaining = Math.max(0, remaining);
+        const badgeClasses = isUrgent
+          ? 'bg-red-100 text-red-800'
+          : 'bg-gray-100 text-gray-800';
+        const plural = safeRemaining > 1 ? 's' : '';
+        const tooltip = isUrgent
+          ? 'Purge automatique imminente'
+          : `Purge automatique dans ${safeRemaining} jour${plural}`;
+
+        return (
+          <span
+            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${badgeClasses}`}
+            title={tooltip}
+          >
+            {safeRemaining}
+          </span>
+        );
+      }
+    },
+    {
       Header: 'Statut',
       accessor: 'status',
       Cell: ({ value }) => (
@@ -136,6 +188,13 @@ const DeletedEnvelopes = () => {
         title="Enveloppes Supprimées"
         description={`Documents annulés ou supprimés (${envelopes.length})`}
         loading={loading}
+        rowClassName={row => {
+          const remaining = computeJoursRestants(row.cancelled_at);
+          if (remaining !== null && remaining <= 1) {
+            return 'bg-red-50 hover:bg-red-100 transition-colors';
+          }
+          return 'hover:bg-gray-50 transition-colors';
+        }}
         emptyState={
           <EmptyState
             message="Aucune enveloppe supprimée"

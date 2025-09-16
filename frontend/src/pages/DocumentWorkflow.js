@@ -10,7 +10,6 @@ import sanitize from '../utils/sanitize';
 import Countdown from '../components/Countdown';
 import useIsMobile from '../hooks/useIsMobile';
 import DraggableSignature from '../components/DraggableSignature';
-import CustomDatePicker from '../components/CustomDatePicker';
 pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js';
 
 function debounce(func, wait) {

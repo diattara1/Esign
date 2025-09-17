@@ -22,7 +22,7 @@ const MAX_OTP_ATTEMPTS = 3;
 const COOLDOWN_SECONDS = 30;
 
 export default function DocumentSign() {
-  const { id } = useParams();
+  const { doc_uuid: docUuid } = useParams();
   const [searchParams] = useSearchParams();
   const token = searchParams.get('token');
   const isGuest = Boolean(token);
@@ -110,7 +110,7 @@ export default function DocumentSign() {
     return URL.createObjectURL(blob);
   };
   const loadGuestPdfForDoc = async (docId, fallbackUrl) => {
-    const docSpecificUrl = signatureService.getDecryptedDocumentUrl(id, token);
+    const docSpecificUrl = signatureService.getDecryptedDocumentUrl(docUuid, token);
     try { return await fetchPdfBlobWithToken(docSpecificUrl); }
     catch (e1) {
       if (!fallbackUrl) throw e1;
@@ -125,7 +125,7 @@ export default function DocumentSign() {
       try {
         let data;
         if (isGuest) {
-          data = await signatureService.getGuestEnvelope(id, token);
+          data = await signatureService.getGuestEnvelope(docUuid, token);
           setEnvelope(data);
           setDocuments(data.documents || []);
           const mine = (data.fields || []).filter(f => f.recipient_id === data.recipient_id);
@@ -133,11 +133,11 @@ export default function DocumentSign() {
           if (already) { setIsAlreadySigned(true); setOtpVerified(true); }
           if (data.documents?.length) setSelectedDoc(data.documents[0]);
           if (already) {
-            const url = signatureService.getDecryptedDocumentUrl(id, token);
+            const url = signatureService.getDecryptedDocumentUrl(docUuid, token);
             try { setPdfUrl(await fetchPdfBlobWithToken(url)); } catch (e) { toast.error(`Impossible de charger le PDF : ${e.message}`); }
           }
         } else {
-          data = await signatureService.getAuthenticatedEnvelope(id);
+          data = await signatureService.getAuthenticatedEnvelope(docUuid);
           setEnvelope(data);
           setDocuments(data.documents || []);
           const mine = (data.fields || []).filter(f => f.recipient_id === data.recipient_id);
@@ -145,10 +145,10 @@ export default function DocumentSign() {
           if (data.documents?.length) {
             const first = data.documents[0];
             setSelectedDoc(first);
-            try { setPdfUrl(await signatureService.fetchDocumentBlob(id, first.id)); }
+            try { setPdfUrl(await signatureService.fetchDocumentBlob(docUuid, first.id)); }
             catch { toast.error('Impossible de charger le PDF'); }
           } else {
-            const { download_url } = await signatureService.downloadEnvelope(id);
+            const { download_url } = await signatureService.downloadEnvelope(docUuid);
             setPdfUrl(download_url);
           }
           setOtpVerified(true);
@@ -158,7 +158,7 @@ export default function DocumentSign() {
       } finally { setLoading(false); }
     };
     init();
-  }, [id, token, isGuest, navigate]);
+  }, [docUuid, token, isGuest, navigate]);
 
   useEffect(() => { if (!isGuest) signatureService.listSavedSignatures().then(setSavedSignatures).catch(()=>{}); }, [isGuest]);
 
@@ -177,10 +177,10 @@ export default function DocumentSign() {
         let blobUrl;
         if (isGuest) {
           if (!otpVerified) return;
-          const fallback = envelope?.document_url || signatureService.getDecryptedDocumentUrl(id, token);
+          const fallback = envelope?.document_url || signatureService.getDecryptedDocumentUrl(docUuid, token);
           blobUrl = await loadGuestPdfForDoc(selectedDoc.id, fallback);
         } else {
-          blobUrl = await signatureService.fetchDocumentBlob(id, selectedDoc.id);
+          blobUrl = await signatureService.fetchDocumentBlob(docUuid, selectedDoc.id);
         }
         if (!alive) return; setPdfUrl(blobUrl);
       } catch (e) {
@@ -189,13 +189,13 @@ export default function DocumentSign() {
     };
     load();
     return () => { alive = false; };
-  }, [selectedDoc, otpVerified, envelope, id, token, isGuest]);
+  }, [selectedDoc, otpVerified, envelope, docUuid, token, isGuest]);
 
   // ------------------------------- OTP actions -----------------------------
   const handleSendOtp = async () => {
     if (isAlreadySigned) return toast.info('Déjà signé');
     setSendingOtp(true);
-    try { await signatureService.sendOtp(id, token); setOtpSent(true); toast.success('Code OTP envoyé'); }
+    try { await signatureService.sendOtp(docUuid, token); setOtpSent(true); toast.success('Code OTP envoyé'); }
     catch (e) { logService.error(e); toast.error(e?.response?.data?.error || 'Erreur envoi OTP'); }
     finally { setSendingOtp(false); }
   };
@@ -203,16 +203,16 @@ export default function DocumentSign() {
     if (cooldownUntil && cooldownUntil > Date.now()) return;
     setVerifyingOtp(true);
     try {
-      await signatureService.verifyOtp(id, otp, token);
+      await signatureService.verifyOtp(docUuid, otp, token);
       setOtpVerified(true); setOtpError(''); setOtpStatus(''); setOtpAttempts(MAX_OTP_ATTEMPTS); setCooldownUntil(null); toast.success('OTP vérifié');
       await new Promise(r => setTimeout(r, 400));
       try {
         let blobUrl;
         if (selectedDoc?.id) {
-          const fallback = envelope?.document_url || signatureService.getDecryptedDocumentUrl(id, token);
+          const fallback = envelope?.document_url || signatureService.getDecryptedDocumentUrl(docUuid, token);
           blobUrl = await loadGuestPdfForDoc(selectedDoc.id, fallback);
         } else {
-          const fallbackUrl = signatureService.getDecryptedDocumentUrl(id, token);
+          const fallbackUrl = signatureService.getDecryptedDocumentUrl(docUuid, token);
           blobUrl = await fetchPdfBlobWithToken(fallbackUrl);
         }
         if (blobUrl) setPdfUrl(blobUrl);
@@ -277,10 +277,10 @@ export default function DocumentSign() {
     try {
       const signedFields = envelope.fields.reduce((acc, f) => { acc[f.id] = { ...f, signed: f.signed }; return acc; }, {});
       const normalizedSigData = normalizeAllSignatures(signatureData);
-      await signatureService.sign(id, { signature_data: normalizedSigData, signed_fields: signedFields }, isGuest ? token : undefined);
+      await signatureService.sign(docUuid, { signature_data: normalizedSigData, signed_fields: signedFields }, isGuest ? token : undefined);
       toast.success('Document signé');
-      if (isGuest) navigate(`/signature/guest/success?id=${id}&token=${token}`, { state: { id, token } });
-      else navigate('/signature/success', { state: { id } });
+      if (isGuest) navigate(`/signature/guest/success?doc_uuid=${docUuid}&token=${token}`, { state: { docUuid, token } });
+      else navigate('/signature/success', { state: { docUuid } });
     } catch (e) { logService.error(e); toast.error(e?.response?.data?.error || 'Erreur lors de la signature'); }
     finally { setSigning(false); }
   };

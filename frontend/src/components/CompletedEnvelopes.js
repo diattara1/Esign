@@ -14,8 +14,8 @@ const CompletedEnvelopes = () => {
   const [envelopes, setEnvelopes] = useState([]);
   const [filteredEnvelopes, setFilteredEnvelopes] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [menuOpenId, setMenuOpenId] = useState(null);
-  const [confirmId, setConfirmId] = useState(null);
+  const [menuOpenDocUuid, setMenuOpenDocUuid] = useState(null);
+  const [confirmDocUuid, setConfirmDocUuid] = useState(null);
   const [isMobile, setIsMobile] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [isSearchFocused, setIsSearchFocused] = useState(false);
@@ -23,7 +23,7 @@ const CompletedEnvelopes = () => {
   const searchInputRef = useRef(null);
 
   const closeMenu = () => {
-    setMenuOpenId(null);
+    setMenuOpenDocUuid(null);
     menuButtonRef.current?.focus();
   };
 
@@ -80,13 +80,13 @@ const CompletedEnvelopes = () => {
   // Fermer le menu quand on clique ailleurs
   useEffect(() => {
     const handleClickOutside = () => {
-      if (menuOpenId !== null) {
+      if (menuOpenDocUuid !== null) {
         closeMenu();
       }
     };
     document.addEventListener('click', handleClickOutside);
     return () => document.removeEventListener('click', handleClickOutside);
-  }, [menuOpenId]);
+  }, [menuOpenDocUuid]);
 
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -94,11 +94,11 @@ const CompletedEnvelopes = () => {
         closeMenu();
       }
     };
-    if (menuOpenId !== null) {
+    if (menuOpenDocUuid !== null) {
       document.addEventListener('keydown', handleKeyDown);
       return () => document.removeEventListener('keydown', handleKeyDown);
     }
-  }, [menuOpenId]);
+  }, [menuOpenDocUuid]);
 
   const formatDate = (dateString) => {
     if (!dateString) return { date: '-', time: '' };
@@ -110,13 +110,13 @@ const CompletedEnvelopes = () => {
     };
   };
 
-  const handlePreview = (id) => {
-    navigate(`/signature/detail/${id}`);
+  const handlePreview = (docUuid) => {
+    navigate(`/signature/detail/${docUuid}`);
   };
 
-  const handleDownload = async (id, title) => {
+  const handleDownload = async (docUuid, title) => {
     try {
-      const { download_url } = await signatureService.downloadEnvelope(id);
+      const { download_url } = await signatureService.downloadEnvelope(docUuid);
       const response = await fetch(download_url);
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
@@ -138,9 +138,9 @@ const CompletedEnvelopes = () => {
     }
   };
 
-  const handlePrint = async (id) => {
+  const handlePrint = async (docUuid) => {
     try {
-      const { download_url } = await signatureService.downloadEnvelope(id);
+      const { download_url } = await signatureService.downloadEnvelope(docUuid);
       const printWindow = window.open(download_url, '_blank');
       if (printWindow) {
         printWindow.onload = () => {
@@ -154,18 +154,18 @@ const CompletedEnvelopes = () => {
     }
   };
 
-  const handleDelete = async (id) => {
+  const handleDelete = async (docUuid) => {
     try {
-      await signatureService.cancelEnvelope(id);
-      setEnvelopes(prev => prev.filter(env => env.id !== id));
-      setFilteredEnvelopes(prev => prev.filter(env => env.id !== id));
-      setMenuOpenId(null);
+      await signatureService.cancelEnvelope(docUuid);
+      setEnvelopes(prev => prev.filter(env => env.doc_uuid !== docUuid));
+      setFilteredEnvelopes(prev => prev.filter(env => env.doc_uuid !== docUuid));
+      setMenuOpenDocUuid(null);
       toast.success('Enveloppe supprimée avec succès');
     } catch (err) {
       toast.error('Échec de la suppression');
       logService.error(err);
     } finally {
-      setConfirmId(null);
+      setConfirmDocUuid(null);
     }
   };
 
@@ -205,11 +205,11 @@ const CompletedEnvelopes = () => {
             <button
               onClick={e => {
                 e.stopPropagation();
-                if (menuOpenId === envelope.id) {
+                if (menuOpenDocUuid === envelope.doc_uuid) {
                   closeMenu();
                 } else {
                   menuButtonRef.current = e.currentTarget;
-                  setMenuOpenId(envelope.id);
+                  setMenuOpenDocUuid(envelope.doc_uuid);
                 }
               }}
               className="p-2 hover:bg-gray-100 rounded-full transition-colors"
@@ -217,13 +217,13 @@ const CompletedEnvelopes = () => {
               <FiMoreVertical className="w-4 h-4 text-gray-500" />
             </button>
             
-            {menuOpenId === envelope.id && (
+            {menuOpenDocUuid === envelope.doc_uuid && (
               <div className="absolute right-0 top-full mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-20">
                 <div className="py-1">
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      handlePreview(envelope.id);
+                      handlePreview(envelope.doc_uuid);
                       closeMenu();
                     }}
                     className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
@@ -234,7 +234,7 @@ const CompletedEnvelopes = () => {
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      handleDownload(envelope.id, envelope.title);
+                      handleDownload(envelope.doc_uuid, envelope.title);
                       closeMenu();
                     }}
                     className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
@@ -245,7 +245,7 @@ const CompletedEnvelopes = () => {
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      handlePrint(envelope.id);
+                      handlePrint(envelope.doc_uuid);
                       closeMenu();
                     }}
                     className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
@@ -257,7 +257,7 @@ const CompletedEnvelopes = () => {
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      setConfirmId(envelope.id);
+                      setConfirmDocUuid(envelope.doc_uuid);
                       closeMenu();
                     }}
                     className="flex items-center w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50"
@@ -342,29 +342,29 @@ const CompletedEnvelopes = () => {
     );
   };
 
-  const ActionsCell = ({ value: id, row }) => (
+  const ActionsCell = ({ value: docUuid, row }) => (
     <div className="relative inline-block">
       <button
         onClick={e => {
           e.stopPropagation();
-          if (menuOpenId === id) {
+          if (menuOpenDocUuid === docUuid) {
             closeMenu();
           } else {
             menuButtonRef.current = e.currentTarget;
-            setMenuOpenId(id);
+            setMenuOpenDocUuid(docUuid);
           }
         }}
         className="p-2 hover:bg-gray-100 rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
       >
         <FiMoreVertical className="w-5 h-5 text-gray-600" />
       </button>
-      {menuOpenId === id && (
+      {menuOpenDocUuid === docUuid && (
         <div className="absolute right-0 mt-2 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-10">
           <div className="py-1">
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                handlePreview(id);
+                handlePreview(docUuid);
                 closeMenu();
               }}
               className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
@@ -375,7 +375,7 @@ const CompletedEnvelopes = () => {
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                handleDownload(id, row.title);
+                handleDownload(docUuid, row.title);
                 closeMenu();
               }}
               className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
@@ -386,7 +386,7 @@ const CompletedEnvelopes = () => {
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                handlePrint(id);
+                handlePrint(docUuid);
                 closeMenu();
               }}
               className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
@@ -398,7 +398,7 @@ const CompletedEnvelopes = () => {
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                setConfirmId(id);
+                setConfirmDocUuid(docUuid);
                 closeMenu();
               }}
               className="flex items-center w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
@@ -570,7 +570,7 @@ const CompletedEnvelopes = () => {
             /* Mobile: Cards Layout */
             <div className="space-y-4">
               {filteredEnvelopes.map((envelope) => (
-                <MobileCard key={envelope.id} envelope={envelope} />
+                <MobileCard key={envelope.doc_uuid} envelope={envelope} />
               ))}
             </div>
           ) : (
@@ -597,12 +597,12 @@ const CompletedEnvelopes = () => {
       )}
 
       <ConfirmDialog
-        isOpen={confirmId !== null}
+        isOpen={confirmDocUuid !== null}
         title="Supprimer l'enveloppe"
         message="Voulez-vous vraiment supprimer cette enveloppe complétée ?"
         secondaryMessage="Cette action est irréversible."
-        onCancel={() => setConfirmId(null)}
-        onConfirm={() => handleDelete(confirmId)}
+        onCancel={() => setConfirmDocUuid(null)}
+        onConfirm={() => handleDelete(confirmDocUuid)}
       />
     </div>
   );

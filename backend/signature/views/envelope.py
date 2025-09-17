@@ -73,8 +73,8 @@ def _verify_guest_token(envelope, token):
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
-def guest_envelope_view(request, pk):
-    envelope = get_object_or_404(Envelope, pk=pk)
+def guest_envelope_view(request, doc_uuid):
+    envelope = get_object_or_404(Envelope, doc_uuid=doc_uuid)
 
     token = (
         request.GET.get('token')
@@ -100,7 +100,7 @@ def guest_envelope_view(request, pk):
 
     # Construire l’URL du PDF (adapte le name de route si besoin)
     from django.urls import reverse
-    doc_path = reverse('signature-serve-decrypted-pdf', kwargs={'pk': envelope.id})
+    doc_path = reverse('signature-serve-decrypted-pdf', kwargs={'doc_uuid': str(envelope.doc_uuid)})
     document_url = request.build_absolute_uri(f"{doc_path}?token={token}")
 
     data.update({
@@ -122,10 +122,17 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
     serializer_class = EnvelopeSerializer
     permission_classes = [IsAuthenticated]
     parser_classes = [JSONParser, MultiPartParser, FormParser]
+    lookup_field = "doc_uuid"
+    lookup_url_kwarg = "doc_uuid"
 
     # ---------- Queryset & pages ----------
     def get_queryset(self):
         user = self.request.user
+        if not user.is_authenticated:
+            lookup_value = self.kwargs.get(self.lookup_url_kwarg or self.lookup_field)
+            if lookup_value:
+                return Envelope.objects.filter(**{self.lookup_field: lookup_value})
+            return Envelope.objects.none()
         status_q = self.request.query_params.get('status')
         recipient_filter = (
             Q(recipients__user=user) |
@@ -295,10 +302,7 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
         Page de signature pour un utilisateur authentifié (sans OTP/token invité).
         Renvoie l’enveloppe + champs signables + infos destinataire.
         """
-        try:
-            envelope = Envelope.objects.get(pk=pk)
-        except Envelope.DoesNotExist:
-            return Response({'error': 'Enveloppe non trouvée'}, status=404)
+        envelope = self.get_object()
         try:
             rec = envelope.recipients.get(user=request.user)
         except EnvelopeRecipient.DoesNotExist:
@@ -393,11 +397,7 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
         token = self._get_token(request)
         if not token:
             return Response({'error': 'Token requis'}, status=status.HTTP_403_FORBIDDEN)
-
-        try:
-            envelope = Envelope.objects.get(pk=pk)
-        except Envelope.DoesNotExist:
-            return Response({'error': 'Enveloppe non trouvée'}, status=404)
+        envelope = self.get_object()
 
         if self._refuse_if_deadline_passed(envelope):
             return Response({'error': 'Échéance dépassée. La signature est fermée.'}, status=400)
@@ -425,11 +425,7 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
         token = self._get_token(request)
         if not token:
             return Response({'error': 'Token requis'}, status=status.HTTP_403_FORBIDDEN)
-    
-        try:
-            envelope = Envelope.objects.get(pk=pk)
-        except Envelope.DoesNotExist:
-            return Response({'error': 'Enveloppe non trouvée'}, status=404)
+        envelope = self.get_object()
     
         if self._refuse_if_deadline_passed(envelope):
             return Response({'error': 'Échéance dépassée. La signature est fermée.'}, status=400)
@@ -482,10 +478,7 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
         - s’il existe déjà un PDF signé (même en 'pending'), on propose l’URL du signé,
         - sinon, l’URL de l’original.
         """
-        try:
-            envelope = Envelope.objects.get(pk=pk)
-        except Envelope.DoesNotExist:
-            return Response({'error': 'Enveloppe non trouvée'}, status=404)
+        envelope = self.get_object()
 
         is_owner = (envelope.created_by == request.user)
         is_signed_recipient = envelope.recipients.filter(user=request.user).exists()
@@ -499,11 +492,15 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
                 .order_by('-signed_at').first()
             )
             if sig_doc:
-                download_url = request.build_absolute_uri(f'/api/signature/envelopes/{pk}/signed-document/')
+                download_url = request.build_absolute_uri(
+                    f'/api/signature/envelopes/{envelope.doc_uuid}/signed-document/'
+                )
             else:
                 # original
                 if envelope.document_file or envelope.documents.exists():
-                    download_url = request.build_absolute_uri(f'/api/signature/envelopes/{pk}/original-document/')
+                    download_url = request.build_absolute_uri(
+                        f'/api/signature/envelopes/{envelope.doc_uuid}/original-document/'
+                    )
                 else:
                     return Response({'error': 'Pas de document disponible'}, status=404)
             return Response({'download_url': download_url})
@@ -514,10 +511,7 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
     @method_decorator(xframe_options_exempt, name='dispatch')
     def document_file(self, request, pk=None, doc_id=None):
         """Fournit un PDF original par sous-document (auth requis)."""
-        try:
-            envelope = Envelope.objects.get(pk=pk)
-        except Envelope.DoesNotExist:
-            return Response({'error': 'Enveloppe non trouvée'}, status=404)
+        envelope = self.get_object()
 
         is_owner = (envelope.created_by == request.user)
         is_recipient = envelope.recipients.filter(user=request.user).exists()
@@ -536,10 +530,7 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
     @method_decorator(xframe_options_exempt, name='dispatch')
     def original_document(self, request, pk=None):
         """Fournit le PDF original (auth requis : créateur ou destinataire)."""
-        try:
-            envelope = Envelope.objects.get(pk=pk)
-        except Envelope.DoesNotExist:
-            return Response({'error': 'Enveloppe non trouvée'}, status=status.HTTP_404_NOT_FOUND)
+        envelope = self.get_object()
 
         is_owner = (envelope.created_by == request.user)
         is_recipient = envelope.recipients.filter(user=request.user).exists()
@@ -590,15 +581,11 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
     
     @action(detail=True, methods=['post'], permission_classes=[permissions.AllowAny])
     def sign(self, request, pk=None):
-        
+
         token = self._get_token(request)
         if not token:
             return Response({'error': 'Token requis'}, status=status.HTTP_403_FORBIDDEN)
-
-        try:
-            envelope = Envelope.objects.get(pk=pk)
-        except Envelope.DoesNotExist:
-            return Response({'error': 'Enveloppe non trouvée'}, status=404)
+        envelope = self.get_object()
 
         recipient = self._resolve_guest_recipient(envelope, token)
         if not recipient:
@@ -648,12 +635,11 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
         recipient_id = request.data.get('recipient_id')
         if not recipient_id:
             return Response({'error': 'recipient_id requis'}, status=status.HTTP_400_BAD_REQUEST)
+        envelope = self.get_object()
         try:
-            recipient = EnvelopeRecipient.objects.get(envelope__pk=pk, id=recipient_id)
+            recipient = envelope.recipients.get(id=recipient_id)
         except EnvelopeRecipient.DoesNotExist:
             return Response({'error': 'Destinataire non trouvé'}, status=status.HTTP_404_NOT_FOUND)
-
-        envelope = recipient.envelope
 
         if self._refuse_if_deadline_passed(envelope):
             return Response({'error': 'Échéance dépassée. La signature est fermée.'}, status=400)
@@ -1091,13 +1077,13 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
 @permission_classes([AllowAny])
 @authentication_classes([])
 @xframe_options_exempt
-def serve_decrypted_pdf(request, pk: int):
+def serve_decrypted_pdf(request, doc_uuid: str):
     """
-    GET /api/signature/envelopes/<pk>/document/?token=...
+    GET /api/signature/envelopes/<doc_uuid>/document/?token=...
     - si status == 'completed' => renvoie le PDF signé le plus récent
     - sinon => renvoie l'original (envelope.document_file ou premier sous-document .file)
     """
-    envelope = get_object_or_404(Envelope, pk=pk)
+    envelope = get_object_or_404(Envelope, doc_uuid=doc_uuid)
 
     # token invité (query, header custom, bearer)
     token = (

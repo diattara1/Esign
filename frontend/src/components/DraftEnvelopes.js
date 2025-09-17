@@ -12,7 +12,7 @@ import ConfirmDialog from './ConfirmDialog';
 const DraftEnvelopes = () => {
   const [envelopes, setEnvelopes] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [confirmId, setConfirmId] = useState(null);
+  const [confirmDocUuid, setConfirmDocUuid] = useState(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -31,21 +31,21 @@ const DraftEnvelopes = () => {
     loadEnvelopes();
   }, []);
 
-  const handleEditDraft = (id) => {
-    navigate(`/signature/workflow/${id}`);
+  const handleEditDraft = (docUuid) => {
+    navigate(`/signature/workflow/${docUuid}`);
   };
 
   const confirmDeleteDraft = async () => {
-    if (confirmId === null) return;
+    if (confirmDocUuid === null) return;
     try {
-      await signatureService.cancelEnvelope(confirmId);
-      setEnvelopes(prev => prev.filter(env => env.id !== confirmId));
+      await signatureService.cancelEnvelope(confirmDocUuid);
+      setEnvelopes(prev => prev.filter(env => env.doc_uuid !== confirmDocUuid));
       toast.success('Brouillon supprimé');
     } catch (err) {
       toast.error('Échec de la suppression');
       logService.error(err);
     } finally {
-      setConfirmId(null);
+      setConfirmDocUuid(null);
     }
   };
 
@@ -56,17 +56,17 @@ const DraftEnvelopes = () => {
     </div>
   );
 
-  const ActionsCell = ({ value: id }) => (
+  const ActionsCell = ({ value: docUuid }) => (
     <div className="flex space-x-2">
       <button
-        onClick={() => handleEditDraft(id)}
+        onClick={() => handleEditDraft(docUuid)}
         className="text-blue-600 hover:text-blue-800 p-1"
         title="Modifier"
       >
         <FiEdit2 className="w-5 h-5" />
       </button>
       <button
-        onClick={() => setConfirmId(id)}
+        onClick={() => setConfirmDocUuid(docUuid)}
         className="text-red-600 hover:text-red-800 hover:bg-red-50 p-1 rounded"
         title="Supprimer"
       >
@@ -92,7 +92,7 @@ const DraftEnvelopes = () => {
     },
     {
       Header: 'Actions',
-      accessor: 'id',
+      accessor: 'doc_uuid',
       Cell: ActionsCell
     }
   ];
@@ -114,11 +114,11 @@ const DraftEnvelopes = () => {
         }
       />
       <ConfirmDialog
-        isOpen={confirmId !== null}
+        isOpen={confirmDocUuid !== null}
         title="Supprimer le brouillon"
         message="Voulez-vous vraiment supprimer ce brouillon ?"
         secondaryMessage="Cette action est irréversible."
-        onCancel={() => setConfirmId(null)}
+        onCancel={() => setConfirmDocUuid(null)}
         onConfirm={confirmDeleteDraft}
       />
     </>

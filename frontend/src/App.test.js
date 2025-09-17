@@ -10,12 +10,14 @@ jest.mock('react-toastify', () => ({
   toast: { success: jest.fn() }
 }));
 
+const docUuid = '123e4567-e89b-12d3-a456-426614174000';
+
 const routes = [
   '/login',
   '/register',
   '/password-reset',
   '/verify/uuid',
-  '/sign/1',
+  `/sign/${docUuid}`,
   '/signature/success',
   '/signature/guest/success',
   '/dashboard',
@@ -23,11 +25,11 @@ const routes = [
   '/signature/bulk-same',
   '/signature/saved-signatures',
   '/signature/upload',
-  '/signature/detail/1',
-  '/signature/workflow/1',
-  '/signature/sent/1',
-  '/signature/envelopes/1/sign',
-  '/signature/sign/1',
+  `/signature/detail/${docUuid}`,
+  `/signature/workflow/${docUuid}`,
+  `/signature/sent/${docUuid}`,
+  `/signature/envelopes/${docUuid}/sign`,
+  `/signature/sign/${docUuid}`,
   '/settings/notifications',
   '/profile',
   '/signature/envelopes/sent',

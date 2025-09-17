@@ -60,7 +60,7 @@ const ActionRequiredEnvelopes = () => {
     },
     {
       Header: 'Actions',
-      accessor: 'id',
+      accessor: 'doc_uuid',
       Cell: ({ value }) => (
         <button
           onClick={() => navigate(`/signature/sign/${value}`)}

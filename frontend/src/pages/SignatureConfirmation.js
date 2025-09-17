@@ -11,16 +11,16 @@ const SignatureConfirmation = () => {
   const location = useLocation();
   const [downloading, setDownloading] = useState(false);
 
-  const envelopeId = location.state?.id || new URLSearchParams(location.search).get('id');
+  const docUuid = location.state?.docUuid || new URLSearchParams(location.search).get('doc_uuid');
 
   const handleDownload = async () => {
-    if (!envelopeId) {
+    if (!docUuid) {
       toast.error('Identifiant du document manquant');
       return;
     }
     try {
       setDownloading(true);
-      const { download_url } = await signatureService.downloadEnvelope(envelopeId);
+      const { download_url } = await signatureService.downloadEnvelope(docUuid);
       const response = await fetch(download_url);
       if (!response.ok) throw new Error('Erreur lors du téléchargement');
       const blob = await response.blob();
@@ -54,7 +54,7 @@ const SignatureConfirmation = () => {
         <div className="bg-white rounded-lg shadow-md p-8 text-center">
           <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" />
           <h1 className="text-2xl font-bold mb-6">Signature confirmée&nbsp;!</h1>
-          {envelopeId && (
+          {docUuid && (
             <button
               onClick={handleDownload}
               disabled={downloading}

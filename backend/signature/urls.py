@@ -25,8 +25,8 @@ urlpatterns = [
     path('profile/', user_profile, name='user-profile'),
     path('password-reset/', password_reset_request, name='password-reset'),
     path('change-password/', change_password, name='change-password'),
-    path('envelopes/<int:pk>/guest/', guest_envelope_view, name='guest-envelope'),
-    path('envelopes/<int:pk>/document/', serve_decrypted_pdf, name='signature-serve-decrypted-pdf'),
+    path('envelopes/<uuid:doc_uuid>/guest/', guest_envelope_view, name='guest-envelope'),
+    path('envelopes/<uuid:doc_uuid>/document/', serve_decrypted_pdf, name='signature-serve-decrypted-pdf'),
     
 ]
 

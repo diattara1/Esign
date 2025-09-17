@@ -31,7 +31,7 @@ const computeJoursRestants = cancelledAt => {
 const DeletedEnvelopes = () => {
   const [envelopes, setEnvelopes] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [confirmId, setConfirmId] = useState(null);
+  const [confirmDocUuid, setConfirmDocUuid] = useState(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -49,37 +49,37 @@ const DeletedEnvelopes = () => {
     loadEnvelopes();
   }, []);
 
-  const handlePreview = id => {
-    if (!id) return;
-    navigate(`/signature/detail/${id}`);
+  const handlePreview = docUuid => {
+    if (!docUuid) return;
+    navigate(`/signature/detail/${docUuid}`);
   };
 
-  const handleRestore = async id => {
-    if (!id) return;
+  const handleRestore = async docUuid => {
+    if (!docUuid) return;
     try {
-      await signatureService.restoreEnvelope(id);
+      await signatureService.restoreEnvelope(docUuid);
       toast.success("Enveloppe restaurée avec succès");
-      setEnvelopes(prev => prev.filter(env => env.id !== id));
+      setEnvelopes(prev => prev.filter(env => env.doc_uuid !== docUuid));
     } catch (err) {
       toast.error("Échec de la restauration de l'enveloppe");
       logService.error('Failed to restore envelope:', err);
     }
   };
 
-  const handlePurge = async id => {
-    if (!id) {
-      setConfirmId(null);
+  const handlePurge = async docUuid => {
+    if (!docUuid) {
+      setConfirmDocUuid(null);
       return;
     }
     try {
-      await signatureService.purgeEnvelope(id);
+      await signatureService.purgeEnvelope(docUuid);
       toast.success("Enveloppe purgée définitivement");
-      setEnvelopes(prev => prev.filter(env => env.id !== id));
+      setEnvelopes(prev => prev.filter(env => env.doc_uuid !== docUuid));
     } catch (err) {
       toast.error("Échec de la purge de l'enveloppe");
       logService.error('Failed to purge envelope:', err);
     } finally {
-      setConfirmId(null);
+      setConfirmDocUuid(null);
     }
   };
 
@@ -90,11 +90,11 @@ const DeletedEnvelopes = () => {
     </div>
   );
 
-  const ActionsCell = ({ value }) => (
+  const ActionsCell = ({ value: docUuid }) => (
     <div className="flex items-center justify-end gap-2">
       <button
         type="button"
-        onClick={() => handlePreview(value)}
+        onClick={() => handlePreview(docUuid)}
         className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-full transition"
         title="Prévisualiser"
       >
@@ -102,7 +102,7 @@ const DeletedEnvelopes = () => {
       </button>
       <button
         type="button"
-        onClick={() => handleRestore(value)}
+        onClick={() => handleRestore(docUuid)}
         className="p-2 text-gray-500 hover:text-green-600 hover:bg-green-50 rounded-full transition"
         title="Restaurer"
       >
@@ -110,7 +110,7 @@ const DeletedEnvelopes = () => {
       </button>
       <button
         type="button"
-        onClick={() => setConfirmId(value)}
+        onClick={() => setConfirmDocUuid(docUuid)}
         className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-full transition"
         title="Purger définitivement"
       >
@@ -173,7 +173,7 @@ const DeletedEnvelopes = () => {
     },
     {
       Header: 'Actions',
-      accessor: 'id',
+      accessor: 'doc_uuid',
       Cell: ActionsCell,
       headerClassName: 'text-right w-32',
       cellClassName: 'text-right'
@@ -204,12 +204,12 @@ const DeletedEnvelopes = () => {
         }
       />
       <ConfirmDialog
-        isOpen={confirmId !== null}
+        isOpen={confirmDocUuid !== null}
         title="Purger l'enveloppe"
         message="Voulez-vous vraiment purger définitivement cette enveloppe ?"
         secondaryMessage="Cette action est irréversible."
-        onCancel={() => setConfirmId(null)}
-        onConfirm={() => handlePurge(confirmId)}
+        onCancel={() => setConfirmDocUuid(null)}
+        onConfirm={() => handlePurge(confirmDocUuid)}
         confirmText="Purger"
       />
     </>

@@ -12,14 +12,14 @@ const GuestSignatureConfirmation = () => {
   const [downloading, setDownloading] = useState(false);
   const [envelope, setEnvelope] = useState(null);
 
-  const envelopeId = location.state?.id || searchParams.get('id');
+  const docUuid = location.state?.docUuid || searchParams.get('doc_uuid');
   const token = searchParams.get('token');
 
   useEffect(() => {
     const load = async () => {
-      if (!envelopeId || !token) return;
+      if (!docUuid || !token) return;
       try {
-        const data = await signatureService.getGuestEnvelope(envelopeId, token);
+        const data = await signatureService.getGuestEnvelope(docUuid, token);
         setEnvelope(data);
       } catch (e) {
         logService.error(e);
@@ -27,16 +27,16 @@ const GuestSignatureConfirmation = () => {
       }
     };
     load();
-  }, [envelopeId, token]);
+  }, [docUuid, token]);
 
   const handleDownload = async () => {
-    if (!envelopeId || !token) {
+    if (!docUuid || !token) {
       toast.error('Informations manquantes pour le téléchargement');
       return;
     }
     try {
       setDownloading(true);
-      const { download_url } = await signatureService.downloadGuestEnvelope(envelopeId, token);
+      const { download_url } = await signatureService.downloadGuestEnvelope(docUuid, token);
       const response = await fetch(download_url);
       if (!response.ok) throw new Error('Erreur lors du téléchargement');
       const blob = await response.blob();
@@ -63,7 +63,7 @@ const GuestSignatureConfirmation = () => {
       <div className="bg-white rounded-lg shadow-md p-8 text-center">
         <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" />
         <h1 className="text-2xl font-bold mb-6">Signature réussie&nbsp;!</h1>
-        {envelopeId && token && (
+        {docUuid && token && (
           <button
             onClick={handleDownload}
             disabled={downloading}

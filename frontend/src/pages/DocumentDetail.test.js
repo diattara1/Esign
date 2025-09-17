@@ -33,14 +33,17 @@ jest.mock('react-toastify', () => ({
   }
 }));
 
+const DOC_UUID = '123e4567-e89b-12d3-a456-426614174000';
+
 jest.mock('react-router-dom', () => ({
   Link: ({ children, ...props }) => <a {...props}>{children}</a>,
-  useParams: () => ({ id: '123' }),
+  useParams: () => ({ doc_uuid: DOC_UUID }),
   useNavigate: () => mockNavigate
 }));
 
 const cancelledEnvelope = {
   id: '123',
+  doc_uuid: DOC_UUID,
   title: 'Annulée',
   status: 'cancelled',
   version: 1,
@@ -92,7 +95,7 @@ test('restores a cancelled envelope and refreshes the view', async () => {
   const restoreButton = await screen.findByRole('button', { name: 'Restaurer' });
   await user.click(restoreButton);
 
-  await waitFor(() => expect(signatureService.restoreEnvelope).toHaveBeenCalledWith('123'));
+  await waitFor(() => expect(signatureService.restoreEnvelope).toHaveBeenCalledWith(DOC_UUID));
   expect(toast.success).toHaveBeenCalledWith('Enveloppe restaurée avec succès');
 
   await waitFor(() => expect(signatureService.getEnvelope).toHaveBeenCalledTimes(2));
@@ -114,7 +117,7 @@ test('purges a cancelled envelope after confirmation', async () => {
   const confirmButton = await screen.findByRole('button', { name: 'Purger' });
   await user.click(confirmButton);
 
-  await waitFor(() => expect(signatureService.purgeEnvelope).toHaveBeenCalledWith('123'));
+  await waitFor(() => expect(signatureService.purgeEnvelope).toHaveBeenCalledWith(DOC_UUID));
   expect(toast.success).toHaveBeenCalledWith('Enveloppe purgée définitivement');
   await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/signature/envelopes/deleted'));
 });

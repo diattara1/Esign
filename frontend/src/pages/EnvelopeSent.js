@@ -18,7 +18,7 @@ import {
 import logService from '../services/logService';
 import sanitize from '../utils/sanitize';
 export default function EnvelopeSent() {
-  const { id } = useParams();
+  const { doc_uuid: docUuid } = useParams();
   const navigate = useNavigate();
   const [envelope, setEnvelope] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -27,7 +27,7 @@ export default function EnvelopeSent() {
     const loadEnvelope = async () => {
       try {
         setLoading(true);
-        const data = await signatureService.getEnvelope(id);
+        const data = await signatureService.getEnvelope(docUuid);
         setEnvelope(data);
       } catch (error) {
         logService.error("Erreur lors du chargement de l'enveloppe:", error);
@@ -36,8 +36,8 @@ export default function EnvelopeSent() {
         setLoading(false);
       }
     };
-    if (id) loadEnvelope();
-  }, [id]);
+    if (docUuid) loadEnvelope();
+  }, [docUuid]);
 
   if (loading) {
     return (
@@ -280,7 +280,7 @@ export default function EnvelopeSent() {
             <h3 className="text-lg font-medium text-gray-900 mb-4">Actions disponibles</h3>
             <div className="flex flex-col sm:flex-row gap-3">
               <button
-                onClick={() => navigate(`/signature/detail/${id}`)}
+                onClick={() => navigate(`/signature/detail/${docUuid}`)}
                 className="inline-flex items-center justify-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
               >
                 <Eye className="w-4 h-4 mr-2" />

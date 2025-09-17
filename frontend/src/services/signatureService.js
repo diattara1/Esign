@@ -38,71 +38,71 @@ export default {
       'Impossible de récupérer les enveloppes complétées'
     ),
 
-  getEnvelope: (id, config = {}) =>
-    apiRequest('get', `${BASE}/envelopes/${id}/`, null, config, "Impossible de récupérer l'enveloppe"),
+  getEnvelope: (docUuid, config = {}) =>
+    apiRequest('get', `${BASE}/envelopes/${docUuid}/`, null, config, "Impossible de récupérer l'enveloppe"),
 
   createEnvelope: data =>
     apiRequest('post', `${BASE}/envelopes/`, data, undefined, "Impossible de créer l'enveloppe"),
 
-  updateEnvelope: (id, payload) =>
-    apiRequest('patch', `${BASE}/envelopes/${id}/`, payload, undefined, "Impossible de mettre à jour l'enveloppe"),
+  updateEnvelope: (docUuid, payload) =>
+    apiRequest('patch', `${BASE}/envelopes/${docUuid}/`, payload, undefined, "Impossible de mettre à jour l'enveloppe"),
 
 
-  updateEnvelopeFiles: (id, files) => {
+  updateEnvelopeFiles: (docUuid, files) => {
     const form = new FormData();
     files.forEach(f => form.append('files', f));
-    return apiRequest('patch', `${BASE}/envelopes/${id}/`, form, {
+    return apiRequest('patch', `${BASE}/envelopes/${docUuid}/`, form, {
       headers: { 'Content-Type': 'multipart/form-data' }
     }, "Impossible de mettre à jour les fichiers de l'enveloppe");
   },
 
-  cancelEnvelope: id =>
-    apiRequest('post', `${BASE}/envelopes/${id}/cancel/`, undefined, undefined, "Impossible d'annuler l'enveloppe"),
+  cancelEnvelope: docUuid =>
+    apiRequest('post', `${BASE}/envelopes/${docUuid}/cancel/`, undefined, undefined, "Impossible d'annuler l'enveloppe"),
 
-  restoreEnvelope: id =>
-    apiRequest('post', `${BASE}/envelopes/${id}/restore/`, undefined, undefined, "Impossible de restaurer l'enveloppe"),
+  restoreEnvelope: docUuid =>
+    apiRequest('post', `${BASE}/envelopes/${docUuid}/restore/`, undefined, undefined, "Impossible de restaurer l'enveloppe"),
 
-  purgeEnvelope: id =>
-    apiRequest('delete', `${BASE}/envelopes/${id}/purge/`, undefined, undefined, "Impossible de purger l'enveloppe"),
+  purgeEnvelope: docUuid =>
+    apiRequest('delete', `${BASE}/envelopes/${docUuid}/purge/`, undefined, undefined, "Impossible de purger l'enveloppe"),
 
-  sendEnvelope: (id, payload = {}) =>
-    apiRequest('post', `${BASE}/envelopes/${id}/send/`, payload, undefined, "Impossible d'envoyer l'enveloppe"),
+  sendEnvelope: (docUuid, payload = {}) =>
+    apiRequest('post', `${BASE}/envelopes/${docUuid}/send/`, payload, undefined, "Impossible d'envoyer l'enveloppe"),
 
   // ─── Guest signing (token / OTP) ────────────────────────────────────
-  getGuestEnvelope: (id, token) => {
+  getGuestEnvelope: (docUuid, token) => {
     const headers = token ? { 'X-Signature-Token': token } : {};
-    return apiRequest('get', `${BASE}/envelopes/${id}/guest/`, null, { headers }, "Impossible de récupérer l'enveloppe invitée");
+    return apiRequest('get', `${BASE}/envelopes/${docUuid}/guest/`, null, { headers }, "Impossible de récupérer l'enveloppe invitée");
   },
-  sendOtp: (id, token) =>
+  sendOtp: (docUuid, token) =>
     apiRequest(
       'post',
-      `${BASE}/envelopes/${id}/send_otp/`,
+      `${BASE}/envelopes/${docUuid}/send_otp/`,
       {},
       token ? { headers: { 'X-Signature-Token': token } } : undefined,
       "Impossible d'envoyer le code OTP"
     ),
 
-  verifyOtp: (id, otp, token) =>
+  verifyOtp: (docUuid, otp, token) =>
     apiRequest(
       'post',
-      `${BASE}/envelopes/${id}/verify_otp/`,
+      `${BASE}/envelopes/${docUuid}/verify_otp/`,
       { otp },
       token ? { headers: { 'X-Signature-Token': token } } : undefined,
       "Impossible de vérifier le code OTP"
     ),
 
   // ─── Signing ────────────────────────────────────────────────────────
-  signGuest: (id, body, token) => {
+  signGuest: (docUuid, body, token) => {
     const cfg = token ? { headers: { 'X-Signature-Token': token } } : undefined;
     // backend renvoie du JSON -> pas de responseType: 'blob'
-    return apiRequest('post', `${BASE}/envelopes/${id}/sign/`, body, cfg, "Impossible de signer l'enveloppe en tant qu'invité");
+    return apiRequest('post', `${BASE}/envelopes/${docUuid}/sign/`, body, cfg, "Impossible de signer l'enveloppe en tant qu'invité");
   },
 
-  signAuthenticated: (id, body) =>
-    apiRequest('post', `${BASE}/envelopes/${id}/sign_authenticated/`, body, undefined, "Impossible de signer l'enveloppe"),
+  signAuthenticated: (docUuid, body) =>
+    apiRequest('post', `${BASE}/envelopes/${docUuid}/sign_authenticated/`, body, undefined, "Impossible de signer l'enveloppe"),
 
-  sign(id, body, token) {
-    return token ? this.signGuest(id, body, token) : this.signAuthenticated(id, body);
+  sign(docUuid, body, token) {
+    return token ? this.signGuest(docUuid, body, token) : this.signAuthenticated(docUuid, body);
   },
 // Demande d'email de réinitialisation
 requestPasswordReset: (email) =>
@@ -114,23 +114,28 @@ requestPasswordReset: (email) =>
     "Impossible d'envoyer l'email de réinitialisation"
   ),
 
-  getAuthenticatedEnvelope: id =>
-    apiRequest('get', `${BASE}/envelopes/${id}/sign-page/`, null, undefined, "Impossible de récupérer l'enveloppe"),
+  getAuthenticatedEnvelope: docUuid =>
+    apiRequest('get', `${BASE}/envelopes/${docUuid}/sign-page/`, null, undefined, "Impossible de récupérer l'enveloppe"),
   
   
   changePassword: (uid, token, password) =>
     apiRequest('post', `${BASE}/change-password/`, { uid, token, password }, undefined, 'Impossible de changer le mot de passe'),
 
   // ─── HSM signing ─────────────────────────────────────────────────────
-  hsmSign: (envelopeId, payload) =>
-    apiRequest('post', `${BASE}/envelopes/${envelopeId}/hsm_sign/`, payload, undefined, "Impossible de signer via HSM"),
+  hsmSign: (docUuid, payload) =>
+    apiRequest('post', `${BASE}/envelopes/${docUuid}/hsm_sign/`, payload, undefined, "Impossible de signer via HSM"),
 
   // ─── Download helpers ────────────────────────────────────────────────
   // Téléchargement "global" : renvoie l'URL qui pointe vers le signé si dispo, sinon original.
-  downloadEnvelope: async envelopeId => {
-    const { download_url } = await apiRequest('get', `${BASE}/envelopes/${envelopeId}/download/`, null, undefined, "Impossible de préparer le téléchargement");
+  downloadEnvelope: async docUuid => {
+    const { download_url } = await apiRequest('get', `${BASE}/envelopes/${docUuid}/download/`, null, undefined, "Impossible de préparer le téléchargement");
     const pdfBlob = await apiRequest('get', download_url, null, { responseType: 'blob' }, "Impossible de télécharger le document");
     return { download_url: URL.createObjectURL(pdfBlob) };
+  },
+  downloadGuestEnvelope: (docUuid, token) => {
+    const rel = `${BASE}/envelopes/${docUuid}/document/?token=${encodeURIComponent(token || '')}`;
+    const base = (api.defaults.baseURL || '').replace(/\/$/, '');
+    return Promise.resolve({ download_url: `${base}/${rel.replace(/^\//, '')}` });
   },
 // --- Vérification QR publique (uuid + sig) ---
 verifyQRCodeWithSig: (uuid, sig) =>
@@ -153,8 +158,8 @@ openQRCodeDocument: (uuid, sig) => {
 // Téléchargement d'un document précis (si tu ajoutes un endpoint côté vue)
   // Sinon, utilise simplement doc.file_url côté front.
 
-  fetchDocumentBlob: async (envelopeId, documentId) => {
-    const url = `${BASE}/envelopes/${envelopeId}/documents/${documentId}/file/`;
+  fetchDocumentBlob: async (docUuid, documentId) => {
+    const url = `${BASE}/envelopes/${docUuid}/documents/${documentId}/file/`;
     const blob = await apiRequest('get', url, null, { responseType: 'blob' }, 'Impossible de récupérer le fichier');
     // Sanity check (optionnel) : vérifier le type
     if (!blob) throw new Error('Fichier introuvable');
@@ -162,19 +167,19 @@ openQRCodeDocument: (uuid, sig) => {
   },
 
 // Relance manuelle par le créateur
-  remindNow: (id) =>
-    apiRequest('post', `${BASE}/envelopes/${id}/remind/`, undefined, undefined, "Impossible de relancer l'enveloppe"),
+  remindNow: (docUuid) =>
+    apiRequest('post', `${BASE}/envelopes/${docUuid}/remind/`, undefined, undefined, "Impossible de relancer l'enveloppe"),
 
   // URLs directes "brutes"
-  getOriginalDocumentUrl: envelopeId =>
-    `${BASE}/envelopes/${envelopeId}/original-document/`,
+  getOriginalDocumentUrl: docUuid =>
+    `${BASE}/envelopes/${docUuid}/original-document/`,
 
-  getSignedDocumentUrl: envelopeId =>
-    `${BASE}/envelopes/${envelopeId}/signed-document/`,
+  getSignedDocumentUrl: docUuid =>
+    `${BASE}/envelopes/${docUuid}/signed-document/`,
 
     // renvoyer une URL ABSOLUE (utilise api.defaults.baseURL)
-  getDecryptedDocumentUrl: (envelopeId, token) => {
-    const rel = `${BASE}/envelopes/${envelopeId}/document/?token=${encodeURIComponent(
+  getDecryptedDocumentUrl: (docUuid, token) => {
+    const rel = `${BASE}/envelopes/${docUuid}/document/?token=${encodeURIComponent(
       token || ''
     )}`;
     const base = (api.defaults.baseURL || '').replace(/\/$/, '');

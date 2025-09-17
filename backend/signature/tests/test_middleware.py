@@ -6,6 +6,8 @@ from unittest import mock
 
 from signature.middleware import AllowIframeForPDFOnlyMiddleware, ClamAVMiddleware
 
+DOC_UUID = "123e4567-e89b-12d3-a456-426614174000"
+
 
 class AllowIframeForPDFOnlyMiddlewareTests(SimpleTestCase):
     def setUp(self):
@@ -14,14 +16,14 @@ class AllowIframeForPDFOnlyMiddlewareTests(SimpleTestCase):
     @override_settings(SIGNATURE_X_FRAME_OPTIONS="ALLOW-FROM https://example.com")
     def test_allows_iframe_for_pdf_responses(self):
         middleware = AllowIframeForPDFOnlyMiddleware(lambda req: HttpResponse(content_type="application/pdf"))
-        request = self.factory.get("/api/signature/envelopes/1/signed-document/")
+        request = self.factory.get(f"/api/signature/envelopes/{DOC_UUID}/signed-document/")
         response = middleware(request)
         self.assertEqual(response.headers["X-Frame-Options"], "ALLOW-FROM https://example.com")
 
     @override_settings(SIGNATURE_X_FRAME_OPTIONS="ALLOW-FROM https://example.com")
     def test_restricts_non_pdf_responses(self):
         middleware = AllowIframeForPDFOnlyMiddleware(lambda req: HttpResponse(content_type="text/plain"))
-        request = self.factory.get("/api/signature/envelopes/1/signed-document/")
+        request = self.factory.get(f"/api/signature/envelopes/{DOC_UUID}/signed-document/")
         response = middleware(request)
         self.assertEqual(response.headers["X-Frame-Options"], "SAMEORIGIN")
 

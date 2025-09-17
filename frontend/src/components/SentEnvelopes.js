@@ -15,7 +15,7 @@ import ConfirmDialog from './ConfirmDialog';
 const SentEnvelopes = () => {
   const [envelopes, setEnvelopes] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [confirmId, setConfirmId] = useState(null);
+  const [confirmDocUuid, setConfirmDocUuid] = useState(null);
   const navigate = useNavigate();
 
   // Chargement initial des enveloppes envoyées
@@ -40,16 +40,16 @@ const SentEnvelopes = () => {
     };
   }, []);
 
-  const handleCancel = async (id) => {
+  const handleCancel = async (docUuid) => {
     try {
-      await signatureService.cancelEnvelope(id);
+      await signatureService.cancelEnvelope(docUuid);
       toast.success('Enveloppe annulée');
-      setEnvelopes((prev) => prev.filter((e) => e.id !== id));
+      setEnvelopes((prev) => prev.filter((e) => e.doc_uuid !== docUuid));
     } catch (err) {
       toast.error("Échec de l'annulation");
       logService?.error?.(err);
     } finally {
-      setConfirmId(null);
+      setConfirmDocUuid(null);
     }
   };
 
@@ -107,23 +107,27 @@ const SentEnvelopes = () => {
   }, []);
 
   const ActionsCell = useCallback(
-    ({ value }) => (
-      <div className="flex flex-wrap gap-2">
-        <Link
-          to={`/signature/detail/${value}`}
+    ({ row }) => {
+      const docUuid = row?.original?.doc_uuid || row?.values?.doc_uuid;
+      if (!docUuid) return null;
+      return (
+        <div className="flex flex-wrap gap-2">
+          <Link
+          to={`/signature/detail/${docUuid}`}
           className="text-blue-600 hover:text-blue-800 text-sm"
         >
           Détails
         </Link>
         <button
-          onClick={() => setConfirmId(value)}
+          onClick={() => setConfirmDocUuid(docUuid)}
           className="text-red-600 hover:text-red-800 text-sm"
         >
           Annuler
         </button>
       </div>
-    ),
-    [setConfirmId]
+      );
+    },
+    []
   );
 
   // Colonnes (mémoisées pour éviter des rerenders inutiles)
@@ -150,7 +154,7 @@ const SentEnvelopes = () => {
       },
       {
         Header: 'Actions',
-        accessor: 'id',
+        accessor: 'doc_uuid',
         Cell: ActionsCell,
         headerClassName: 'text-right',
         cellClassName: 'text-right',
@@ -178,12 +182,12 @@ const SentEnvelopes = () => {
         itemsPerPage={10}
       />
       <ConfirmDialog
-        isOpen={confirmId !== null}
+        isOpen={confirmDocUuid !== null}
         title="Annuler l'enveloppe"
         message="Voulez-vous vraiment annuler cette enveloppe ?"
         secondaryMessage="Cette action est irréversible."
-        onCancel={() => setConfirmId(null)}
-        onConfirm={() => handleCancel(confirmId)}
+        onCancel={() => setConfirmDocUuid(null)}
+        onConfirm={() => handleCancel(confirmDocUuid)}
       />
     </div>
   );

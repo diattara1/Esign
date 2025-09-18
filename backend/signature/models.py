@@ -164,6 +164,9 @@ class Envelope(models.Model):
 
     # Identité immuable de l'enveloppe (utilisée comme AAD pour document_file)
     doc_uuid = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
+    public_id = models.UUIDField(
+        default=uuid.uuid4, editable=False, unique=True, db_index=True
+    )
 
     title = models.CharField(max_length=255)
     description = models.TextField(blank=True)

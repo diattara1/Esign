@@ -77,7 +77,7 @@ def send_signed_pdf_to_all_signers(envelope_id: int):
 
     # Nom de la PJ + lien d’ouverture en ligne
     fname = f"{slugify(env.title) or 'document'}_signed.pdf"
-    open_url = f"{settings.FRONT_BASE_URL}/signature/envelopes/{env.id}"
+    open_url = f"{settings.FRONT_BASE_URL}/signature/envelopes/{env.public_id}"
 
     # Garde-fou taille (ex: 20 Mo)
     attachments = [(fname, pdf_bytes, "application/pdf")]
@@ -512,17 +512,18 @@ def process_batch_sign_job(
 def _build_sign_link(envelope, recipient):
     """Construit le lien de signature (in-app si user, sinon lien invité avec JWT)."""
     expire_at = datetime.utcnow() + timedelta(hours=24)
+    public_id = str(envelope.public_id)
     if recipient.user:
-        return f"{settings.FRONT_BASE_URL}/signature/envelopes/{envelope.id}/sign"
+        return f"{settings.FRONT_BASE_URL}/signature/envelopes/{public_id}/sign"
 
     payload = {
-        "env_id": envelope.id,
+        "env_id": public_id,
         "recipient_id": recipient.id,
         "iat": int(datetime.utcnow().timestamp()),
         "exp": int(expire_at.timestamp()),
     }
     token = jwt.encode(payload, settings.SECRET_KEY, algorithm="HS256")
-    return f"{settings.FRONT_BASE_URL}/sign/{envelope.id}?token={token}"
+    return f"{settings.FRONT_BASE_URL}/sign/{public_id}?token={token}"
 
 
 @shared_task

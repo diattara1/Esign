@@ -2,6 +2,14 @@ import { api } from './apiUtils';
 import logService from './logService';
 const BASE = 'api/signature';
 
+const normalizeEnvelopeId = id => {
+  const value = String(id ?? '').trim();
+  if (!value) {
+    throw new Error("Identifiant d'enveloppe manquant");
+  }
+  return value;
+};
+
 const apiRequest = async (method, url, data, config, errorMessage = 'Une erreur est survenue') => {
   try {
     const m = method.toLowerCase();
@@ -39,67 +47,82 @@ export default {
     ),
 
   getEnvelope: (id, config = {}) =>
-    apiRequest('get', `${BASE}/envelopes/${id}/`, null, config, "Impossible de récupérer l'enveloppe"),
+    apiRequest('get', `${BASE}/envelopes/${normalizeEnvelopeId(id)}/`, null, config, "Impossible de récupérer l'enveloppe"),
 
   createEnvelope: data =>
     apiRequest('post', `${BASE}/envelopes/`, data, undefined, "Impossible de créer l'enveloppe"),
 
   updateEnvelope: (id, payload) =>
-    apiRequest('patch', `${BASE}/envelopes/${id}/`, payload, undefined, "Impossible de mettre à jour l'enveloppe"),
+    apiRequest('patch', `${BASE}/envelopes/${normalizeEnvelopeId(id)}/`, payload, undefined, "Impossible de mettre à jour l'enveloppe"),
 
 
   updateEnvelopeFiles: (id, files) => {
+    const envelopeId = normalizeEnvelopeId(id);
     const form = new FormData();
     files.forEach(f => form.append('files', f));
-    return apiRequest('patch', `${BASE}/envelopes/${id}/`, form, {
+    return apiRequest('patch', `${BASE}/envelopes/${envelopeId}/`, form, {
       headers: { 'Content-Type': 'multipart/form-data' }
     }, "Impossible de mettre à jour les fichiers de l'enveloppe");
   },
 
-  cancelEnvelope: id =>
-    apiRequest('post', `${BASE}/envelopes/${id}/cancel/`, undefined, undefined, "Impossible d'annuler l'enveloppe"),
+  cancelEnvelope: id => {
+    const envelopeId = normalizeEnvelopeId(id);
+    return apiRequest('post', `${BASE}/envelopes/${envelopeId}/cancel/`, undefined, undefined, "Impossible d'annuler l'enveloppe");
+  },
 
-  restoreEnvelope: id =>
-    apiRequest('post', `${BASE}/envelopes/${id}/restore/`, undefined, undefined, "Impossible de restaurer l'enveloppe"),
+  restoreEnvelope: id => {
+    const envelopeId = normalizeEnvelopeId(id);
+    return apiRequest('post', `${BASE}/envelopes/${envelopeId}/restore/`, undefined, undefined, "Impossible de restaurer l'enveloppe");
+  },
 
-  purgeEnvelope: id =>
-    apiRequest('delete', `${BASE}/envelopes/${id}/purge/`, undefined, undefined, "Impossible de purger l'enveloppe"),
+  purgeEnvelope: id => {
+    const envelopeId = normalizeEnvelopeId(id);
+    return apiRequest('delete', `${BASE}/envelopes/${envelopeId}/purge/`, undefined, undefined, "Impossible de purger l'enveloppe");
+  },
 
-  sendEnvelope: (id, payload = {}) =>
-    apiRequest('post', `${BASE}/envelopes/${id}/send/`, payload, undefined, "Impossible d'envoyer l'enveloppe"),
+  sendEnvelope: (id, payload = {}) => {
+    const envelopeId = normalizeEnvelopeId(id);
+    return apiRequest('post', `${BASE}/envelopes/${envelopeId}/send/`, payload, undefined, "Impossible d'envoyer l'enveloppe");
+  },
 
   // ─── Guest signing (token / OTP) ────────────────────────────────────
   getGuestEnvelope: (id, token) => {
+    const envelopeId = normalizeEnvelopeId(id);
     const headers = token ? { 'X-Signature-Token': token } : {};
-    return apiRequest('get', `${BASE}/envelopes/${id}/guest/`, null, { headers }, "Impossible de récupérer l'enveloppe invitée");
+    return apiRequest('get', `${BASE}/envelopes/${envelopeId}/guest/`, null, { headers }, "Impossible de récupérer l'enveloppe invitée");
   },
-  sendOtp: (id, token) =>
-    apiRequest(
+  sendOtp: (id, token) => {
+    const envelopeId = normalizeEnvelopeId(id);
+    return apiRequest(
       'post',
-      `${BASE}/envelopes/${id}/send_otp/`,
+      `${BASE}/envelopes/${envelopeId}/send_otp/`,
       {},
       token ? { headers: { 'X-Signature-Token': token } } : undefined,
       "Impossible d'envoyer le code OTP"
-    ),
+    );
+  },
 
-  verifyOtp: (id, otp, token) =>
-    apiRequest(
+  verifyOtp: (id, otp, token) => {
+    const envelopeId = normalizeEnvelopeId(id);
+    return apiRequest(
       'post',
-      `${BASE}/envelopes/${id}/verify_otp/`,
+      `${BASE}/envelopes/${envelopeId}/verify_otp/`,
       { otp },
       token ? { headers: { 'X-Signature-Token': token } } : undefined,
       "Impossible de vérifier le code OTP"
-    ),
+    );
+  },
 
   // ─── Signing ────────────────────────────────────────────────────────
   signGuest: (id, body, token) => {
+    const envelopeId = normalizeEnvelopeId(id);
     const cfg = token ? { headers: { 'X-Signature-Token': token } } : undefined;
     // backend renvoie du JSON -> pas de responseType: 'blob'
-    return apiRequest('post', `${BASE}/envelopes/${id}/sign/`, body, cfg, "Impossible de signer l'enveloppe en tant qu'invité");
+    return apiRequest('post', `${BASE}/envelopes/${envelopeId}/sign/`, body, cfg, "Impossible de signer l'enveloppe en tant qu'invité");
   },
 
   signAuthenticated: (id, body) =>
-    apiRequest('post', `${BASE}/envelopes/${id}/sign_authenticated/`, body, undefined, "Impossible de signer l'enveloppe"),
+    apiRequest('post', `${BASE}/envelopes/${normalizeEnvelopeId(id)}/sign_authenticated/`, body, undefined, "Impossible de signer l'enveloppe"),
 
   sign(id, body, token) {
     return token ? this.signGuest(id, body, token) : this.signAuthenticated(id, body);
@@ -115,7 +138,7 @@ requestPasswordReset: (email) =>
   ),
 
   getAuthenticatedEnvelope: id =>
-    apiRequest('get', `${BASE}/envelopes/${id}/sign-page/`, null, undefined, "Impossible de récupérer l'enveloppe"),
+    apiRequest('get', `${BASE}/envelopes/${normalizeEnvelopeId(id)}/sign-page/`, null, undefined, "Impossible de récupérer l'enveloppe"),
   
   
   changePassword: (uid, token, password) =>
@@ -123,12 +146,13 @@ requestPasswordReset: (email) =>
 
   // ─── HSM signing ─────────────────────────────────────────────────────
   hsmSign: (envelopeId, payload) =>
-    apiRequest('post', `${BASE}/envelopes/${envelopeId}/hsm_sign/`, payload, undefined, "Impossible de signer via HSM"),
+    apiRequest('post', `${BASE}/envelopes/${normalizeEnvelopeId(envelopeId)}/hsm_sign/`, payload, undefined, "Impossible de signer via HSM"),
 
   // ─── Download helpers ────────────────────────────────────────────────
   // Téléchargement "global" : renvoie l'URL qui pointe vers le signé si dispo, sinon original.
   downloadEnvelope: async envelopeId => {
-    const { download_url } = await apiRequest('get', `${BASE}/envelopes/${envelopeId}/download/`, null, undefined, "Impossible de préparer le téléchargement");
+    const normalizedId = normalizeEnvelopeId(envelopeId);
+    const { download_url } = await apiRequest('get', `${BASE}/envelopes/${normalizedId}/download/`, null, undefined, "Impossible de préparer le téléchargement");
     const pdfBlob = await apiRequest('get', download_url, null, { responseType: 'blob' }, "Impossible de télécharger le document");
     return { download_url: URL.createObjectURL(pdfBlob) };
   },
@@ -154,7 +178,8 @@ openQRCodeDocument: (uuid, sig) => {
   // Sinon, utilise simplement doc.file_url côté front.
 
   fetchDocumentBlob: async (envelopeId, documentId) => {
-    const url = `${BASE}/envelopes/${envelopeId}/documents/${documentId}/file/`;
+    const normalizedId = normalizeEnvelopeId(envelopeId);
+    const url = `${BASE}/envelopes/${normalizedId}/documents/${documentId}/file/`;
     const blob = await apiRequest('get', url, null, { responseType: 'blob' }, 'Impossible de récupérer le fichier');
     // Sanity check (optionnel) : vérifier le type
     if (!blob) throw new Error('Fichier introuvable');
@@ -163,18 +188,19 @@ openQRCodeDocument: (uuid, sig) => {
 
 // Relance manuelle par le créateur
   remindNow: (id) =>
-    apiRequest('post', `${BASE}/envelopes/${id}/remind/`, undefined, undefined, "Impossible de relancer l'enveloppe"),
+    apiRequest('post', `${BASE}/envelopes/${normalizeEnvelopeId(id)}/remind/`, undefined, undefined, "Impossible de relancer l'enveloppe"),
 
   // URLs directes "brutes"
   getOriginalDocumentUrl: envelopeId =>
-    `${BASE}/envelopes/${envelopeId}/original-document/`,
+    `${BASE}/envelopes/${normalizeEnvelopeId(envelopeId)}/original-document/`,
 
   getSignedDocumentUrl: envelopeId =>
-    `${BASE}/envelopes/${envelopeId}/signed-document/`,
+    `${BASE}/envelopes/${normalizeEnvelopeId(envelopeId)}/signed-document/`,
 
     // renvoyer une URL ABSOLUE (utilise api.defaults.baseURL)
   getDecryptedDocumentUrl: (envelopeId, token) => {
-    const rel = `${BASE}/envelopes/${envelopeId}/document/?token=${encodeURIComponent(
+    const normalizedId = normalizeEnvelopeId(envelopeId);
+    const rel = `${BASE}/envelopes/${normalizedId}/document/?token=${encodeURIComponent(
       token || ''
     )}`;
     const base = (api.defaults.baseURL || '').replace(/\/$/, '');
@@ -183,10 +209,10 @@ openQRCodeDocument: (uuid, sig) => {
 
   // ─── Signatures / QR codes  ───────────────────────────────
   getSignatures: envelopeId =>
-    apiRequest('get', `${BASE}/signatures/`, null, { params: { envelope: envelopeId } }, 'Impossible de récupérer les signatures'),
+    apiRequest('get', `${BASE}/signatures/`, null, { params: { envelope: normalizeEnvelopeId(envelopeId) } }, 'Impossible de récupérer les signatures'),
 
   generateQRCode: (envelopeId, type) =>
-    apiRequest('post', `${BASE}/prints/generate/`, { envelope: envelopeId, qr_type: type }, undefined, 'Impossible de générer le QR code'),
+    apiRequest('post', `${BASE}/prints/generate/`, { envelope: normalizeEnvelopeId(envelopeId), qr_type: type }, undefined, 'Impossible de générer le QR code'),
 
   getQRCodes: () => apiRequest('get', `${BASE}/prints/`, null, undefined, 'Impossible de récupérer les QR codes'),
 

@@ -22,7 +22,7 @@ const MAX_OTP_ATTEMPTS = 3;
 const COOLDOWN_SECONDS = 30;
 
 export default function DocumentSign() {
-  const { id } = useParams();
+  const { publicId: id } = useParams();
   const [searchParams] = useSearchParams();
   const token = searchParams.get('token');
   const isGuest = Boolean(token);

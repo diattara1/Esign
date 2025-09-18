@@ -193,7 +193,7 @@ class EmailTemplates:
             ),
             user_name=f"{user.first_name} {user.last_name}".strip() or getattr(user, "username", user.email),
             email_type="Document finalisé",
-            action_url=f"{settings.FRONT_BASE_URL}/signature/detail/{envelope.id}",
+            action_url=f"{settings.FRONT_BASE_URL}/signature/detail/{envelope.public_id}",
             action_text="Voir le document",
             info_message="Vous pouvez maintenant télécharger le document final signé depuis votre tableau de bord.",
             info_type="success",
@@ -210,7 +210,7 @@ class EmailTemplates:
             ),
             user_name=f"{user.first_name} {user.last_name}".strip() or getattr(user, "username", user.email),
             email_type="Échéance dépassée",
-            action_url=f"{settings.FRONT_BASE_URL}/signature/detail/{envelope.id}",
+            action_url=f"{settings.FRONT_BASE_URL}/signature/detail/{envelope.public_id}",
             action_text="Voir les détails",
             info_message=(
                 "Vous pouvez relancer le processus de signature en créant une nouvelle demande "

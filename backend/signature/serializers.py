@@ -245,6 +245,7 @@ class EnvelopeSerializer(serializers.ModelSerializer):
         model = Envelope
         fields = [
             'id',
+            'public_id',
             'title',
             'include_qr_code',
             'description',
@@ -279,6 +280,7 @@ class EnvelopeSerializer(serializers.ModelSerializer):
             'file_type',
             'completion_rate',
             'cancelled_at',
+            'public_id',
         ]
 
     def get_created_by_name(self, obj):

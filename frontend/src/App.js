@@ -66,7 +66,7 @@ const App = () => {
       </Route>
       <Route path="/verify/:uuid" element={<QrVerifyPage />} />
       {/* Signature invitée avec token - ROUTE PUBLIQUE */}
-      <Route path="/sign/:id" element={<DocumentSign />} />
+      <Route path="/sign/:publicId" element={<DocumentSign />} />
       
       {/* Page de confirmation - PUBLIQUE */}
       <Route path="/signature/success" element={<SignatureConfirmation />} />
@@ -87,8 +87,8 @@ const App = () => {
           <Route path="/signature/detail/:id" element={<DocumentDetail />} />
           <Route path="/signature/workflow/:id" element={<DocumentWorkflow />} />
           <Route path="/signature/sent/:id" element={<EnvelopeSent />} />
-          <Route path="/signature/envelopes/:id/sign" element={<DocumentSign />} />
-          <Route path="/signature/sign/:id" element={<DocumentSign />} />
+          <Route path="/signature/envelopes/:publicId/sign" element={<DocumentSign />} />
+          <Route path="/signature/sign/:publicId" element={<DocumentSign />} />
           <Route path="/settings/notifications" element={<NotificationSettings />} />
           <Route path="/profile" element={<ProfilePage />} />
           

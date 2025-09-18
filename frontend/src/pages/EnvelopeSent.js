@@ -18,7 +18,7 @@ import {
 import logService from '../services/logService';
 import sanitize from '../utils/sanitize';
 export default function EnvelopeSent() {
-  const { id } = useParams();
+  const { publicId } = useParams();
   const navigate = useNavigate();
   const [envelope, setEnvelope] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -27,7 +27,7 @@ export default function EnvelopeSent() {
     const loadEnvelope = async () => {
       try {
         setLoading(true);
-        const data = await signatureService.getEnvelope(id);
+        const data = await signatureService.getEnvelope(publicId);
         setEnvelope(data);
       } catch (error) {
         logService.error("Erreur lors du chargement de l'enveloppe:", error);
@@ -36,8 +36,8 @@ export default function EnvelopeSent() {
         setLoading(false);
       }
     };
-    if (id) loadEnvelope();
-  }, [id]);
+    if (publicId) loadEnvelope();
+  }, [publicId]);
 
   if (loading) {
     return (

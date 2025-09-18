@@ -40,11 +40,11 @@ const SentEnvelopes = () => {
     };
   }, []);
 
-  const handleCancel = async (id) => {
+  const handleCancel = async (publicId) => {
     try {
-      await signatureService.cancelEnvelope(id);
+      await signatureService.cancelEnvelope(publicId);
       toast.success('Enveloppe annulée');
-      setEnvelopes((prev) => prev.filter((e) => e.id !== id));
+      setEnvelopes((prev) => prev.filter((e) => e.public_id !== publicId));
     } catch (err) {
       toast.error("Échec de l'annulation");
       logService?.error?.(err);
@@ -150,7 +150,7 @@ const SentEnvelopes = () => {
       },
       {
         Header: 'Actions',
-        accessor: 'id',
+        accessor: 'public_id',
         Cell: ActionsCell,
         headerClassName: 'text-right',
         cellClassName: 'text-right',

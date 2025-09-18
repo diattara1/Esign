@@ -49,32 +49,32 @@ const DeletedEnvelopes = () => {
     loadEnvelopes();
   }, []);
 
-  const handlePreview = id => {
-    if (!id) return;
-    navigate(`/signature/detail/${id}`);
+  const handlePreview = publicId => {
+    if (!publicId) return;
+    navigate(`/signature/detail/${publicId}`);
   };
 
-  const handleRestore = async id => {
-    if (!id) return;
+  const handleRestore = async publicId => {
+    if (!publicId) return;
     try {
-      await signatureService.restoreEnvelope(id);
+      await signatureService.restoreEnvelope(publicId);
       toast.success("Enveloppe restaurée avec succès");
-      setEnvelopes(prev => prev.filter(env => env.id !== id));
+      setEnvelopes(prev => prev.filter(env => env.public_id !== publicId));
     } catch (err) {
       toast.error("Échec de la restauration de l'enveloppe");
       logService.error('Failed to restore envelope:', err);
     }
   };
 
-  const handlePurge = async id => {
-    if (!id) {
+  const handlePurge = async publicId => {
+    if (!publicId) {
       setConfirmId(null);
       return;
     }
     try {
-      await signatureService.purgeEnvelope(id);
+      await signatureService.purgeEnvelope(publicId);
       toast.success("Enveloppe purgée définitivement");
-      setEnvelopes(prev => prev.filter(env => env.id !== id));
+      setEnvelopes(prev => prev.filter(env => env.public_id !== publicId));
     } catch (err) {
       toast.error("Échec de la purge de l'enveloppe");
       logService.error('Failed to purge envelope:', err);
@@ -173,7 +173,7 @@ const DeletedEnvelopes = () => {
     },
     {
       Header: 'Actions',
-      accessor: 'id',
+      accessor: 'public_id',
       Cell: ActionsCell,
       headerClassName: 'text-right w-32',
       cellClassName: 'text-right'

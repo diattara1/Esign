@@ -593,7 +593,7 @@ const formatShortDate = (isoString) => {
    COMPOSANT PRINCIPAL
    ========================= */
 export default function DocumentWorkflow() {
-  const { id } = useParams();
+  const { publicId } = useParams();
   const navigate = useNavigate();
   const [envelope, setEnvelope] = useState(null);
   const [flowType, setFlowType] = useState('sequential');
@@ -696,9 +696,13 @@ export default function DocumentWorkflow() {
 
   // Upload
   const uploadFiles = useCallback(async (files) => {
+    if (!publicId) {
+      toast.error("Enveloppe introuvable");
+      return;
+    }
     try {
       setIsUploading(true);
-      await signatureService.updateEnvelopeFiles(id, files);
+      await signatureService.updateEnvelopeFiles(publicId, files);
       toast.success('Fichiers ajoutés');
       await reloadEnvelope();
     } catch (e) {
@@ -707,10 +711,13 @@ export default function DocumentWorkflow() {
     } finally {
       setIsUploading(false);
     }
-  }, [id]);
+  }, [publicId]);
 
   const reloadEnvelope = useCallback(async () => {
-    const env = await signatureService.getEnvelope(id);
+    if (!publicId) {
+      return;
+    }
+    const env = await signatureService.getEnvelope(publicId);
     setEnvelope(env);
     setFlowType(env.flow_type || 'sequential');
     setReminderDays(env.reminder_days ?? 1);
@@ -732,17 +739,17 @@ export default function DocumentWorkflow() {
       const first = docs[0];
       if (stableSelectedDocId.current !== first.id) {
         setSelectedDocId(first.id);
-        const blobUrl = await signatureService.fetchDocumentBlob(id, first.id);
+        const blobUrl = await signatureService.fetchDocumentBlob(publicId, first.id);
         setPdfUrl(blobUrl);
       }
     } else {
-      const res = await signatureService.downloadEnvelope(id);
+      const res = await signatureService.downloadEnvelope(publicId);
       if (stableSelectedDocId.current !== 'single') {
         setSelectedDocId('single');
         setPdfUrl(res.download_url);
       }
     }
-  }, [id]);
+  }, [publicId]);
 
   useEffect(() => {
     (async () => {
@@ -752,7 +759,7 @@ export default function DocumentWorkflow() {
         toast.error('Impossible de charger le dossier');
       }
     })();
-  }, [id, reloadEnvelope]);
+  }, [publicId, reloadEnvelope]);
 
   // Largeur PDF
   useEffect(() => {
@@ -815,11 +822,15 @@ export default function DocumentWorkflow() {
   }, []);
 
   const selectDocument = useCallback(async (doc) => {
+    if (!publicId) {
+      toast.error("Enveloppe introuvable");
+      return () => {};
+    }
     if (selectedDocId === doc.id) return;
     let cancelled = false;
     setLoadingDocId(doc.id);
     try {
-      const blobUrl = await signatureService.fetchDocumentBlob(id, doc.id);
+      const blobUrl = await signatureService.fetchDocumentBlob(publicId, doc.id);
       if (cancelled) return;
       setPdfUrl(blobUrl);
       setSelectedDocId(doc.id);
@@ -834,7 +845,7 @@ export default function DocumentWorkflow() {
       setLoadingDocId(null);
     }
     return () => { cancelled = true; };
-  }, [selectedDocId, id, isMobileView]);
+  }, [selectedDocId, publicId, isMobileView]);
 
   const canPlaceSignature = useCallback((recipientIdx) => {
     const recipient = recipients[recipientIdx];
@@ -942,19 +953,19 @@ export default function DocumentWorkflow() {
         toast.error("L'échéance est déjà passée");
         return;
       }
-      await signatureService.updateEnvelope(id, payload);
-      await signatureService.sendEnvelope(id, {
+      await signatureService.updateEnvelope(publicId, payload);
+      await signatureService.sendEnvelope(publicId, {
         include_qr_code: includeQr,
         reminder_days: payload.reminder_days,
         deadline_at: payload.deadline_at,
       });
       toast.success('Enveloppe envoyée');
-      navigate(`/signature/sent/${id}`);
+      navigate(`/signature/sent/${publicId}`);
     } catch (err) {
       logService.error(err);
       toast.error("Échec de l'envoi");
     }
-  }, [id, recipients, fields, flowType, includeQr, reminderDays, deadlineAt, navigate]);
+  }, [publicId, recipients, fields, flowType, includeQr, reminderDays, deadlineAt, navigate]);
 
   const hasSignatureOnDoc = useCallback((recipientOrder) =>
     fields.some((f) => f.recipient_id === recipientOrder && f.document_id === selectedDocId && f.field_type === 'signature'),

@@ -244,7 +244,6 @@ class EnvelopeSerializer(serializers.ModelSerializer):
     class Meta:
         model = Envelope
         fields = [
-            'id',
             'public_id',
             'title',
             'include_qr_code',
@@ -538,7 +537,7 @@ class EnvelopeListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Envelope
         fields = [
-            'id',
+            'public_id',
             'title',
             'status',
             'created_by',

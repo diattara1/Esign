@@ -110,13 +110,13 @@ const CompletedEnvelopes = () => {
     };
   };
 
-  const handlePreview = (id) => {
-    navigate(`/signature/detail/${id}`);
+  const handlePreview = (publicId) => {
+    navigate(`/signature/detail/${publicId}`);
   };
 
-  const handleDownload = async (id, title) => {
+  const handleDownload = async (publicId, title) => {
     try {
-      const { download_url } = await signatureService.downloadEnvelope(id);
+      const { download_url } = await signatureService.downloadEnvelope(publicId);
       const response = await fetch(download_url);
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
@@ -138,9 +138,9 @@ const CompletedEnvelopes = () => {
     }
   };
 
-  const handlePrint = async (id) => {
+  const handlePrint = async (publicId) => {
     try {
-      const { download_url } = await signatureService.downloadEnvelope(id);
+      const { download_url } = await signatureService.downloadEnvelope(publicId);
       const printWindow = window.open(download_url, '_blank');
       if (printWindow) {
         printWindow.onload = () => {
@@ -154,11 +154,11 @@ const CompletedEnvelopes = () => {
     }
   };
 
-  const handleDelete = async (id) => {
+  const handleDelete = async (publicId) => {
     try {
-      await signatureService.cancelEnvelope(id);
-      setEnvelopes(prev => prev.filter(env => env.id !== id));
-      setFilteredEnvelopes(prev => prev.filter(env => env.id !== id));
+      await signatureService.cancelEnvelope(publicId);
+      setEnvelopes(prev => prev.filter(env => env.public_id !== publicId));
+      setFilteredEnvelopes(prev => prev.filter(env => env.public_id !== publicId));
       setMenuOpenId(null);
       toast.success('Enveloppe supprimée avec succès');
     } catch (err) {
@@ -205,11 +205,11 @@ const CompletedEnvelopes = () => {
             <button
               onClick={e => {
                 e.stopPropagation();
-                if (menuOpenId === envelope.id) {
+                if (menuOpenId === envelope.public_id) {
                   closeMenu();
                 } else {
                   menuButtonRef.current = e.currentTarget;
-                  setMenuOpenId(envelope.id);
+                  setMenuOpenId(envelope.public_id);
                 }
               }}
               className="p-2 hover:bg-gray-100 rounded-full transition-colors"
@@ -217,13 +217,13 @@ const CompletedEnvelopes = () => {
               <FiMoreVertical className="w-4 h-4 text-gray-500" />
             </button>
             
-            {menuOpenId === envelope.id && (
+            {menuOpenId === envelope.public_id && (
               <div className="absolute right-0 top-full mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-20">
                 <div className="py-1">
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      handlePreview(envelope.id);
+                      handlePreview(envelope.public_id);
                       closeMenu();
                     }}
                     className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
@@ -234,7 +234,7 @@ const CompletedEnvelopes = () => {
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      handleDownload(envelope.id, envelope.title);
+                      handleDownload(envelope.public_id, envelope.title);
                       closeMenu();
                     }}
                     className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
@@ -245,7 +245,7 @@ const CompletedEnvelopes = () => {
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      handlePrint(envelope.id);
+                      handlePrint(envelope.public_id);
                       closeMenu();
                     }}
                     className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
@@ -257,7 +257,7 @@ const CompletedEnvelopes = () => {
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      setConfirmId(envelope.id);
+                      setConfirmId(envelope.public_id);
                       closeMenu();
                     }}
                     className="flex items-center w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50"
@@ -342,29 +342,29 @@ const CompletedEnvelopes = () => {
     );
   };
 
-  const ActionsCell = ({ value: id, row }) => (
+  const ActionsCell = ({ value: publicId, row }) => (
     <div className="relative inline-block">
       <button
         onClick={e => {
           e.stopPropagation();
-          if (menuOpenId === id) {
+          if (menuOpenId === publicId) {
             closeMenu();
           } else {
             menuButtonRef.current = e.currentTarget;
-            setMenuOpenId(id);
+            setMenuOpenId(publicId);
           }
         }}
         className="p-2 hover:bg-gray-100 rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
       >
         <FiMoreVertical className="w-5 h-5 text-gray-600" />
       </button>
-      {menuOpenId === id && (
+      {menuOpenId === publicId && (
         <div className="absolute right-0 mt-2 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-10">
           <div className="py-1">
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                handlePreview(id);
+                handlePreview(publicId);
                 closeMenu();
               }}
               className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
@@ -375,7 +375,7 @@ const CompletedEnvelopes = () => {
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                handleDownload(id, row.title);
+                handleDownload(publicId, row.title);
                 closeMenu();
               }}
               className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
@@ -386,7 +386,7 @@ const CompletedEnvelopes = () => {
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                handlePrint(id);
+                handlePrint(publicId);
                 closeMenu();
               }}
               className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
@@ -398,7 +398,7 @@ const CompletedEnvelopes = () => {
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                setConfirmId(id);
+                setConfirmId(publicId);
                 closeMenu();
               }}
               className="flex items-center w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
@@ -433,7 +433,7 @@ const CompletedEnvelopes = () => {
     },
     {
       Header: 'Actions',
-      accessor: 'id',
+      accessor: 'public_id',
       Cell: ActionsCell,
       cellClassName: 'text-right whitespace-nowrap'
     }
@@ -570,7 +570,7 @@ const CompletedEnvelopes = () => {
             /* Mobile: Cards Layout */
             <div className="space-y-4">
               {filteredEnvelopes.map((envelope) => (
-                <MobileCard key={envelope.id} envelope={envelope} />
+                <MobileCard key={envelope.public_id} envelope={envelope} />
               ))}
             </div>
           ) : (

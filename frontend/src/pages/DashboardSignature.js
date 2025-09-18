@@ -103,13 +103,13 @@ const DashboardSignature = () => {
 
     const notifs = completed
       .slice(-5)
-      .map(e => ({ id: e.id, title: e.title, type: 'normal', time: e.updated_at }));
+      .map(e => ({ id: e.public_id, title: e.title, type: 'normal', time: e.updated_at }));
 
     const recents = filtered
       .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
       .slice(0, 5)
       .map(e => ({
-        id: e.id,
+        publicId: e.public_id,
         title: e.title,
         status: e.status === 'action_required' ? 'actionRequired' : e.status,
         progress: (
@@ -160,10 +160,10 @@ const DashboardSignature = () => {
   }, [allEnvelopes, actionEnvelopes, dateFilter, customRange]);
 
   // Preview decrypted PDF in a new tab
-  const handlePreview = async (id) => {
-    setPreviewLoadingId(id);
+  const handlePreview = async (publicId) => {
+    setPreviewLoadingId(publicId);
     try {
-      const { download_url } = await signatureService.downloadEnvelope(id);
+      const { download_url } = await signatureService.downloadEnvelope(publicId);
       window.open(download_url, '_blank');
     } catch (error) {
       logService.error('Erreur lors de la prévisualisation du PDF:', error);
@@ -174,9 +174,9 @@ const DashboardSignature = () => {
   };
 
   // Download decrypted PDF with proper filename
-  const handleDownload = async (id, title) => {
+  const handleDownload = async (publicId, title) => {
     try {
-      const { download_url } = await signatureService.downloadEnvelope(id);
+      const { download_url } = await signatureService.downloadEnvelope(publicId);
       const response = await fetch(download_url);
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
@@ -199,12 +199,12 @@ const DashboardSignature = () => {
     }
   };
 
-  const toggleCardExpansion = (id) => {
+  const toggleCardExpansion = (publicId) => {
     const newExpanded = new Set(expandedCards);
-    if (newExpanded.has(id)) {
-      newExpanded.delete(id);
+    if (newExpanded.has(publicId)) {
+      newExpanded.delete(publicId);
     } else {
-      newExpanded.add(id);
+      newExpanded.add(publicId);
     }
     setExpandedCards(newExpanded);
   };
@@ -481,7 +481,7 @@ const DashboardSignature = () => {
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
                       {displayedDocuments.map(doc => (
-                        <tr key={doc.id} className="hover:bg-gray-50 transition-colors duration-150">
+                        <tr key={doc.publicId} className="hover:bg-gray-50 transition-colors duration-150">
                           <td className="px-4 lg:px-6 py-4">
                             <p className="text-sm font-medium text-gray-900 max-w-xs truncate" title={doc.title}>
                               {doc.title}
@@ -537,15 +537,15 @@ const DashboardSignature = () => {
                           <td className="px-4 lg:px-6 py-4 whitespace-nowrap text-right">
                             <div className="flex items-center justify-end space-x-2">
                               <button
-                                onClick={() => handlePreview(doc.id)}
-                                disabled={previewLoadingId === doc.id}
-                                className={`p-1 text-gray-400 ${previewLoadingId === doc.id ? 'opacity-50 cursor-not-allowed' : 'hover:text-blue-600'} transition-colors duration-200`}
+                                onClick={() => handlePreview(doc.publicId)}
+                                disabled={previewLoadingId === doc.publicId}
+                                className={`p-1 text-gray-400 ${previewLoadingId === doc.publicId ? 'opacity-50 cursor-not-allowed' : 'hover:text-blue-600'} transition-colors duration-200`}
                                 title="Prévisualiser"
                               >
                                 <Eye className="w-4 h-4" />
                               </button>
                               <button
-                                onClick={() => handleDownload(doc.id, doc.title)}
+                                onClick={() => handleDownload(doc.publicId, doc.title)}
                                 className="p-1 text-gray-400 hover:text-green-600 transition-colors duration-200"
                                 title="Télécharger"
                               >
@@ -570,7 +570,7 @@ const DashboardSignature = () => {
               <div className="block md:hidden">
                 <div className="divide-y divide-gray-200">
                   {displayedDocuments.map(doc => (
-                    <div key={doc.id} className="p-4 hover:bg-gray-50 transition-colors duration-200">
+                    <div key={doc.publicId} className="p-4 hover:bg-gray-50 transition-colors duration-200">
                       {/* En-tête de la carte */}
                       <div className="flex items-start justify-between mb-3">
                         <div className="flex-1 min-w-0 pr-2">
@@ -582,12 +582,12 @@ const DashboardSignature = () => {
                         
                         {/* Bouton d'expansion */}
                         <button
-                          onClick={() => toggleCardExpansion(doc.id)}
+                          onClick={() => toggleCardExpansion(doc.publicId)}
                           className="p-1 text-gray-400 hover:text-gray-600 transition-colors duration-200"
-                          title={expandedCards.has(doc.id) ? "Réduire" : "Développer"}
+                          title={expandedCards.has(doc.publicId) ? "Réduire" : "Développer"}
                         >
-                          <ChevronDown 
-                            className={`w-5 h-5 transition-transform duration-200 ${expandedCards.has(doc.id) ? 'rotate-180' : ''}`} 
+                          <ChevronDown
+                            className={`w-5 h-5 transition-transform duration-200 ${expandedCards.has(doc.publicId) ? 'rotate-180' : ''}`}
                           />
                         </button>
                       </div>
@@ -614,7 +614,7 @@ const DashboardSignature = () => {
                       </div>
 
                       {/* Informations supplémentaires - conditionnellement visibles */}
-                      <div className={`transition-all duration-300 overflow-hidden ${expandedCards.has(doc.id) ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'}`}>
+                      <div className={`transition-all duration-300 overflow-hidden ${expandedCards.has(doc.publicId) ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'}`}>
                         <div className="space-y-3 pt-3 border-t border-gray-100">
                           {/* Métadonnées */}
                           <div className="grid grid-cols-1 gap-2 text-xs text-gray-500">
@@ -643,11 +643,11 @@ const DashboardSignature = () => {
                           {/* Actions */}
                           <div className="flex items-center justify-end space-x-3 pt-2">
                             <button
-                              onClick={() => handlePreview(doc.id)}
-                              disabled={previewLoadingId === doc.id}
+                              onClick={() => handlePreview(doc.publicId)}
+                              disabled={previewLoadingId === doc.publicId}
                               className={`flex items-center space-x-1 px-3 py-2 text-xs font-medium rounded-md transition-colors duration-200 ${
-                                previewLoadingId === doc.id 
-                                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
+                                previewLoadingId === doc.publicId
+                                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
                                   : 'bg-blue-50 text-blue-600 hover:bg-blue-100'
                               }`}
                               title="Prévisualiser"
@@ -656,7 +656,7 @@ const DashboardSignature = () => {
                               <span>Voir</span>
                             </button>
                             <button
-                              onClick={() => handleDownload(doc.id, doc.title)}
+                              onClick={() => handleDownload(doc.publicId, doc.title)}
                               className="flex items-center space-x-1 px-3 py-2 text-xs font-medium text-green-600 bg-green-50 rounded-md hover:bg-green-100 transition-colors duration-200"
                               title="Télécharger"
                             >
@@ -675,17 +675,17 @@ const DashboardSignature = () => {
                       </div>
 
                       {/* Actions rapides - toujours visibles en mode compact */}
-                      <div className={`flex items-center justify-end space-x-2 mt-3 ${expandedCards.has(doc.id) ? 'hidden' : 'flex'}`}>
+                      <div className={`flex items-center justify-end space-x-2 mt-3 ${expandedCards.has(doc.publicId) ? 'hidden' : 'flex'}`}>
                         <button
-                          onClick={() => handlePreview(doc.id)}
-                          disabled={previewLoadingId === doc.id}
-                          className={`p-2 text-gray-400 ${previewLoadingId === doc.id ? 'opacity-50 cursor-not-allowed' : 'hover:text-blue-600'} transition-colors duration-200`}
+                          onClick={() => handlePreview(doc.publicId)}
+                          disabled={previewLoadingId === doc.publicId}
+                          className={`p-2 text-gray-400 ${previewLoadingId === doc.publicId ? 'opacity-50 cursor-not-allowed' : 'hover:text-blue-600'} transition-colors duration-200`}
                           title="Prévisualiser"
                         >
                           <Eye className="w-5 h-5" />
                         </button>
                         <button
-                          onClick={() => handleDownload(doc.id, doc.title)}
+                          onClick={() => handleDownload(doc.publicId, doc.title)}
                           className="p-2 text-gray-400 hover:text-green-600 transition-colors duration-200"
                           title="Télécharger"
                         >

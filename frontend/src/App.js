@@ -84,9 +84,9 @@ const App = () => {
           <Route path="/signature/saved-signatures" element={<SavedSignaturesPage />} />
           
           <Route path="/signature/upload" element={<DocumentUpload />} />
-          <Route path="/signature/detail/:id" element={<DocumentDetail />} />
-          <Route path="/signature/workflow/:id" element={<DocumentWorkflow />} />
-          <Route path="/signature/sent/:id" element={<EnvelopeSent />} />
+          <Route path="/signature/detail/:publicId" element={<DocumentDetail />} />
+          <Route path="/signature/workflow/:publicId" element={<DocumentWorkflow />} />
+          <Route path="/signature/sent/:publicId" element={<EnvelopeSent />} />
           <Route path="/signature/envelopes/:publicId/sign" element={<DocumentSign />} />
           <Route path="/signature/sign/:publicId" element={<DocumentSign />} />
           <Route path="/settings/notifications" element={<NotificationSettings />} />

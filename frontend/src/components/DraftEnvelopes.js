@@ -31,15 +31,15 @@ const DraftEnvelopes = () => {
     loadEnvelopes();
   }, []);
 
-  const handleEditDraft = (id) => {
-    navigate(`/signature/workflow/${id}`);
+  const handleEditDraft = (publicId) => {
+    navigate(`/signature/workflow/${publicId}`);
   };
 
   const confirmDeleteDraft = async () => {
     if (confirmId === null) return;
     try {
       await signatureService.cancelEnvelope(confirmId);
-      setEnvelopes(prev => prev.filter(env => env.id !== confirmId));
+      setEnvelopes(prev => prev.filter(env => env.public_id !== confirmId));
       toast.success('Brouillon supprimé');
     } catch (err) {
       toast.error('Échec de la suppression');
@@ -56,17 +56,17 @@ const DraftEnvelopes = () => {
     </div>
   );
 
-  const ActionsCell = ({ value: id }) => (
+  const ActionsCell = ({ value: publicId }) => (
     <div className="flex space-x-2">
       <button
-        onClick={() => handleEditDraft(id)}
+        onClick={() => handleEditDraft(publicId)}
         className="text-blue-600 hover:text-blue-800 p-1"
         title="Modifier"
       >
         <FiEdit2 className="w-5 h-5" />
       </button>
       <button
-        onClick={() => setConfirmId(id)}
+        onClick={() => setConfirmId(publicId)}
         className="text-red-600 hover:text-red-800 hover:bg-red-50 p-1 rounded"
         title="Supprimer"
       >
@@ -92,7 +92,7 @@ const DraftEnvelopes = () => {
     },
     {
       Header: 'Actions',
-      accessor: 'id',
+      accessor: 'public_id',
       Cell: ActionsCell
     }
   ];

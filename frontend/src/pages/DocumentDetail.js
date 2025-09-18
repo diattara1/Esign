@@ -82,7 +82,7 @@ function ReminderModal({ open, count, onClose }) {
 }
 
 const DocumentDetail = () => {
-  const { id } = useParams();
+  const { publicId } = useParams();
   const navigate = useNavigate();
 
   // État principal
@@ -192,7 +192,7 @@ const DocumentDetail = () => {
   const loadConsolidatedPreview = useCallback(async () => {
     setLoadingPdf(true);
     try {
-      const { download_url } = await signatureService.downloadEnvelope(id);
+      const { download_url } = await signatureService.downloadEnvelope(publicId);
       setPdfUrl(prev => {
         if (prev && prev.startsWith('blob:')) URL.revokeObjectURL(prev);
         return download_url;
@@ -207,10 +207,10 @@ const DocumentDetail = () => {
     } finally {
       setLoadingPdf(false);
     }
-  }, [id]);
+  }, [publicId]);
 
   const fetchEnvelope = useCallback(async () => {
-    const data = await signatureService.getEnvelope(id);
+    const data = await signatureService.getEnvelope(publicId);
     setEnv(data);
     const docs = data.documents || [];
     setDocuments(docs);
@@ -226,7 +226,7 @@ const DocumentDetail = () => {
       await loadConsolidatedPreview();
     }
     return data;
-  }, [id, isMobile, loadConsolidatedPreview]);
+  }, [publicId, isMobile, loadConsolidatedPreview]);
 
   // Chargement initial
   useEffect(() => {
@@ -261,7 +261,7 @@ const DocumentDetail = () => {
       let filename = env ? `${env.title}.pdf` : 'document.pdf';
 
       if (!blobHref) {
-        const { download_url } = await signatureService.downloadEnvelope(env.id);
+        const { download_url } = await signatureService.downloadEnvelope(env.public_id);
         blobHref = download_url;
       } else if (env?.status === 'completed') {
         filename = `${env.title}_signed.pdf`;
@@ -288,7 +288,7 @@ const DocumentDetail = () => {
   const handleRemind = async () => {
     setReminding(true);
     try {
-      const { reminders } = await signatureService.remindNow(env.id);
+      const { reminders } = await signatureService.remindNow(env.public_id);
       const n = reminders ?? 0;
       setReminderCount(n);
       setReminderModalOpen(true);
@@ -301,10 +301,10 @@ const DocumentDetail = () => {
   };
 
   const handleRestore = async () => {
-    if (!env?.id || restoring) return;
+    if (!env?.public_id || restoring) return;
     setRestoring(true);
     try {
-      await signatureService.restoreEnvelope(env.id);
+      await signatureService.restoreEnvelope(env.public_id);
       toast.success('Enveloppe restaurée avec succès');
       try {
         await fetchEnvelope();
@@ -322,13 +322,13 @@ const DocumentDetail = () => {
 
   const handlePurge = async () => {
     if (purging) return;
-    if (!env?.id) {
+    if (!env?.public_id) {
       setConfirmOpen(false);
       return;
     }
     setPurging(true);
     try {
-      await signatureService.purgeEnvelope(env.id);
+      await signatureService.purgeEnvelope(env.public_id);
       toast.success('Enveloppe purgée définitivement');
       navigate('/signature/envelopes/deleted');
     } catch (err) {
@@ -673,7 +673,7 @@ const DocumentDetail = () => {
                 style={{ touchAction: 'none' }}
               >
                 <Document
-                  key={env?.status === 'completed' ? `signed-${env.id}` : `orig-${env.id}-${selectedDoc?.id || 'single'}`}
+                  key={env?.status === 'completed' ? `signed-${env?.public_id}` : `orig-${env?.public_id}-${selectedDoc?.id || 'single'}`}
                   file={pdfUrl}
                   onLoadSuccess={onDocumentLoad}
                   onLoadError={onDocumentError}

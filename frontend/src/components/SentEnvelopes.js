@@ -40,11 +40,11 @@ const SentEnvelopes = () => {
     };
   }, []);
 
-  const handleCancel = async (id) => {
+  const handleCancel = async (publicId) => {
     try {
-      await signatureService.cancelEnvelope(id);
+      await signatureService.cancelEnvelope(publicId);
       toast.success('Enveloppe annulée');
-      setEnvelopes((prev) => prev.filter((e) => e.id !== id));
+      setEnvelopes((prev) => prev.filter((e) => e.public_id !== publicId));
     } catch (err) {
       toast.error("Échec de l'annulation");
       logService?.error?.(err);
@@ -107,16 +107,16 @@ const SentEnvelopes = () => {
   }, []);
 
   const ActionsCell = useCallback(
-    ({ value }) => (
+    ({ value: publicId }) => (
       <div className="flex flex-wrap gap-2">
         <Link
-          to={`/signature/detail/${value}`}
+          to={`/signature/detail/${publicId}`}
           className="text-blue-600 hover:text-blue-800 text-sm"
         >
           Détails
         </Link>
         <button
-          onClick={() => setConfirmId(value)}
+          onClick={() => setConfirmId(publicId)}
           className="text-red-600 hover:text-red-800 text-sm"
         >
           Annuler
@@ -150,7 +150,7 @@ const SentEnvelopes = () => {
       },
       {
         Header: 'Actions',
-        accessor: 'id',
+        accessor: 'public_id',
         Cell: ActionsCell,
         headerClassName: 'text-right',
         cellClassName: 'text-right',

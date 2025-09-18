@@ -69,7 +69,7 @@ const DocumentUpload = () => {
     try {
       const response = await signatureService.createEnvelope(formData);
       toast.success('Document téléversé avec succès');
-      navigate(`/signature/workflow/${response.id}`);
+      navigate(`/signature/workflow/${response.public_id}`);
     } catch (error) {
       logService.error('Erreur lors du téléversement:', error);
       toast.error(error.response?.data?.detail || 'Erreur lors du téléversement du document');

@@ -35,12 +35,13 @@ jest.mock('react-toastify', () => ({
 
 jest.mock('react-router-dom', () => ({
   Link: ({ children, ...props }) => <a {...props}>{children}</a>,
-  useParams: () => ({ id: '123' }),
+  useParams: () => ({ publicId: '123' }),
   useNavigate: () => mockNavigate
 }));
 
 const cancelledEnvelope = {
   id: '123',
+  public_id: '123',
   title: 'Annulée',
   status: 'cancelled',
   version: 1,

@@ -360,6 +360,42 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
             if next_rec:
                 send_signature_email.delay(envelope.id, next_rec.id)
 
+    def _reset_reminders_and_notify(self, envelope: Envelope):
+        """Reset reminder counters and trigger notifications for pending recipients."""
+        reminder_days = envelope.reminder_days or 1
+        now = timezone.now()
+        recipients_to_notify = []
+
+        if envelope.flow_type == 'sequential':
+            unsigned_recipients = list(
+                envelope.recipients.filter(signed=False).order_by('order', 'id')
+            )
+            if not unsigned_recipients:
+                return []
+
+            next_recipient = unsigned_recipients[0]
+            for index, recipient in enumerate(unsigned_recipients):
+                recipient.reminder_count = 0
+                recipient.next_reminder_at = (
+                    now + timezone.timedelta(days=reminder_days)
+                    if index == 0
+                    else None
+                )
+                recipient.save(update_fields=['reminder_count', 'next_reminder_at'])
+
+            recipients_to_notify.append(next_recipient)
+        else:
+            for recipient in envelope.recipients.filter(signed=False):
+                recipient.reminder_count = 0
+                recipient.next_reminder_at = now + timezone.timedelta(days=reminder_days)
+                recipient.save(update_fields=['reminder_count', 'next_reminder_at'])
+                recipients_to_notify.append(recipient)
+
+        for recipient in recipients_to_notify:
+            send_signature_email.delay(envelope.id, recipient.id)
+
+        return recipients_to_notify
+
     # -------------------- Actions / endpoints --------------------
 
     @action(detail=True, methods=['get'], url_path='sign-page', permission_classes=[IsAuthenticated])
@@ -408,19 +444,7 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
         envelope.save(update_fields=['include_qr_code', 'deadline_at', 'status'])
 
         # Planification des rappels & envoi au(x) premier(s)
-        if envelope.flow_type == 'sequential':
-            first = envelope.recipients.order_by('order').first()
-            if first:
-                first.next_reminder_at = timezone.now() + timezone.timedelta(days=envelope.reminder_days)
-                first.reminder_count = 0
-                first.save(update_fields=['next_reminder_at', 'reminder_count'])
-                send_signature_email.delay(envelope.id, first.id)
-        else:
-            for rec in envelope.recipients.filter(signed=False):
-                rec.next_reminder_at = timezone.now() + timezone.timedelta(days=envelope.reminder_days)
-                rec.reminder_count = 0
-                rec.save(update_fields=['next_reminder_at', 'reminder_count'])
-                send_signature_email.delay(envelope.id, rec.id)
+        self._reset_reminders_and_notify(envelope)
 
         return Response({'status': 'sent', 'message': 'Document envoyé avec succès'})
 
@@ -445,10 +469,22 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
             return permission_error
         if envelope.status != "cancelled":
             return Response({"error": "Non annulé"}, status=status.HTTP_400_BAD_REQUEST)
-        envelope.status = "draft"
+        recipients_qs = envelope.recipients.all()
+        if not recipients_qs.exists():
+            new_status = "draft"
+        elif recipients_qs.filter(signed=True).exists():
+            new_status = "pending"
+        else:
+            new_status = "sent"
+
+        envelope.status = new_status
         envelope.cancelled_at = None
         envelope.save(update_fields=['status', 'cancelled_at'])
-        return Response({"status": "draft"})
+
+        if new_status in {"sent", "pending"}:
+            self._reset_reminders_and_notify(envelope)
+
+        return Response({"status": new_status})
 
     @action(detail=True, methods=["delete"], url_path="purge", permission_classes=[IsAuthenticated])
     def purge(self, request, pk=None):

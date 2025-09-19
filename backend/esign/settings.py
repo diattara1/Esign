@@ -99,7 +99,7 @@ REST_FRAMEWORK = {
         "anon": "40/minute",
         "user": "40/minute",
         "verify-token": "25/minute",
-        "login": "7/minute",
+        "login": "25/minute",
     },
 }
 

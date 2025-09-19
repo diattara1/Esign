@@ -695,19 +695,7 @@ export default function DocumentWorkflow() {
   }, [pdfUrl]);
 
   // Upload
-  const uploadFiles = useCallback(async (files) => {
-    try {
-      setIsUploading(true);
-      await signatureService.updateEnvelopeFiles(publicId, files);
-      toast.success('Fichiers ajoutés');
-      await reloadEnvelope();
-    } catch (e) {
-      logService.error(e);
-      toast.error("Échec de l'upload");
-    } finally {
-      setIsUploading(false);
-    }
-  }, [publicId, reloadEnvelope]);
+ 
 
   const reloadEnvelope = useCallback(async () => {
     const env = await signatureService.getEnvelope(publicId);
@@ -743,7 +731,19 @@ export default function DocumentWorkflow() {
       }
     }
   }, [publicId]);
-
+const uploadFiles = useCallback(async (files) => {
+    try {
+      setIsUploading(true);
+      await signatureService.updateEnvelopeFiles(publicId, files);
+      toast.success('Fichiers ajoutés');
+      await reloadEnvelope();
+    } catch (e) {
+      logService.error(e);
+      toast.error("Échec de l'upload");
+    } finally {
+      setIsUploading(false);
+    }
+  }, [publicId, reloadEnvelope]);
   useEffect(() => {
     (async () => {
       try {
@@ -834,7 +834,7 @@ export default function DocumentWorkflow() {
       setLoadingDocId(null);
     }
     return () => { cancelled = true; };
-  }, [selectedDocId, id, isMobileView]);
+  }, [selectedDocId,  isMobileView]);
 
   const canPlaceSignature = useCallback((recipientIdx) => {
     const recipient = recipients[recipientIdx];

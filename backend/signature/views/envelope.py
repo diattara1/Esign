@@ -751,8 +751,82 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
             raise ValueError("Aucun champ de signature valide pour ce destinataire")
     
         logger.info(f"_do_sign: traitement de {len(my_fields_meta)} champs pour le destinataire {recipient.id}")
-    
-        # 2) Choisir la base PDF : partir du dernier PDF signé s'il existe
+
+        def _normalize_doc_id(value):
+            if value in (None, "", "null", "None"):
+                return None
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                try:
+                    return int(str(value))
+                except (TypeError, ValueError):
+                    return None
+
+        # Regrouper les champs par document (None => envelope.document_file)
+        fields_by_doc: dict[int | None, list[dict]] = {}
+        for meta in my_fields_meta:
+            doc_key = _normalize_doc_id(meta.get('document_id'))
+            fields_by_doc.setdefault(doc_key, []).append(meta)
+
+        # Préparer les documents disponibles (ordre = document principal puis annexes)
+        doc_order: list[int | None] = []
+        doc_sources: dict[int | None, bytes] = {}
+        doc_page_counts: dict[int | None, int] = {}
+
+        def _read_file_bytes(field_file):
+            if not field_file or not getattr(field_file, 'name', ''):
+                return b''
+            storage = getattr(field_file, 'storage', None)
+            try:
+                if storage:
+                    with storage.open(field_file.name, 'rb') as fh:
+                        return fh.read()
+                with field_file.open('rb') as fh:  # fallback
+                    return fh.read()
+            except Exception:
+                logger.exception("Impossible de lire le fichier %s", getattr(field_file, 'name', ''))
+                return b''
+
+        def _count_pdf_pages(data: bytes) -> int:
+            if not data:
+                return 0
+            try:
+                return len(PdfReader(io.BytesIO(data)).pages)
+            except Exception:
+                logger.warning("Impossible de compter les pages du document (taille=%s)", len(data))
+                return 0
+
+        if envelope.document_file and getattr(envelope.document_file, 'name', ''):
+            doc_order.append(None)
+            data = _read_file_bytes(envelope.document_file)
+            doc_sources[None] = data
+            doc_page_counts[None] = _count_pdf_pages(data)
+
+        for doc in envelope.documents.order_by('id'):
+            doc_order.append(doc.id)
+            data = _read_file_bytes(doc.file)
+            doc_sources[doc.id] = data
+            doc_page_counts[doc.id] = _count_pdf_pages(data)
+
+        # Ajouter les éventuels documents référencés dans signed_fields mais absents (sécurité)
+        for doc_key in list(fields_by_doc.keys()):
+            if doc_key in doc_sources or doc_key is None:
+                continue
+            try:
+                extra_doc = envelope.documents.get(id=doc_key)
+            except EnvelopeDocument.DoesNotExist:
+                logger.warning("document_id %s introuvable dans l'enveloppe %s", doc_key, envelope.id)
+                continue
+            doc_order.append(doc_key)
+            data = _read_file_bytes(extra_doc.file)
+            doc_sources[doc_key] = data
+            doc_page_counts[doc_key] = _count_pdf_pages(data)
+
+        if not doc_order:
+            raise ValueError("Pas de document original")
+
+        # 2) Choisir la base PDF : dernier signé sinon concat des originaux
         latest = (
             SignatureDocument.objects
             .filter(envelope=envelope, signed_file__isnull=False)
@@ -762,88 +836,154 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
         if latest and latest.signed_file:
             with latest.signed_file.storage.open(latest.signed_file.name, 'rb') as bf:
                 base_bytes = bf.read()
-
             logger.info(f"_do_sign: base = dernier PDF signé (SignatureDocument {latest.id})")
         else:
-            doc = envelope.document_file or (
-                envelope.documents.first().file if envelope.documents.exists() else None
-            )
-            if not doc:
+            if len(doc_order) == 1:
+                base_bytes = doc_sources.get(doc_order[0])
+            else:
+                writer = PdfWriter()
+                for doc_key in doc_order:
+                    data = doc_sources.get(doc_key)
+                    if not data:
+                        continue
+                    try:
+                        reader = PdfReader(io.BytesIO(data))
+                    except Exception:
+                        logger.warning("Impossible de lire le document %s pour concaténation", doc_key)
+                        continue
+                    for page in reader.pages:
+                        writer.add_page(page)
+                buffer = io.BytesIO()
+                writer.write(buffer)
+                base_bytes = buffer.getvalue()
+            if not base_bytes:
                 raise ValueError("Pas de document original")
-            with doc.open('rb') as f:
-                base_bytes = f.read()
-            logger.info("_do_sign: base = document original")
-    
-        # 3) TRAITEMENT CHAMP PAR CHAMP : overlay + signature immédiatement
-        for i, fmeta in enumerate(my_fields_meta):
-            pos = fmeta.get('position') or {}
-            page_num = int(fmeta.get('page') or 1)
-            page_ix = max(0, page_num - 1)
+            logger.info("_do_sign: base = concaténation des documents originaux")
 
-            reader_dim = PdfReader(io.BytesIO(base_bytes))
-            page = reader_dim.pages[page_ix]
-            page_w = float(page.mediabox.width)
-            page_h = float(page.mediabox.height)
-
-            try:
-                x_rel = float(pos.get('x', 0)); y_rel = float(pos.get('y', 0))
-                w_rel = float(pos.get('width', 0)); h_rel = float(pos.get('height', 0))
-            except Exception:
-                x_rel = y_rel = 0
-                w_rel = 180 / page_w
-                h_rel = 60 / page_h
-
-            x = x_rel * page_w
-            y_top = y_rel * page_h
-            w = w_rel * page_w
-            h = h_rel * page_h
-    
-            # Extraire l'image de signature POUR CE CHAMP
-            field_id = str(fmeta.get('id') or fmeta.get('field_id') or '')
-            img_for_this_field = None
-            if isinstance(signature_data, dict):
-                candidates = [
-                    signature_data.get(field_id),
-                    signature_data.get(int(field_id)) if field_id.isdigit() else None,
-                    signature_data.get('data_url'),
-                ]
-                img_for_this_field = next((v for v in candidates if isinstance(v, str) and v), None)
-            elif isinstance(signature_data, str):
-                img_for_this_field = signature_data
-    
-            img_for_this_field = _clean_b64(img_for_this_field)
-    
-            # A) Overlay graphique si image dispo
-            if img_for_this_field:
-                logger.info(f"_do_sign: ajout overlay graphique pour champ {field_id}")
-                base_bytes = self._add_signature_overlay_to_pdf(
-                    base_bytes, img_for_this_field, x, y_top, w, h, page_ix
-                )
-    
-            # B) Signature numérique (sans apparence)
-            reader = PdfReader(io.BytesIO(base_bytes))
-            page_h = float(reader.pages[page_ix].mediabox.height)
-            y_pdf = page_h - (y_top + h)
-            rect_crypto = (x + 1, y_pdf + 1, x + w - 1, y_pdf + h - 1)
-    
-            signature_timestamp = timezone.now().strftime("%Y%m%d_%H%M%S_%f")
-            unique_suffix = str(uuid.uuid4())[:8]
-            unique_field_name = f"Sig_{recipient.id}_{field_id}_{i}_{signature_timestamp}_{unique_suffix}"
-    
-            logger.info(f"_do_sign: ajout signature numérique {unique_field_name} pour champ {field_id}")
-    
-            base_bytes = sign_pdf_bytes(
-                base_bytes,
-                field_name=unique_field_name,
-                reason=f"Signature numérique - {recipient.full_name}",
-                location="Plateforme IntelliVibe",
-                rect=rect_crypto,
-                page_ix=page_ix,
-                appearance_image_b64=img_for_this_field,
+        base_reader = PdfReader(io.BytesIO(base_bytes))
+        total_pages = len(base_reader.pages)
+        expected_pages = sum(doc_page_counts.get(doc_key, 0) for doc_key in doc_order)
+        if doc_order and expected_pages and expected_pages != total_pages:
+            logger.warning(
+                "_do_sign: nombre de pages attendu (%s) différent du PDF base (%s) pour envelope %s",
+                expected_pages,
+                total_pages,
+                envelope.id,
             )
-    
-            logger.info(f"_do_sign: champ {i+1}/{len(my_fields_meta)} traité avec succès")
-    
+            if expected_pages < total_pages:
+                last_key = doc_order[-1]
+                doc_page_counts[last_key] = doc_page_counts.get(last_key, 0) + (total_pages - expected_pages)
+            total_pages = len(PdfReader(io.BytesIO(base_bytes)).pages)
+
+        # Calculer les offsets de page pour chaque document
+        doc_offsets: dict[int | None, int] = {}
+        running = 0
+        for doc_key in doc_order:
+            doc_offsets[doc_key] = running
+            running += doc_page_counts.get(doc_key, 0)
+
+        # 3) TRAITEMENT DOCUMENT PAR DOCUMENT : overlay + signature uniquement sur les champs concernés
+        doc_sequence = list(doc_order)
+        for doc_key in fields_by_doc.keys():
+            if doc_key not in doc_sequence:
+                doc_sequence.append(doc_key)
+
+        for doc_key in doc_sequence:
+            field_list = fields_by_doc.get(doc_key)
+            if not field_list:
+                continue
+
+            effective_doc_key = doc_key if doc_key in doc_offsets else doc_order[0]
+            page_offset = doc_offsets.get(effective_doc_key, 0)
+
+            for i, fmeta in enumerate(field_list):
+                pos = fmeta.get('position') or {}
+                page_num = int(fmeta.get('page') or 1)
+                page_ix = page_offset + max(0, page_num - 1)
+
+                reader_dim = PdfReader(io.BytesIO(base_bytes))
+                if page_ix >= len(reader_dim.pages):
+                    logger.warning(
+                        "_do_sign: page %s hors limites pour document %s (total %s) — utilisation de la dernière page",
+                        page_ix,
+                        effective_doc_key,
+                        len(reader_dim.pages),
+                    )
+                    page_ix = max(0, len(reader_dim.pages) - 1)
+                page = reader_dim.pages[page_ix]
+                page_w = float(page.mediabox.width)
+                page_h = float(page.mediabox.height)
+
+                try:
+                    x_rel = float(pos.get('x', 0)); y_rel = float(pos.get('y', 0))
+                    w_rel = float(pos.get('width', 0)); h_rel = float(pos.get('height', 0))
+                except Exception:
+                    x_rel = y_rel = 0
+                    w_rel = 180 / page_w if page_w else 0
+                    h_rel = 60 / page_h if page_h else 0
+
+                x = x_rel * page_w
+                y_top = y_rel * page_h
+                w = w_rel * page_w
+                h = h_rel * page_h
+
+                field_id = str(fmeta.get('id') or fmeta.get('field_id') or '')
+                img_for_this_field = None
+                if isinstance(signature_data, dict):
+                    candidates = [
+                        signature_data.get(field_id),
+                        signature_data.get(int(field_id)) if field_id.isdigit() else None,
+                        signature_data.get('data_url'),
+                    ]
+                    img_for_this_field = next((v for v in candidates if isinstance(v, str) and v), None)
+                elif isinstance(signature_data, str):
+                    img_for_this_field = signature_data
+
+                img_for_this_field = _clean_b64(img_for_this_field)
+
+                if img_for_this_field:
+                    logger.info(
+                        "_do_sign: ajout overlay graphique pour champ %s (doc=%s, page=%s)",
+                        field_id,
+                        effective_doc_key,
+                        page_num,
+                    )
+                    base_bytes = self._add_signature_overlay_to_pdf(
+                        base_bytes, img_for_this_field, x, y_top, w, h, page_ix
+                    )
+
+                reader_after_overlay = PdfReader(io.BytesIO(base_bytes))
+                current_page = reader_after_overlay.pages[page_ix]
+                page_h = float(current_page.mediabox.height)
+                y_pdf = page_h - (y_top + h)
+                rect_crypto = (x + 1, y_pdf + 1, x + w - 1, y_pdf + h - 1)
+
+                signature_timestamp = timezone.now().strftime("%Y%m%d_%H%M%S_%f")
+                unique_suffix = str(uuid.uuid4())[:8]
+                unique_field_name = (
+                    f"Sig_{recipient.id}_{field_id}_{doc_key}_{i}_{signature_timestamp}_{unique_suffix}"
+                )
+
+                logger.info(
+                    "_do_sign: ajout signature numérique %s pour champ %s (doc=%s, page=%s)",
+                    unique_field_name,
+                    field_id,
+                    effective_doc_key,
+                    page_num,
+                )
+
+                base_bytes = sign_pdf_bytes(
+                    base_bytes,
+                    field_name=unique_field_name,
+                    reason=f"Signature numérique - {recipient.full_name}",
+                    location="Plateforme IntelliVibe",
+                    rect=rect_crypto,
+                    page_ix=page_ix,
+                    appearance_image_b64=img_for_this_field,
+                )
+
+        logger.info("_do_sign: traitement de tous les documents terminé")
+
         # 4) Sauvegarder le résultat & statut
         with transaction.atomic():
             # 1) Marquer le destinataire comme signé

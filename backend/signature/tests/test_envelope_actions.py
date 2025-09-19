@@ -1,3 +1,4 @@
+import io
 import shutil
 import tempfile
 
@@ -5,8 +6,11 @@ from django.contrib.auth import get_user_model
 from django.core.files.base import ContentFile
 from django.test import override_settings
 from django.urls import reverse
+from reportlab.pdfgen import canvas
 from rest_framework import status
-from rest_framework.test import APITestCase
+from rest_framework.test import APITestCase, APIRequestFactory
+from unittest import mock
+from pathlib import Path
 
 from signature.models import (
     Envelope,
@@ -14,13 +18,22 @@ from signature.models import (
     EnvelopeRecipient,
     SignatureDocument,
 )
+from signature.views.envelope import EnvelopeViewSet
 
 
 class EnvelopeActionTests(APITestCase):
     def setUp(self):
         super().setUp()
         self.temp_media = tempfile.mkdtemp()
-        override = override_settings(MEDIA_ROOT=self.temp_media)
+        base_dir = Path(__file__).resolve().parents[2]
+        override = override_settings(
+            MEDIA_ROOT=self.temp_media,
+            DEBUG=True,
+            SECURE_SSL_REDIRECT=False,
+            KMS_ACTIVE_KEY_ID=1,
+            KMS_RSA_PUBLIC_KEYS={"1": str(base_dir / "certs" / "kms_pub_1.pem")},
+            KMS_RSA_PRIVATE_KEYS={"1": str(base_dir / "certs" / "kms_priv_1.pem")},
+        )
         override.enable()
         self.addCleanup(override.disable)
         self.addCleanup(lambda: shutil.rmtree(self.temp_media, ignore_errors=True))
@@ -42,6 +55,16 @@ class EnvelopeActionTests(APITestCase):
     def _pdf_file(name: str = "document.pdf") -> ContentFile:
         content = b"%PDF-1.4\n1 0 obj\n<<>>\nendobj\ntrailer\n%%EOF"
         return ContentFile(content, name=name)
+
+    @staticmethod
+    def _pdf_with_label(name: str, label: str) -> ContentFile:
+        buffer = io.BytesIO()
+        c = canvas.Canvas(buffer, pagesize=(200, 200))
+        c.drawString(40, 120, label)
+        c.showPage()
+        c.save()
+        buffer.seek(0)
+        return ContentFile(buffer.read(), name=name)
 
     def test_restore_success(self):
         envelope = Envelope.objects.create(
@@ -162,3 +185,84 @@ class EnvelopeActionTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
         self.assertTrue(Envelope.objects.filter(pk=envelope.pk).exists())
+
+    def test_do_sign_handles_multiple_documents(self):
+        envelope = Envelope.objects.create(
+            title="Multi", created_by=self.creator, status="sent"
+        )
+        doc1 = EnvelopeDocument.objects.create(
+            envelope=envelope,
+            file=self._pdf_with_label("doc1.pdf", "DOC1"),
+        )
+        doc2 = EnvelopeDocument.objects.create(
+            envelope=envelope,
+            file=self._pdf_with_label("doc2.pdf", "DOC2"),
+        )
+
+        recipient = EnvelopeRecipient.objects.create(
+            envelope=envelope,
+            user=self.creator,
+            email="creator@example.com",
+            full_name="Creator",
+            order=1,
+        )
+
+        factory = APIRequestFactory()
+        request = factory.post("/fake")
+        request.user = self.creator
+        request.META.setdefault("REMOTE_ADDR", "127.0.0.1")
+        request.META.setdefault("HTTP_USER_AGENT", "test-suite")
+
+        view = EnvelopeViewSet()
+        view.request = request
+
+        sig_image = "data:image/png;base64," + (
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAAWgmWQ0AAAAASUVORK5CYII="
+        )
+
+        field1_id = "field-1"
+        field2_id = "field-2"
+        signed_fields = {
+            field1_id: {
+                "id": field1_id,
+                "recipient_id": recipient.id,
+                "document_id": doc1.id,
+                "page": 1,
+                "position": {"x": 0.1, "y": 0.2, "width": 0.3, "height": 0.15},
+            },
+            field2_id: {
+                "id": field2_id,
+                "recipient_id": recipient.id,
+                "document_id": doc2.id,
+                "page": 1,
+                "position": {"x": 0.6, "y": 0.4, "width": 0.25, "height": 0.15},
+            },
+        }
+        signature_data = {
+            field1_id: sig_image,
+            field2_id: sig_image,
+        }
+
+        with mock.patch.object(
+            EnvelopeViewSet,
+            "_add_signature_overlay_to_pdf",
+            autospec=True,
+        ) as overlay_mock, mock.patch(
+            "signature.views.envelope.sign_pdf_bytes"
+        ) as sign_mock:
+            overlay_mock.side_effect = (
+                lambda _self, pdf, *_args, **_kwargs: pdf
+            )
+            sign_mock.side_effect = lambda pdf, **_kwargs: pdf
+
+            response = view._do_sign(envelope, recipient, signature_data, signed_fields)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        sig_doc = SignatureDocument.objects.filter(envelope=envelope, recipient=recipient).latest("signed_at")
+        self.assertTrue(sig_doc.signed_file)
+
+        overlay_pages = [call.args[7] for call in overlay_mock.call_args_list]
+        sign_pages = [call.kwargs.get("page_ix") for call in sign_mock.call_args_list]
+
+        self.assertEqual(overlay_pages, [0, 1])
+        self.assertEqual(sign_pages, [0, 1])

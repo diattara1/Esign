@@ -492,6 +492,13 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
         permission_error = self._ensure_creator(request, envelope)
         if permission_error:
             return permission_error
+        if envelope.status != "cancelled":
+            return Response(
+                {
+                    "detail": "Seules les enveloppes annulées peuvent être purgées."
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         self._delete_envelope_files(envelope)
         envelope.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)

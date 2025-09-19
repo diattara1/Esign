@@ -5,6 +5,7 @@ import tempfile
 from django.contrib.auth import get_user_model
 from django.core.files.base import ContentFile
 from django.test import override_settings
+from django.utils import timezone
 from django.urls import reverse
 from reportlab.pdfgen import canvas
 from rest_framework import status
@@ -81,6 +82,118 @@ class EnvelopeActionTests(APITestCase):
 
         envelope.refresh_from_db()
         self.assertEqual(envelope.status, "draft")
+
+    @mock.patch("signature.views.envelope.send_signature_email.delay")
+    def test_restore_from_sent_resets_reminders_and_notifies(self, mock_send_delay):
+        envelope = Envelope.objects.create(
+            title="Flow",
+            created_by=self.creator,
+            status="cancelled",
+            flow_type="sequential",
+            reminder_days=3,
+        )
+
+        past = timezone.now() - timezone.timedelta(days=2)
+        rec1 = EnvelopeRecipient.objects.create(
+            envelope=envelope,
+            email="r1@example.com",
+            full_name="Recipient 1",
+            order=1,
+            reminder_count=2,
+            next_reminder_at=past,
+        )
+        rec2 = EnvelopeRecipient.objects.create(
+            envelope=envelope,
+            email="r2@example.com",
+            full_name="Recipient 2",
+            order=2,
+            reminder_count=5,
+            next_reminder_at=past,
+        )
+
+        url = reverse("envelopes-restore", kwargs={"pk": envelope.pk})
+        fixed_now = timezone.now()
+        expected_next = fixed_now + timezone.timedelta(days=envelope.reminder_days or 1)
+
+        with mock.patch("signature.views.envelope.timezone.now", return_value=fixed_now):
+            response = self.client.post(url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["status"], "sent")
+
+        envelope.refresh_from_db()
+        self.assertEqual(envelope.status, "sent")
+        self.assertIsNone(envelope.cancelled_at)
+
+        rec1.refresh_from_db()
+        rec2.refresh_from_db()
+
+        self.assertEqual(rec1.reminder_count, 0)
+        self.assertEqual(rec1.next_reminder_at, expected_next)
+        self.assertEqual(rec2.reminder_count, 0)
+        self.assertIsNone(rec2.next_reminder_at)
+
+        mock_send_delay.assert_called_once_with(envelope.id, rec1.id)
+
+    @mock.patch("signature.views.envelope.send_signature_email.delay")
+    def test_restore_from_pending_notifies_next_recipient(self, mock_send_delay):
+        envelope = Envelope.objects.create(
+            title="Pending",
+            created_by=self.creator,
+            status="cancelled",
+            flow_type="sequential",
+            reminder_days=4,
+        )
+
+        signed_at = timezone.now() - timezone.timedelta(days=1)
+        EnvelopeRecipient.objects.create(
+            envelope=envelope,
+            email="signed@example.com",
+            full_name="Signed",
+            order=1,
+            signed=True,
+            signed_at=signed_at,
+        )
+        rec2 = EnvelopeRecipient.objects.create(
+            envelope=envelope,
+            email="pending@example.com",
+            full_name="Pending",
+            order=2,
+            reminder_count=3,
+            next_reminder_at=signed_at,
+        )
+        rec3 = EnvelopeRecipient.objects.create(
+            envelope=envelope,
+            email="later@example.com",
+            full_name="Later",
+            order=3,
+            reminder_count=2,
+            next_reminder_at=signed_at,
+        )
+
+        url = reverse("envelopes-restore", kwargs={"pk": envelope.pk})
+        fixed_now = timezone.now()
+        expected_next = fixed_now + timezone.timedelta(days=envelope.reminder_days or 1)
+
+        with mock.patch("signature.views.envelope.timezone.now", return_value=fixed_now):
+            response = self.client.post(url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["status"], "pending")
+
+        envelope.refresh_from_db()
+        self.assertEqual(envelope.status, "pending")
+        self.assertIsNone(envelope.cancelled_at)
+
+        rec2.refresh_from_db()
+        rec3.refresh_from_db()
+
+        self.assertEqual(rec2.reminder_count, 0)
+        self.assertEqual(rec2.next_reminder_at, expected_next)
+        self.assertEqual(rec3.reminder_count, 0)
+        self.assertIsNone(rec3.next_reminder_at)
+
+        mock_send_delay.assert_called_once_with(envelope.id, rec2.id)
 
     def test_restore_requires_cancelled_status(self):
         envelope = Envelope.objects.create(

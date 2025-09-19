@@ -278,6 +278,23 @@ class EnvelopeActionTests(APITestCase):
         self.assertFalse(doc_storage.exists(doc_path))
         self.assertFalse(signed_storage.exists(signed_path))
 
+    def test_purge_requires_cancelled_status(self):
+        envelope = Envelope.objects.create(
+            title="Doc",
+            created_by=self.creator,
+            status="sent",
+        )
+
+        url = reverse("envelopes-purge", kwargs={"pk": envelope.pk})
+        response = self.client.delete(url)
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data["detail"],
+            "Seules les enveloppes annulées peuvent être purgées.",
+        )
+        self.assertTrue(Envelope.objects.filter(pk=envelope.pk).exists())
+
     def test_purge_forbidden_for_non_creator(self):
         envelope = Envelope.objects.create(
             title="Doc",

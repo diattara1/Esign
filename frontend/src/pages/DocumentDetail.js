@@ -332,7 +332,8 @@ const DocumentDetail = () => {
       toast.success('Enveloppe purgée définitivement');
       navigate('/signature/envelopes/deleted');
     } catch (err) {
-      toast.error("Échec de la purge de l'enveloppe");
+      const message = err?.message || "Échec de la purge de l'enveloppe";
+      toast.error(message);
       logService.error('Failed to purge envelope:', err);
     } finally {
       setPurging(false);

@@ -76,7 +76,8 @@ const DeletedEnvelopes = () => {
       toast.success("Enveloppe purgée définitivement");
       setEnvelopes(prev => prev.filter(env => env.public_id !== publicId));
     } catch (err) {
-      toast.error("Échec de la purge de l'enveloppe");
+      const message = err?.message || "Échec de la purge de l'enveloppe";
+      toast.error(message);
       logService.error('Failed to purge envelope:', err);
     } finally {
       setConfirmId(null);

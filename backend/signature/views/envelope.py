@@ -45,6 +45,25 @@ logger = logging.getLogger(__name__)
 #                       HELPERS FACTORISÉS
 # =============================================================
 
+_GUEST_UNAVAILABLE_STATUSES = {"cancelled", "expired"}
+
+
+def _guest_envelope_unavailable_response(envelope):
+    reason_map = {
+        "cancelled": "Cette enveloppe a été annulée. Le document n'est plus disponible.",
+        "expired": "Cette enveloppe a expiré. Le document n'est plus disponible.",
+    }
+    return Response(
+        {"error": reason_map.get(envelope.status, "Cette enveloppe n'est plus disponible.")},
+        status=status.HTTP_404_NOT_FOUND,
+    )
+
+
+def _deny_guest_if_unavailable(envelope):
+    if envelope.status in _GUEST_UNAVAILABLE_STATUSES:
+        return _guest_envelope_unavailable_response(envelope)
+    return None
+
 def _clean_b64(data: str | None) -> str | None:
     """
     Accepte 'data:image/...;base64,AAAA' ou déjà 'AAAA', renvoie le base64 pur ou None.
@@ -120,6 +139,10 @@ def guest_envelope_view(request, public_id):
     payload = _verify_guest_token(envelope, token)
     if payload is None:
         return Response({'error': 'Token invalide ou manquant'}, status=status.HTTP_403_FORBIDDEN)
+
+    denial_response = _deny_guest_if_unavailable(envelope)
+    if denial_response:
+        return denial_response
 
     # On récupère recipient_id depuis le payload retourné
     recipient_id = payload.get('recipient_id')
@@ -1316,6 +1339,10 @@ def serve_decrypted_pdf(request, public_id: uuid.UUID):
     payload = _verify_guest_token(envelope, token)
     if payload is None:
         return Response({"error": "Token invalide ou manquant"}, status=status.HTTP_403_FORBIDDEN)
+
+    denial_response = _deny_guest_if_unavailable(envelope)
+    if denial_response:
+        return denial_response
 
     # 1) si complété, renvoyer le dernier PDF signé
     if envelope.status == 'completed':

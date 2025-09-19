@@ -1,8 +1,15 @@
+import uuid
+
 from django.urls import reverse
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
+from django.conf import settings
 from rest_framework import status
 from rest_framework.test import APITestCase
+
+import jwt
+
+from signature.models import Envelope, EnvelopeRecipient
 
 class AuthTests(APITestCase):
     def test_register_invalid(self):
@@ -17,7 +24,7 @@ class AuthTests(APITestCase):
 
 class EnvelopeTests(APITestCase):
     def test_guest_envelope_not_found(self):
-        url = reverse('guest-envelope', kwargs={'pk': 999})
+        url = reverse('guest-envelope', kwargs={'public_id': uuid.uuid4()})
         response = self.client.get(url)
         self.assertEqual(response.status_code, 404)
 
@@ -55,3 +62,42 @@ class ThrottleTests(APITestCase):
         self.assertEqual(response1.status_code, 200)
         response2 = self.client.post(url, {'email': user.email})
         self.assertEqual(response2.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
+
+
+class GuestEnvelopeAccessTests(APITestCase):
+    def setUp(self):
+        self.creator = get_user_model().objects.create_user(
+            username='creator',
+            email='creator@example.com',
+            password='secret',
+        )
+        self.envelope = Envelope.objects.create(
+            title='Cancelled envelope',
+            created_by=self.creator,
+            status='cancelled',
+        )
+        self.recipient = EnvelopeRecipient.objects.create(
+            envelope=self.envelope,
+            email='guest@example.com',
+            full_name='Guest User',
+            order=1,
+        )
+        payload = {
+            'env_id': str(self.envelope.public_id),
+            'recipient_id': self.recipient.id,
+        }
+        secret = getattr(settings, 'SIGNATURE_JWT_SECRET', settings.SECRET_KEY)
+        token = jwt.encode(payload, secret, algorithm='HS256')
+        self.token = token if isinstance(token, str) else token.decode('utf-8')
+
+    def test_guest_envelope_view_cancelled_envelope_denied(self):
+        url = reverse('guest-envelope', kwargs={'public_id': self.envelope.public_id})
+        response = self.client.get(url, {'token': self.token})
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertIn('annul', response.data['error'].lower())
+
+    def test_guest_document_view_cancelled_envelope_denied(self):
+        url = reverse('signature-serve-decrypted-pdf', kwargs={'public_id': self.envelope.public_id})
+        response = self.client.get(url, {'token': self.token})
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertIn('annul', response.data['error'].lower())

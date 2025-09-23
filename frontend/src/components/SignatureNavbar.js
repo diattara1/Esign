@@ -307,25 +307,7 @@ const SignatureNavbar = () => {
               {/* Divider */}
               <div className="border-t border-gray-200 my-3" />
               
-              {/* Profile Links */}
-              <Link
-                to="/profile"
-                className="flex items-center space-x-3 px-3 py-3 rounded-lg text-base font-medium text-gray-600 hover:bg-gray-50 transition-colors duration-200"
-                onClick={() => setMobileMenuOpen(false)}
-              >
-                <FiUser className="w-5 h-5" />
-                <span>Mon compte</span>
-              </Link>
-              <button
-                onClick={() => {
-                  handleLogout();
-                  setMobileMenuOpen(false);
-                }}
-                className="flex items-center space-x-3 w-full px-3 py-3 rounded-lg text-base font-medium text-red-600 hover:bg-red-50 transition-colors duration-200"
-              >
-                <FiLogOut className="w-5 h-5" />
-                <span>Déconnexion</span>
-              </button>
+              
             </div>
           </div>
         )}

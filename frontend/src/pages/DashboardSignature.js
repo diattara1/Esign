@@ -703,40 +703,7 @@ const DashboardSignature = () => {
           )}
         </div>
 
-        {/* Section notifications responsive */}
-        {notifications.length > 0 && (
-          <div className="mt-6 sm:mt-8 bg-white shadow rounded-lg overflow-hidden">
-            <div className="px-4 sm:px-6 py-4 border-b border-gray-200">
-              <div className="flex items-center">
-                <Bell className="w-5 h-5 text-gray-500 mr-2" />
-                <h2 className="text-lg font-medium text-gray-900">Notifications récentes</h2>
-              </div>
-            </div>
-            <div className="divide-y divide-gray-200">
-              {notifications.map(notif => (
-                <div key={notif.id} className="p-4 sm:p-6 hover:bg-gray-50 transition-colors duration-200">
-                  <div className="flex items-start justify-between space-x-3">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900 mb-1">
-                        Document "<span className="truncate inline-block max-w-xs sm:max-w-none">{notif.title}</span>" complété
-                      </p>
-                      <p className="text-xs text-gray-500">
-                        {new Date(notif.time).toLocaleString('fr-FR', {
-                          day: '2-digit',
-                          month: '2-digit',
-                          year: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit'
-                        })}
-                      </p>
-                    </div>
-                    <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0" />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+      
       </main>
     </div>
   );

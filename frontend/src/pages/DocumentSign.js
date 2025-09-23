@@ -285,14 +285,116 @@ export default function DocumentSign() {
     finally { setSigning(false); }
   };
 
+  const OtpActions = ({ variant = 'inline' }) => {
+    if (!isGuest || isAlreadySigned || otpVerified) return null;
+
+    const inCooldown = Boolean(cooldownUntil && cooldownUntil > Date.now());
+    const showInputArea = variant === 'inline' || otpSent;
+    const errorId = otpError ? `otp-error-${variant}` : undefined;
+    const statusId = otpStatus ? `otp-status-${variant}` : undefined;
+    const describedBy = [errorId, statusId].filter(Boolean).join(' ') || undefined;
+
+    const sendButton = (
+      <button
+        type="button"
+        onClick={handleSendOtp}
+        disabled={sendingOtp}
+        className={`w-full ${variant === 'inline' ? 'sm:w-auto' : ''} bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-semibold shadow-sm transition focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50`}
+      >
+        {sendingOtp ? 'Envoi…' : otpSent ? 'Renvoyer OTP' : 'Envoyer OTP'}
+      </button>
+    );
+
+    const inputField = showInputArea ? (
+      <input
+        type="tel"
+        inputMode="numeric"
+        pattern="[0-9]*"
+        autoComplete="one-time-code"
+        value={otp}
+        onChange={(e) => setOtp(e.target.value)}
+        placeholder="Code OTP"
+        className="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+        disabled={inCooldown}
+        aria-describedby={describedBy}
+      />
+    ) : null;
+
+    const statusBlock = (otpError || otpStatus) ? (
+      <div role="status" aria-live="polite" className={`text-sm ${variant === 'inline' ? 'mt-2 text-center sm:text-left' : ''}`}>
+        {otpError && <p id={errorId} className="text-red-600">{otpError}</p>}
+        {otpStatus && <p id={statusId} className="text-gray-600">{otpStatus}</p>}
+      </div>
+    ) : null;
+
+    const verifyButton = showInputArea ? (
+      <button
+        type="button"
+        onClick={handleVerifyOtp}
+        disabled={verifyingOtp || inCooldown || !otpSent}
+        className={`w-full ${variant === 'inline' ? 'sm:w-auto' : ''} bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded font-semibold shadow-sm transition focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50`}
+      >
+        {verifyingOtp ? 'Vérification…' : 'Vérifier'}
+      </button>
+    ) : null;
+
+    if (variant === 'sidebar') {
+      return (
+        <div className="space-y-3">
+          {sendButton}
+          {showInputArea && (
+            <>
+              {inputField}
+              {statusBlock}
+              {verifyButton}
+            </>
+          )}
+          {!showInputArea && statusBlock}
+        </div>
+      );
+    }
+
+    return (
+      <div className="bg-white border border-blue-100 rounded-xl shadow-sm p-6 space-y-5">
+        <div className="flex flex-col items-center text-gray-700 gap-3">
+          <FiShield className="w-8 h-8 text-blue-600" />
+          <div className="space-y-1 text-center">
+            <p className="text-lg font-semibold text-gray-900">Ce document est protégé</p>
+            <p className="text-sm text-gray-600">Envoyez-vous un code OTP puis saisissez-le pour afficher le PDF.</p>
+          </div>
+        </div>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div className="sm:self-stretch sm:flex-shrink-0">
+            {sendButton}
+          </div>
+          <div className="flex-1 w-full">
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <div className="flex-1">
+                {inputField}
+                {statusBlock}
+              </div>
+              {verifyButton}
+            </div>
+          </div>
+        </div>
+        {!otpSent && (
+          <p className="text-xs text-gray-500 text-center sm:text-left">
+            Recevez un code unique puis saisissez-le ci-dessus pour déverrouiller le document.
+          </p>
+        )}
+      </div>
+    );
+  };
+
   // ----------------------------- PDF RENDERER ------------------------------
   const renderPdfViewer = () => {
     const hasAccess = (!isGuest) || otpVerified;
     if (!hasAccess) {
       return (
-        <div className="text-center text-gray-600 p-8">
-          <p className="text-lg mb-2">📄 PDF protégé</p>
-          <p>Veuillez vérifier votre code OTP pour afficher le document.</p>
+        <div className="flex items-center justify-center py-12 px-4">
+          <div className="w-full max-w-xl">
+            <OtpActions variant="inline" />
+          </div>
         </div>
       );
     }
@@ -444,31 +546,8 @@ export default function DocumentSign() {
 
       {/* OTP panneau (secondaire, la navbar gère l'action principale) */}
       {isGuest && !isAlreadySigned && (
-        <div className="p-4 md:p-6 space-y-2">
-          {!otpSent && !otpVerified && (
-            <button onClick={handleSendOtp} disabled={sendingOtp} className="w-full bg-blue-600 text-white p-2 rounded disabled:opacity-50">{sendingOtp ? 'Envoi…' : 'Envoyer OTP'}</button>
-          )}
-          {otpSent && !otpVerified && (
-            <>
-               <input
-                type="tel"
-                inputMode="numeric"
-                pattern="[0-9]*"
-                autoComplete="one-time-code"
-                value={otp}
-                onChange={(e) => setOtp(e.target.value)}
-                placeholder="Code OTP"
-                className="w-full border p-2 rounded"
-                disabled={cooldownUntil && cooldownUntil > Date.now()}
-                aria-describedby={otpError ? 'otp-error' : otpStatus ? 'otp-status' : undefined}
-              />
-              <div role="status" aria-live="polite" className="text-sm">
-                {otpError && <p id="otp-error" className="text-red-600">{otpError}</p>}
-                {otpStatus && <p id="otp-status" className="text-gray-600">{otpStatus}</p>}
-              </div>
-              <button onClick={handleVerifyOtp} disabled={verifyingOtp || (cooldownUntil && cooldownUntil > Date.now())} className="w-full bg-green-600 text-white p-2 rounded disabled:opacity-50">{verifyingOtp ? 'Vérification…' : 'Vérifier OTP'}</button>
-            </>
-          )}
+        <div className="p-4 md:p-6">
+          <OtpActions variant="sidebar" />
         </div>
       )}
     </div>

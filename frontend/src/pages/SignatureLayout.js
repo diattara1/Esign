@@ -12,7 +12,6 @@ import {
   FiEdit3,
   FiTrash,
 } from 'react-icons/fi';
-import SignatureNavbar from '../components/SignatureNavbar';
 import signatureService from '../services/signatureService';
 import logService from '../services/logService';
 
@@ -108,8 +107,6 @@ const SignatureLayout = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
-      <SignatureNavbar />
-
       <div className="flex flex-1 relative pb-14 lg:pb-0">
         {/* Sidebar responsive */}
         <div className={`

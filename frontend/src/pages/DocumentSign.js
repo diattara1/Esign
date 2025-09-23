@@ -383,7 +383,7 @@ export default function DocumentSign() {
   };
 
   const showInlineOtp = isGuest && !isAlreadySigned && !otpVerified;
-
+const navOffset = isGuest ? 'top-0' : 'top-16';
   // ----------------------------- PDF RENDERER ------------------------------
   const renderPdfViewer = () => {
     if (showInlineOtp) {
@@ -477,7 +477,7 @@ export default function DocumentSign() {
 
   // ------------------------------- NAVBAR UI -------------------------------
   const Navbar = () => (
-    <div className="sticky top-16 lg:top-0 z-30 bg-white/90 backdrop-blur border-b border-gray-200">
+    <div className={`sticky ${navOffset} lg:top-0 z-30 bg-white/90 backdrop-blur border-b border-gray-200`}>
       <div className="px-3 md:px-6 py-3 flex flex-wrap items-center gap-3 md:gap-4">
         {/* Branding invité */}
         {isGuest && (

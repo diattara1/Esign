@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import SignatureNavbar from '../components/SignatureNavbar';
 import signatureService from '../services/signatureService';
 import { toast } from 'react-toastify';
 import slugify from 'slugify';
@@ -232,8 +231,6 @@ const DashboardSignature = () => {
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-50">
-      <SignatureNavbar />
-      
       <main className="flex-1 p-3 sm:p-4 lg:p-6 xl:p-8">
         {/* En-tête responsive */}
         <div className="flex flex-col space-y-4 sm:flex-row sm:items-center sm:justify-between sm:space-y-0 mb-6">

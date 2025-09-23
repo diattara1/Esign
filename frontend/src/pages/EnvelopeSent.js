@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import signatureService from '../services/signatureService';
-import SignatureNavbar from '../components/SignatureNavbar';
 import { 
   CheckCircle, 
   FileText, 
@@ -41,9 +40,8 @@ export default function EnvelopeSent() {
 
   if (loading) {
     return (
-      <div className="flex flex-col min-h-screen">
-        <SignatureNavbar />
-        <main className="flex-1 bg-gray-50 flex items-center justify-center">
+      <div className="flex min-h-screen flex-col bg-gray-50">
+        <main className="flex flex-1 items-center justify-center bg-gray-50 p-4">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"></div>
             <p className="mt-4 text-gray-600">Chargement...</p>
@@ -55,9 +53,8 @@ export default function EnvelopeSent() {
 
   if (!envelope) {
     return (
-      <div className="flex flex-col min-h-screen">
-        <SignatureNavbar />
-        <main className="flex-1 bg-gray-50 flex items-center justify-center">
+      <div className="flex min-h-screen flex-col bg-gray-50">
+        <main className="flex flex-1 items-center justify-center bg-gray-50 p-4">
           <div className="text-center">
             <FileText className="w-16 h-16 text-gray-400 mx-auto mb-4" />
             <h2 className="text-xl font-semibold text-gray-900 mb-2">Document introuvable</h2>
@@ -95,8 +92,7 @@ export default function EnvelopeSent() {
   const progressPercentage = totalRecipients > 0 ? (signedCount / totalRecipients) * 100 : 0;
 
   return (
-    <div className="flex flex-col min-h-screen">
-      <SignatureNavbar />
+    <div className="flex min-h-screen flex-col bg-gray-50">
       <main className="flex-1 bg-gray-50 p-4 lg:p-8">
         {/* En-tête */}
         <div className="mb-6">

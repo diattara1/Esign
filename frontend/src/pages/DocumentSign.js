@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from 'react';
 import useIsMobile from '../hooks/useIsMobile';
-import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
+import { useParams, useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import { Document, Page } from 'react-pdf';
 import signatureService from '../services/signatureService';
@@ -14,7 +14,7 @@ import SignatureModal from '../components/SignatureModal';
 import { fileToPngDataURL, blobToPngDataURL, savedSignatureImageUrl, fetchSavedSignatureAsDataURL } from '../utils/signatureUtils';
 import logService from '../services/logService';
 import sanitize from '../utils/sanitize';
-import { FiMenu, FiX, FiShield, FiCheckCircle, FiAlertCircle } from 'react-icons/fi';
+import { FiMenu, FiX, FiShield, FiCheckCircle, FiAlertCircle, FiFileText } from 'react-icons/fi';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 
@@ -482,9 +482,29 @@ export default function DocumentSign() {
   // ------------------------------- NAVBAR UI -------------------------------
   const Navbar = () => (
     <div className="sticky top-16 lg:top-0 z-30 bg-white/90 backdrop-blur border-b border-gray-200">
-      <div className="px-3 md:px-6 py-3 flex items-center gap-3">
+      <div className="px-3 md:px-6 py-3 flex flex-wrap items-center gap-3 md:gap-4">
+        {/* Branding invité */}
+        {isGuest && (
+          <Link
+            to="/"
+            className="flex items-center gap-2 pr-1 text-gray-900 hover:text-blue-600 transition-colors flex-shrink-0"
+          >
+            <span className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-blue-600 to-purple-600 text-white shadow-sm">
+              <FiFileText className="w-5 h-5" />
+            </span>
+            <span className="flex flex-col leading-tight">
+              <span className="text-sm font-semibold md:text-base">INTELISign+</span>
+              <span className="hidden sm:block text-[11px] uppercase tracking-wide text-gray-500">Accueil public</span>
+            </span>
+          </Link>
+        )}
+
         {/* Mobile: burger */}
-        <button onClick={toggleSidebar} className="lg:hidden p-2 rounded border border-gray-200 active:scale-95" aria-label={sidebarOpen ? 'Fermer le menu' : 'Ouvrir le menu'}>
+        <button
+          onClick={toggleSidebar}
+          className="lg:hidden p-2 rounded border border-gray-200 active:scale-95 flex-shrink-0"
+          aria-label={sidebarOpen ? 'Fermer le menu' : 'Ouvrir le menu'}
+        >
           {sidebarOpen ? <FiX className="w-5 h-5" /> : <FiMenu className="w-5 h-5" />}
         </button>
 

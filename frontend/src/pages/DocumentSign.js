@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from 'react';
 import useIsMobile from '../hooks/useIsMobile';
-import { useParams, useSearchParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import { Document, Page } from 'react-pdf';
 import signatureService from '../services/signatureService';
@@ -14,7 +14,7 @@ import SignatureModal from '../components/SignatureModal';
 import { fileToPngDataURL, blobToPngDataURL, savedSignatureImageUrl, fetchSavedSignatureAsDataURL } from '../utils/signatureUtils';
 import logService from '../services/logService';
 import sanitize from '../utils/sanitize';
-import { FiMenu, FiX, FiShield, FiCheckCircle, FiAlertCircle, FiFileText } from 'react-icons/fi';
+import { FiMenu, FiX, FiShield, FiCheckCircle, FiAlertCircle } from 'react-icons/fi';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 
@@ -482,29 +482,9 @@ export default function DocumentSign() {
   // ------------------------------- NAVBAR UI -------------------------------
   const Navbar = () => (
     <div className="sticky top-16 lg:top-0 z-30 bg-white/90 backdrop-blur border-b border-gray-200">
-      <div className="px-3 md:px-6 py-3 flex flex-wrap items-center gap-3 md:gap-4">
-        {/* Branding invité */}
-        {isGuest && (
-          <Link
-            to="/"
-            className="flex items-center gap-2 pr-1 text-gray-900 hover:text-blue-600 transition-colors flex-shrink-0"
-          >
-            <span className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-blue-600 to-purple-600 text-white shadow-sm">
-              <FiFileText className="w-5 h-5" />
-            </span>
-            <span className="flex flex-col leading-tight">
-              <span className="text-sm font-semibold md:text-base">INTELISign+</span>
-              <span className="hidden sm:block text-[11px] uppercase tracking-wide text-gray-500">Accueil public</span>
-            </span>
-          </Link>
-        )}
-
+      <div className="px-3 md:px-6 py-3 flex items-center gap-3">
         {/* Mobile: burger */}
-        <button
-          onClick={toggleSidebar}
-          className="lg:hidden p-2 rounded border border-gray-200 active:scale-95 flex-shrink-0"
-          aria-label={sidebarOpen ? 'Fermer le menu' : 'Ouvrir le menu'}
-        >
+        <button onClick={toggleSidebar} className="lg:hidden p-2 rounded border border-gray-200 active:scale-95" aria-label={sidebarOpen ? 'Fermer le menu' : 'Ouvrir le menu'}>
           {sidebarOpen ? <FiX className="w-5 h-5" /> : <FiMenu className="w-5 h-5" />}
         </button>
 
@@ -542,64 +522,17 @@ export default function DocumentSign() {
     </div>
   );
 
-  // ------------------------------- SIDEBAR UI ------------------------------
-  const Sidebar = () => (
-    <div className="h-full flex flex-col">
-      <div className="p-4 md:p-6 border-b border-gray-200">
-        <div className="font-semibold text-gray-800 mb-2">Documents</div>
-        {documents.length === 0 ? (
-          <div className="text-sm text-gray-500">Aucun</div>
-        ) : (
-          <ul className="space-y-1">
-            {documents.map(doc => (
-              <li key={doc.id}>
-                <button
-                  className={`w-full text-left px-2 py-1 rounded ${selectedDoc?.id === doc.id ? 'bg-blue-100' : 'hover:bg-gray-100'}`}
-                  onClick={() => { if (selectedDoc?.id !== doc.id) setSelectedDoc(doc); if (isMobile) setSidebarOpen(false); }}
-                >
-                  {doc.name || `Document ${doc.id}`}
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-
-      {/* OTP panneau (secondaire, la navbar gère l'action principale) */}
-      {isGuest && !isAlreadySigned && !showInlineOtp && (
-        <div className="p-4 md:p-6">
-          <OtpActions variant="sidebar" />
-        </div>
-      )}
-    </div>
-  );
+ 
 
   if (loading) return <div className="p-6 text-center">Chargement…</div>;
   if (!envelope) return <div className="p-6 text-center text-red-600">Document introuvable.</div>;
 
   return (
     <div className="h-screen flex flex-col">
-      {/* NAVBAR sticky */}
-      <Navbar />
+      
 
       <div className="flex-1 flex overflow-hidden">
-        {/* Drawer / Sidebar */}
-        {isMobile && (
-          <div className={`fixed inset-0 top-16 z-40 ${sidebarOpen ? '' : 'pointer-events-none'}`}>
-            <div className={`absolute inset-0 bg-black/50 transition-opacity ${sidebarOpen ? 'opacity-100' : 'opacity-0'}`} onClick={() => setSidebarOpen(false)} />
-            <aside className={`absolute inset-y-0 left-0 w-full max-w-sm bg-white border-r shadow-xl transform transition-transform ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-               <div className="flex justify-end p-4 border-b">
-                <button onClick={() => setSidebarOpen(false)} aria-label="Fermer le menu">
-                  <FiX className="w-5 h-5" />
-                </button>
-              </div>
-              <Sidebar />
-            </aside>
-          </div>
-        )}
-        {!isMobile && (
-          <aside className="w-80 max-w-xs bg-white border-r overflow-auto"><Sidebar /></aside>
-        )}
+       
 
         {/* Viewer */}
         <main className="flex-1 overflow-auto bg-gray-100" ref={viewerRef} style={{ scrollbarGutter: 'stable both-edges' }}>

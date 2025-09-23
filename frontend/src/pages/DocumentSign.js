@@ -386,10 +386,11 @@ export default function DocumentSign() {
     );
   };
 
+  const showInlineOtp = isGuest && !isAlreadySigned && !otpVerified;
+
   // ----------------------------- PDF RENDERER ------------------------------
   const renderPdfViewer = () => {
-    const hasAccess = (!isGuest) || otpVerified;
-    if (!hasAccess) {
+    if (showInlineOtp) {
       return (
         <div className="flex items-center justify-center py-12 px-4">
           <div className="w-full max-w-xl">
@@ -545,7 +546,7 @@ export default function DocumentSign() {
       </div>
 
       {/* OTP panneau (secondaire, la navbar gère l'action principale) */}
-      {isGuest && !isAlreadySigned && (
+      {isGuest && !isAlreadySigned && !showInlineOtp && (
         <div className="p-4 md:p-6">
           <OtpActions variant="sidebar" />
         </div>

@@ -497,6 +497,41 @@ class EnvelopeSerializer(serializers.ModelSerializer):
         return instance
 
 
+class GuestEnvelopeSerializer(serializers.ModelSerializer):
+    """Serializer limité pour l'affichage invité d'une enveloppe."""
+
+    current_recipient = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Envelope
+        fields = [
+            'id',
+            'public_id',
+            'title',
+            'description',
+            'status',
+            'flow_type',
+            'include_qr_code',
+            'reminder_days',
+            'deadline_at',
+            'expires_at',
+            'cancelled_at',
+            'current_recipient',
+        ]
+        read_only_fields = fields
+
+    def get_current_recipient(self, obj):
+        recipient = self.context.get('recipient')
+        if not recipient or recipient.envelope_id != obj.id:
+            return None
+        return {
+            'id': recipient.id,
+            'email': recipient.email,
+            'full_name': recipient.full_name,
+            'order': recipient.order,
+            'signed': recipient.signed,
+            'signed_at': recipient.signed_at,
+        }
 
 
 class SavedSignatureSerializer(serializers.ModelSerializer):

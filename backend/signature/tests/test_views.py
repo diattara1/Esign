@@ -101,3 +101,54 @@ class GuestEnvelopeAccessTests(APITestCase):
         response = self.client.get(url, {'token': self.token})
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
         self.assertIn('annul', response.data['error'].lower())
+
+
+class GuestEnvelopeDataIsolationTests(APITestCase):
+    def setUp(self):
+        self.creator = get_user_model().objects.create_user(
+            username='guest-creator',
+            email='creator2@example.com',
+            password='secret',
+        )
+        self.envelope = Envelope.objects.create(
+            title='Shared envelope',
+            created_by=self.creator,
+            status='sent',
+        )
+        self.recipient_1 = EnvelopeRecipient.objects.create(
+            envelope=self.envelope,
+            email='first@example.com',
+            full_name='First Recipient',
+            order=1,
+        )
+        self.recipient_2 = EnvelopeRecipient.objects.create(
+            envelope=self.envelope,
+            email='second@example.com',
+            full_name='Second Recipient',
+            order=2,
+        )
+        payload = {
+            'env_id': str(self.envelope.public_id),
+            'recipient_id': self.recipient_1.id,
+        }
+        secret = getattr(settings, 'SIGNATURE_JWT_SECRET', settings.SECRET_KEY)
+        token = jwt.encode(payload, secret, algorithm='HS256')
+        self.token = token if isinstance(token, str) else token.decode('utf-8')
+
+    def test_guest_response_hides_other_recipients(self):
+        url = reverse('guest-envelope', kwargs={'public_id': self.envelope.public_id})
+        response = self.client.get(url, {'token': self.token})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('document_url', response.data)
+        self.assertIn('fields', response.data)
+        self.assertNotIn('recipients', response.data)
+
+        current = response.data.get('current_recipient')
+        self.assertIsNotNone(current)
+        self.assertEqual(current.get('email'), self.recipient_1.email)
+        self.assertEqual(response.data.get('recipient_full_name'), self.recipient_1.full_name)
+
+        serialized_payload = str(response.data)
+        self.assertNotIn(self.recipient_2.email, serialized_payload)
+        self.assertNotIn(self.recipient_2.full_name, serialized_payload)

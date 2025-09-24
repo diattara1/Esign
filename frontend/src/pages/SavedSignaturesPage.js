@@ -137,23 +137,27 @@ const SavedSignaturesPage = () => {
         <h2 className="font-medium mb-2">Signatures existantes</h2>
         {items.length === 0 && <p>Aucune signature enregistrée.</p>}
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-          {items.map(sig => (
-            <div key={sig.id} className="border p-2 rounded relative">
-              <img
-  src={sig.data_url || sig.image_url}
-  alt={sig.kind || 'signature'}
-  style={{ maxHeight: 80 }}
-/>
+          {items.map(sig => {
+            const imageSrc = sig.data_url || toAbsolute(sig.image_url);
+            return (
+              <div key={sig.id} className="border p-2 rounded relative">
+                {imageSrc ? (
+                  <img src={imageSrc} alt={sig.kind || 'signature'} style={{ maxHeight: 80 }} />
+                ) : (
+                  <div className="h-20 flex items-center justify-center text-sm text-gray-500 bg-gray-100 rounded">
+                    Aucune image
+                  </div>
+                )}
 
-
-              <button
-                onClick={() => remove(sig.id)}
-                className="absolute top-1 right-1 text-red-600"
-              >
-                ×
-              </button>
-            </div>
-          ))}
+                <button
+                  onClick={() => remove(sig.id)}
+                  className="absolute top-1 right-1 text-red-600"
+                >
+                  ×
+                </button>
+              </div>
+            );
+          })}
         </div>
       </div>
       <ConfirmDialog

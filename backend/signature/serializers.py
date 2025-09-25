@@ -497,6 +497,21 @@ class EnvelopeSerializer(serializers.ModelSerializer):
         return instance
 
 
+class GuestEnvelopeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Envelope
+        fields = [
+            'public_id',
+            'title',
+            'description',
+            'status',
+            'include_qr_code',
+            'created_at',
+            'updated_at',
+            'deadline_at',
+            'expires_at',
+        ]
+        read_only_fields = fields
 
 
 class SavedSignatureSerializer(serializers.ModelSerializer):

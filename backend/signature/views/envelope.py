@@ -26,7 +26,14 @@ from ..otp import generate_otp, validate_otp, send_otp
 from ..hsm import hsm_sign
 from jwt import InvalidTokenError, ExpiredSignatureError
 from ..models import ( Envelope,EnvelopeRecipient,SignatureDocument,PrintQRCode,EnvelopeDocument,)
-from ..serializers import (EnvelopeSerializer,EnvelopeListSerializer,SigningFieldSerializer,SignatureDocumentSerializer,PrintQRCodeSerializer,)
+from ..serializers import (
+    EnvelopeSerializer,
+    GuestEnvelopeSerializer,
+    EnvelopeListSerializer,
+    SigningFieldSerializer,
+    SignatureDocumentSerializer,
+    PrintQRCodeSerializer,
+)
 from signature.crypto_utils import sign_pdf_bytes,compute_hashes, extract_signer_certificate_info
 from reportlab.pdfgen import canvas
 from django.core.files.base import ContentFile
@@ -151,7 +158,7 @@ def guest_envelope_view(request, public_id):
     except EnvelopeRecipient.DoesNotExist:
         return Response({'error': 'Destinataire non valide'}, status=status.HTTP_403_FORBIDDEN)
 
-    data = EnvelopeSerializer(envelope).data
+    data = GuestEnvelopeSerializer(envelope).data
     fields = EnvelopeViewSet()._build_fields_payload(envelope, current_recipient_id=recipient.id)
 
     # Construire l’URL du PDF (adapte le name de route si besoin)

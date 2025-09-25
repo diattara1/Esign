@@ -96,6 +96,64 @@ class GuestEnvelopeAccessTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
         self.assertIn('annul', response.data['error'].lower())
 
+    def test_guest_envelope_view_excludes_sensitive_fields(self):
+        accessible_envelope = Envelope.objects.create(
+            title='Visible envelope',
+            description='Guest readable description',
+            created_by=self.creator,
+            status='sent',
+            jwt_token='should-not-leak',
+        )
+        recipient = EnvelopeRecipient.objects.create(
+            envelope=accessible_envelope,
+            email='guest2@example.com',
+            full_name='Guest User 2',
+            order=1,
+        )
+
+        payload = {
+            'env_id': str(accessible_envelope.public_id),
+            'recipient_id': recipient.id,
+        }
+        secret = getattr(settings, 'SIGNATURE_JWT_SECRET', settings.SECRET_KEY)
+        token = jwt.encode(payload, secret, algorithm='HS256')
+        token = token if isinstance(token, str) else token.decode('utf-8')
+
+        url = reverse('guest-envelope', kwargs={'public_id': accessible_envelope.public_id})
+        response = self.client.get(url, {'token': token})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.data
+
+        self.assertEqual(data['public_id'], str(accessible_envelope.public_id))
+        self.assertEqual(data['title'], accessible_envelope.title)
+        self.assertEqual(data['description'], accessible_envelope.description)
+        self.assertEqual(data['status'], accessible_envelope.status)
+        self.assertIn('created_at', data)
+        self.assertIn('updated_at', data)
+        self.assertIn('deadline_at', data)
+        self.assertIn('expires_at', data)
+        self.assertIn('fields', data)
+        self.assertIsInstance(data['fields'], list)
+        self.assertEqual(data['recipient_id'], recipient.id)
+        self.assertEqual(data['recipient_full_name'], recipient.full_name)
+        self.assertIn('document_url', data)
+
+        sensitive_keys = [
+            'jwt_token',
+            'created_by',
+            'created_by_name',
+            'recipients',
+            'documents',
+            'hash_original',
+            'file_size',
+            'file_type',
+            'completion_rate',
+            'id',
+        ]
+        for key in sensitive_keys:
+            self.assertNotIn(key, data)
+
     def test_guest_document_view_cancelled_envelope_denied(self):
         url = reverse('signature-serve-decrypted-pdf', kwargs={'public_id': self.envelope.public_id})
         response = self.client.get(url, {'token': self.token})

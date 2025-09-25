@@ -35,6 +35,7 @@ from reportlab.lib.utils import ImageReader
 from django.http import HttpResponse
 from rest_framework import status
 from ..utils import stream_hash
+import hashlib,hmac
 
 
 
@@ -46,6 +47,33 @@ logger = logging.getLogger(__name__)
 # =============================================================
 
 _GUEST_UNAVAILABLE_STATUSES = {"cancelled", "expired"}
+
+
+def _guest_identifier(envelope: Envelope, kind: str, raw_id) -> str | None:
+    if raw_id in (None, "", "null", "None"):
+        return None
+
+    secret = getattr(settings, "SIGNATURE_GUEST_SALT", settings.SECRET_KEY)
+    message = f"{kind}:{envelope.public_id}:{raw_id}".encode("utf-8")
+    digest = hmac.new(secret.encode("utf-8"), message, hashlib.sha256).hexdigest()
+    return digest[:24]
+
+
+def _guest_lookup_tables(envelope: Envelope) -> dict[str, dict[str, int]]:
+    return {
+        "recipient": {
+            _guest_identifier(envelope, "recipient", rec.id): rec.id
+            for rec in envelope.recipients.all()
+        },
+        "document": {
+            _guest_identifier(envelope, "document", doc.id): doc.id
+            for doc in envelope.documents.all()
+        },
+        "field": {
+            _guest_identifier(envelope, "field", field.id): field.id
+            for field in envelope.fields.all()
+        },
+    }
 
 
 def _guest_envelope_unavailable_response(envelope):
@@ -151,23 +179,40 @@ def guest_envelope_view(request, public_id):
     except EnvelopeRecipient.DoesNotExist:
         return Response({'error': 'Destinataire non valide'}, status=status.HTTP_403_FORBIDDEN)
 
-    data = EnvelopeSerializer(envelope).data
-    fields = EnvelopeViewSet()._build_fields_payload(envelope, current_recipient_id=recipient.id)
-
-    # Construire l’URL du PDF (adapte le name de route si besoin)
-    from django.urls import reverse
-    doc_path = reverse(
-        'signature-serve-decrypted-pdf', kwargs={'public_id': envelope.public_id}
+    fields = EnvelopeViewSet()._build_fields_payload(
+        envelope,
+        current_recipient_id=recipient.id,
+        guest=True,
     )
-    document_url = request.build_absolute_uri(f"{doc_path}?token={token}")
 
-    data.update({
+    documents = [
+        {
+            'id': _guest_identifier(envelope, 'document', doc.id),
+            'name': doc.name,
+            'file_type': doc.file_type,
+            'file_size': doc.file_size,
+            'version': doc.version,
+        }
+        for doc in envelope.documents.all()
+    ]
+
+    payload = {
+        'public_id': str(envelope.public_id),
+        'title': envelope.title,
+        'description': envelope.description,
+        'status': envelope.status,
+        'include_qr_code': envelope.include_qr_code,
+        'deadline_at': envelope.deadline_at,
         'fields': fields,
-        'recipient_id': recipient.id,
+        'documents': documents,
+        'recipient_id': _guest_identifier(envelope, 'recipient', recipient.id),
         'recipient_full_name': recipient.full_name,
-        'document_url': document_url,
-    })
-    return Response(data)
+    }
+
+    if envelope.document_file and getattr(envelope.document_file, 'name', ''):
+        payload['has_inline_document'] = True
+
+    return Response(payload)
 
 def _safe_filename(name: str) -> str:
     base = (name or "document").replace('"', "").strip() or "document"
@@ -327,7 +372,13 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
         resp["Expires"] = "0"
         return resp
 
-    def _build_fields_payload(self, envelope: Envelope, current_recipient_id: int | None = None):
+    def _build_fields_payload(
+        self,
+        envelope: Envelope,
+        current_recipient_id: int | None = None,
+        *,
+        guest: bool = False,
+    ):
         fields = []
         for f in envelope.fields.all():
             fld = SigningFieldSerializer(f).data
@@ -347,6 +398,20 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
                 fld['signature_data'] = None
 
             fld['editable'] = (current_recipient_id is not None and assigned.id == current_recipient_id and not assigned.signed)
+
+            if guest:
+                fld['id'] = _guest_identifier(envelope, 'field', f.id)
+                fld['recipient_id'] = _guest_identifier(envelope, 'recipient', assigned.id)
+                document_identifier = fld.get('document_id')
+                fld['document_id'] = (
+                    _guest_identifier(envelope, 'document', document_identifier)
+                    if document_identifier
+                    else None
+                )
+                if assigned.id != current_recipient_id:
+                    fld['signature_data'] = None
+                fld.pop('recipient_real_id', None)
+
             fields.append(fld)
         return fields
 
@@ -799,19 +864,64 @@ class EnvelopeViewSet(viewsets.ModelViewSet):
         # ---------- Cœur de signature ----------
     def _do_sign(self, envelope, recipient, signature_data, signed_fields):
         # 1) Trouver TOUS les champs de CE destinataire
-        my_fields_meta = []
-        for _, meta in (signed_fields or {}).items():
+        guest_lookup_cache = None
+
+        def _ensure_guest_tables() -> dict[str, dict[str, int]]:
+            nonlocal guest_lookup_cache
+            if guest_lookup_cache is None:
+                guest_lookup_cache = _guest_lookup_tables(envelope)
+            return guest_lookup_cache
+
+        def _coerce_recipient_identifier(value) -> int | None:
+            if value in (None, ""):
+                return None
+            if isinstance(value, int):
+                return value
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                tables = _ensure_guest_tables()
+                return tables.get('recipient', {}).get(str(value))
+
+        def _coerce_document_identifier(value) -> int | None:
+            if value in (None, "", "null", "None"):
+                return None
+            if isinstance(value, int):
+                return value
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                tables = _ensure_guest_tables()
+                return tables.get('document', {}).get(str(value))
+
+        def _normalize_meta(meta):
             if not meta:
-                continue
-            rid = str(meta.get('recipient_id') or meta.get('assigned_recipient_id') or "")
-            if rid and rid == str(recipient.id):
-                my_fields_meta.append(meta)
-    
+                return None, None
+            cloned = dict(meta)
+            rid = _coerce_recipient_identifier(
+                cloned.get('recipient_id') or cloned.get('assigned_recipient_id')
+            )
+            if rid is not None:
+                cloned['recipient_id'] = rid
+            else:
+                cloned.pop('recipient_id', None)
+
+            doc_identifier = _coerce_document_identifier(cloned.get('document_id'))
+            cloned['document_id'] = doc_identifier
+            return cloned, rid
+
+        my_fields_meta: list[dict] = []
+        for _, meta in (signed_fields or {}).items():
+            normalized, rid = _normalize_meta(meta)
+            if normalized and rid == recipient.id:
+                my_fields_meta.append(normalized)
+
         # fallback si rien trouvé → on prend au moins un
         if not my_fields_meta:
             for _, meta in (signed_fields or {}).items():
-                if meta:
-                    my_fields_meta.append(meta)
+                normalized, _ = _normalize_meta(meta)
+                if normalized:
+                    my_fields_meta.append(normalized)
                     break
         if not my_fields_meta:
             raise ValueError("Aucun champ de signature valide pour ce destinataire")

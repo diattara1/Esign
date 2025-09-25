@@ -3,7 +3,7 @@
 // - Navbar sticky avec bouton Signer dynamique (état, OTP, loading)
 // - Sidebar devient un drawer sur mobile
 
-import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useLayoutEffect, useMemo, useCallback } from 'react';
 import useIsMobile from '../hooks/useIsMobile';
 import { useParams, useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { toast } from 'react-toastify';
@@ -20,6 +20,118 @@ import 'react-pdf/dist/Page/TextLayer.css';
 
 const MAX_OTP_ATTEMPTS = 3;
 const COOLDOWN_SECONDS = 30;
+
+function OtpActions({
+  variant = 'inline',
+  isGuest,
+  isAlreadySigned,
+  otpVerified,
+  otpSent,
+  otpError,
+  otpStatus,
+  otp,
+  onOtpChange,
+  onSendOtp,
+  sendingOtp,
+  onVerifyOtp,
+  verifyingOtp,
+  cooldownUntil
+}) {
+  if (!isGuest || isAlreadySigned || otpVerified) return null;
+
+  const inCooldown = Boolean(cooldownUntil && cooldownUntil > Date.now());
+  const showInputArea = variant === 'inline' || otpSent;
+  const errorId = otpError ? `otp-error-${variant}` : undefined;
+  const statusId = otpStatus ? `otp-status-${variant}` : undefined;
+  const describedBy = [errorId, statusId].filter(Boolean).join(' ') || undefined;
+
+  const sendButton = (
+    <button
+      type="button"
+      onClick={onSendOtp}
+      disabled={sendingOtp}
+      className={`w-full ${variant === 'inline' ? 'sm:w-auto' : ''} bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-semibold shadow-sm transition focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50`}
+    >
+      {sendingOtp ? 'Envoi…' : otpSent ? 'Renvoyer OTP' : 'Envoyer OTP'}
+    </button>
+  );
+
+  const inputField = showInputArea ? (
+    <input
+      type="tel"
+      inputMode="numeric"
+      pattern="[0-9]*"
+      autoComplete="one-time-code"
+      value={otp}
+      onChange={(e) => onOtpChange?.(e.target.value)}
+      placeholder="Code OTP"
+      className="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+      disabled={inCooldown}
+      aria-describedby={describedBy}
+    />
+  ) : null;
+
+  const statusBlock = (otpError || otpStatus) ? (
+    <div role="status" aria-live="polite" className={`text-sm ${variant === 'inline' ? 'mt-2 text-center sm:text-left' : ''}`}>
+      {otpError && <p id={errorId} className="text-red-600">{otpError}</p>}
+      {otpStatus && <p id={statusId} className="text-gray-600">{otpStatus}</p>}
+    </div>
+  ) : null;
+
+  const verifyButton = showInputArea ? (
+    <button
+      type="button"
+      onClick={onVerifyOtp}
+      disabled={verifyingOtp || inCooldown || !otpSent}
+      className={`w-full ${variant === 'inline' ? 'sm:w-auto' : ''} bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded font-semibold shadow-sm transition focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50`}
+    >
+      {verifyingOtp ? 'Vérification…' : 'Vérifier'}
+    </button>
+  ) : null;
+
+  if (variant === 'sidebar') {
+    return (
+      <div className="space-y-3">
+        {sendButton}
+        {showInputArea && (
+          <>
+            {inputField}
+            {statusBlock}
+            {verifyButton}
+          </>
+        )}
+        {!showInputArea && statusBlock}
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white border border-blue-100 rounded-xl shadow-sm p-6 space-y-5">
+      <div className="flex flex-col items-center text-gray-700 gap-3">
+        <FiShield className="w-8 h-8 text-blue-600" />
+        <div className="space-y-1 text-center">
+          <p className="text-lg font-semibold text-gray-900">Ce document est protégé</p>
+          <p className="text-sm text-gray-600">Envoyez-vous un code OTP puis saisissez-le pour afficher le PDF.</p>
+        </div>
+      </div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="sm:self-stretch sm:flex-shrink-0">
+          {sendButton}
+        </div>
+        <div className="flex-1 w-full">
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <div className="flex-1">
+              {inputField}
+              {statusBlock}
+            </div>
+            {verifyButton}
+          </div>
+        </div>
+      </div>
+
+    </div>
+  );
+}
 
 export default function DocumentSign() {
   const { publicId: id } = useParams();
@@ -192,6 +304,10 @@ export default function DocumentSign() {
   }, [selectedDoc, otpVerified, envelope, id, token, isGuest]);
 
   // ------------------------------- OTP actions -----------------------------
+  const handleOtpChange = useCallback((value) => {
+    setOtp(value);
+  }, []);
+
   const handleSendOtp = async () => {
     if (isAlreadySigned) return toast.info('Déjà signé');
     setSendingOtp(true);
@@ -285,112 +401,30 @@ export default function DocumentSign() {
     finally { setSigning(false); }
   };
 
-  const OtpActions = ({ variant = 'inline' }) => {
-    if (!isGuest || isAlreadySigned || otpVerified) return null;
-
-    const inCooldown = Boolean(cooldownUntil && cooldownUntil > Date.now());
-    const showInputArea = variant === 'inline' || otpSent;
-    const errorId = otpError ? `otp-error-${variant}` : undefined;
-    const statusId = otpStatus ? `otp-status-${variant}` : undefined;
-    const describedBy = [errorId, statusId].filter(Boolean).join(' ') || undefined;
-
-    const sendButton = (
-      <button
-        type="button"
-        onClick={handleSendOtp}
-        disabled={sendingOtp}
-        className={`w-full ${variant === 'inline' ? 'sm:w-auto' : ''} bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-semibold shadow-sm transition focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50`}
-      >
-        {sendingOtp ? 'Envoi…' : otpSent ? 'Renvoyer OTP' : 'Envoyer OTP'}
-      </button>
-    );
-
-    const inputField = showInputArea ? (
-      <input
-        type="tel"
-        inputMode="numeric"
-        pattern="[0-9]*"
-        autoComplete="one-time-code"
-        value={otp}
-        onChange={(e) => setOtp(e.target.value)}
-        placeholder="Code OTP"
-        className="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
-        disabled={inCooldown}
-        aria-describedby={describedBy}
-      />
-    ) : null;
-
-    const statusBlock = (otpError || otpStatus) ? (
-      <div role="status" aria-live="polite" className={`text-sm ${variant === 'inline' ? 'mt-2 text-center sm:text-left' : ''}`}>
-        {otpError && <p id={errorId} className="text-red-600">{otpError}</p>}
-        {otpStatus && <p id={statusId} className="text-gray-600">{otpStatus}</p>}
-      </div>
-    ) : null;
-
-    const verifyButton = showInputArea ? (
-      <button
-        type="button"
-        onClick={handleVerifyOtp}
-        disabled={verifyingOtp || inCooldown || !otpSent}
-        className={`w-full ${variant === 'inline' ? 'sm:w-auto' : ''} bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded font-semibold shadow-sm transition focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50`}
-      >
-        {verifyingOtp ? 'Vérification…' : 'Vérifier'}
-      </button>
-    ) : null;
-
-    if (variant === 'sidebar') {
-      return (
-        <div className="space-y-3">
-          {sendButton}
-          {showInputArea && (
-            <>
-              {inputField}
-              {statusBlock}
-              {verifyButton}
-            </>
-          )}
-          {!showInputArea && statusBlock}
-        </div>
-      );
-    }
-
-    return (
-      <div className="bg-white border border-blue-100 rounded-xl shadow-sm p-6 space-y-5">
-        <div className="flex flex-col items-center text-gray-700 gap-3">
-          <FiShield className="w-8 h-8 text-blue-600" />
-          <div className="space-y-1 text-center">
-            <p className="text-lg font-semibold text-gray-900">Ce document est protégé</p>
-            <p className="text-sm text-gray-600">Envoyez-vous un code OTP puis saisissez-le pour afficher le PDF.</p>
-          </div>
-        </div>
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-          <div className="sm:self-stretch sm:flex-shrink-0">
-            {sendButton}
-          </div>
-          <div className="flex-1 w-full">
-            <div className="flex flex-col gap-3 sm:flex-row">
-              <div className="flex-1">
-                {inputField}
-                {statusBlock}
-              </div>
-              {verifyButton}
-            </div>
-          </div>
-        </div>
-     
-      </div>
-    );
-  };
-
   const showInlineOtp = isGuest && !isAlreadySigned && !otpVerified;
-const navOffset = isGuest ? 'top-0' : 'top-16';
+  const otpActionsProps = {
+    isGuest,
+    isAlreadySigned,
+    otpVerified,
+    otpSent,
+    otpError,
+    otpStatus,
+    otp,
+    onOtpChange: handleOtpChange,
+    onSendOtp: handleSendOtp,
+    sendingOtp,
+    onVerifyOtp: handleVerifyOtp,
+    verifyingOtp,
+    cooldownUntil
+  };
+  const navOffset = isGuest ? 'top-0' : 'top-16';
   // ----------------------------- PDF RENDERER ------------------------------
   const renderPdfViewer = () => {
     if (showInlineOtp) {
       return (
         <div className="flex items-center justify-center py-12 px-4">
           <div className="w-full max-w-xl">
-            <OtpActions variant="inline" />
+            <OtpActions variant="inline" {...otpActionsProps} />
           </div>
         </div>
       );
@@ -566,7 +600,7 @@ const navOffset = isGuest ? 'top-0' : 'top-16';
       {/* OTP panneau (secondaire, la navbar gère l'action principale) */}
       {isGuest && !isAlreadySigned && !showInlineOtp && (
         <div className="p-4 md:p-6">
-          <OtpActions variant="sidebar" />
+          <OtpActions variant="sidebar" {...otpActionsProps} />
         </div>
       )}
     </div>
